@@ -18,13 +18,13 @@ export default class KindleSyncPlugin extends Plugin {
 	async onload(): Promise<void> {
 		await this.loadSettings();
 
-		this.addRibbonIcon("book-open", "Sync Local Kindle Highlights", () => {
+		this.addRibbonIcon("book-open", "Sync local kindle highlights", () => {
 			void this.syncHighlights();
 		});
 
 		this.addCommand({
 			id: "sync-local-kindle-highlights",
-			name: "Sync Local Kindle Highlights",
+			name: "Sync local kindle highlights",
 			callback: () => {
 				void this.syncHighlights();
 			},
@@ -34,7 +34,6 @@ export default class KindleSyncPlugin extends Plugin {
 	}
 
 	onunload(): void {
-		console.log("Kindle Local Sync unloaded");
 	}
 
 	async syncHighlights(): Promise<void> {
@@ -68,12 +67,12 @@ class KindleSettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		containerEl.createEl("h2", { text: "Kindle Local Sync" });
+		new Setting(containerEl).setName("Sync").setHeading();
 
 		new Setting(containerEl)
-			.setName("My Clippings.txt Path")
+			.setName("My clippings.txt path")
 			.setDesc(
-				"Input the absolute path to your Kindle's text file. Examples: Windows: E:\\documents\\My Clippings.txt, macOS: /Volumes/Kindle/documents/My Clippings.txt, Linux: /media/username/Kindle/documents/My Clippings.txt"
+				"Input the absolute path to your kindle's text file. Examples: windows: E:\\documents\\My clippings.txt, macOS: /Volumes/Kindle/documents/My Clippings.txt, linux: /media/username/Kindle/documents/My Clippings.txt"
 			)
 			.addText((text) =>
 				text
@@ -85,8 +84,8 @@ class KindleSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Highlights Folder")
-			.setDesc("The Obsidian folder where synced Kindle highlights will be stored.")
+			.setName("Highlights folder")
+			.setDesc("The folder where synced kindle highlights will be stored.")
 			.addText((text) =>
 				text
 					.setValue(this.plugin.settings.highlightsFolder)
@@ -97,8 +96,8 @@ class KindleSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Strict Local Only")
-			.setDesc("Keep all sync behavior local-only, with no external APIs or network requests.")
+			.setName("Strict local only")
+			.setDesc("Keep all sync behavior local-only, with no external services or network requests.")
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.strictLocalOnly)
