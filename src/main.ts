@@ -1,99 +1,111 @@
-import {App, Editor, MarkdownView, Modal, Notice, Plugin} from 'obsidian';
-import {DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab} from "./settings";
+import { App, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
 
-// Remember to rename these classes and interfaces!
+interface KindleSyncSettings {
+	clippingsPath: string;
+	highlightsFolder: string;
+	strictLocalOnly: boolean;
+}
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+const DEFAULT_SETTINGS: KindleSyncSettings = {
+	clippingsPath: "",
+	highlightsFolder: "Kindle Highlights",
+	strictLocalOnly: true,
+};
 
-	async onload() {
+export default class KindleSyncPlugin extends Plugin {
+	settings: KindleSyncSettings = { ...DEFAULT_SETTINGS };
+
+	async onload(): Promise<void> {
 		await this.loadSettings();
 
-		// This creates an icon in the left ribbon.
-		this.addRibbonIcon('dice', 'Sample', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
+		this.addRibbonIcon("book-open", "Sync Local Kindle Highlights", () => {
+			void this.syncHighlights();
 		});
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status bar text');
-
-		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
-			id: 'open-modal-simple',
-			name: 'Open modal (simple)',
+			id: "sync-local-kindle-highlights",
+			name: "Sync Local Kindle Highlights",
 			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'replace-selected',
-			name: 'Replace selected content',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				editor.replaceSelection('Sample editor command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-modal-complex',
-			name: 'Open modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-				return false;
-			}
+				void this.syncHighlights();
+			},
 		});
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			new Notice("Click");
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-
+		this.addSettingTab(new KindleSettingTab(this.app, this));
 	}
 
-	onunload() {
+	onunload(): void {
+		console.log("Kindle Local Sync unloaded");
 	}
 
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MyPluginSettings>);
+	async syncHighlights(): Promise<void> {
+		new Notice("Sync process started...");
 	}
 
-	async saveSettings() {
+	async loadSettings(): Promise<void> {
+		const loadedData = (await this.loadData()) as Partial<KindleSyncSettings> | null;
+
+		this.settings = {
+			...DEFAULT_SETTINGS,
+			...loadedData,
+		};
+	}
+
+	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
 	}
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
+class KindleSettingTab extends PluginSettingTab {
+	plugin: KindleSyncPlugin;
+
+	constructor(app: App, plugin: KindleSyncPlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
 	}
 
-	onOpen() {
-		let {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
+	display(): void {
+		const { containerEl } = this;
 
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
+		containerEl.empty();
+
+		containerEl.createEl("h2", { text: "Kindle Local Sync" });
+
+		new Setting(containerEl)
+			.setName("My Clippings.txt Path")
+			.setDesc(
+				"Input the absolute path to your Kindle's text file. Examples: Windows: E:\\documents\\My Clippings.txt, macOS: /Volumes/Kindle/documents/My Clippings.txt, Linux: /media/username/Kindle/documents/My Clippings.txt"
+			)
+			.addText((text) =>
+				text
+					.setValue(this.plugin.settings.clippingsPath)
+					.onChange(async (value) => {
+						this.plugin.settings.clippingsPath = value.trim();
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Highlights Folder")
+			.setDesc("The Obsidian folder where synced Kindle highlights will be stored.")
+			.addText((text) =>
+				text
+					.setValue(this.plugin.settings.highlightsFolder)
+					.onChange(async (value) => {
+						this.plugin.settings.highlightsFolder = value.trim();
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Strict Local Only")
+			.setDesc("Keep all sync behavior local-only, with no external APIs or network requests.")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.strictLocalOnly)
+					.onChange(async (value) => {
+						this.plugin.settings.strictLocalOnly = value;
+						await this.plugin.saveSettings();
+					})
+			);
 	}
 }

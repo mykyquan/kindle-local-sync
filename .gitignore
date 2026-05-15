@@ -6,7 +6,10 @@
 .idea
 
 # npm
-node_modules
+node_modules/
+npm-debug.log*
+dist/
+.env
 
 # Don't include the compiled main.js file in the repo.
 # They should be uploaded to GitHub releases instead.
