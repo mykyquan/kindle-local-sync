@@ -1,4 +1,5 @@
 import { App, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
+import { detectClippingsPath } from "./sync/KindleDetector";
 
 interface KindleSyncSettings {
 	clippingsPath: string;
@@ -37,7 +38,15 @@ export default class KindleSyncPlugin extends Plugin {
 	}
 
 	async syncHighlights(): Promise<void> {
-		new Notice("Sync process started...");
+		const clippingsPath = await detectClippingsPath(this.settings.clippingsPath);
+
+		if (clippingsPath) {
+			new Notice(`Found My Clippings.txt: ${clippingsPath}`);
+			return;
+		}
+
+		// eslint-disable-next-line obsidianmd/ui/sentence-case
+		new Notice("Could not find My Clippings.txt. Please set the path manually.");
 	}
 
 	async loadSettings(): Promise<void> {
