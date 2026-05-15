@@ -1,5 +1,5 @@
 # vscode
-.vscode 
+.vscode
 
 # Intellij
 *.iml
@@ -8,18 +8,40 @@
 # npm
 node_modules/
 npm-debug.log*
+
+# Build output
 dist/
-.env
-
-# Don't include the compiled main.js file in the repo.
-# They should be uploaded to GitHub releases instead.
 main.js
-
-# Exclude sourcemaps
 *.map
 
-# obsidian
+# Environment
+.env
+.env.*
+!.env.example
+
+# Obsidian
 data.json
 
-# Exclude macOS Finder (System Explorer) View States
+# macOS
 .DS_Store
+
+# Logs
+logs
+*.log
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Tool caches
+.npm
+.eslintcache
+.stylelintcache
+.nyc_output
+coverage
+*.lcov
+
+# Package output
+*.tgz
