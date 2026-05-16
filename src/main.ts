@@ -1,4 +1,6 @@
 import { App, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
+import { parseClippings } from "./parser/parseClippings";
+import { readClippingsFile } from "./sync/ClippingsReader";
 import { detectClippingsPath } from "./sync/KindleDetector";
 
 interface KindleSyncSettings {
@@ -40,13 +42,22 @@ export default class KindleSyncPlugin extends Plugin {
 	async syncHighlights(): Promise<void> {
 		const clippingsPath = await detectClippingsPath(this.settings.clippingsPath);
 
-		if (clippingsPath) {
-			new Notice(`Found My Clippings.txt: ${clippingsPath}`);
+		if (!clippingsPath) {
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
+			new Notice("Could not find My Clippings.txt. Please set the path manually.");
 			return;
 		}
 
-		// eslint-disable-next-line obsidianmd/ui/sentence-case
-		new Notice("Could not find My Clippings.txt. Please set the path manually.");
+		try {
+			const rawText = await readClippingsFile(clippingsPath);
+			const highlights = parseClippings(rawText);
+
+			new Notice(`Parsed ${highlights.length} Kindle highlights/notes.`);
+		} catch (error) {
+			console.error("Failed to read or parse My Clippings.txt.", error);
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
+			new Notice("Failed to read or parse My Clippings.txt. Check the file path and format.");
+		}
 	}
 
 	async loadSettings(): Promise<void> {
