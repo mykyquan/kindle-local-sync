@@ -1,7 +1,9 @@
 import { App, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
 import { parseClippings } from "./parser/parseClippings";
+import { groupHighlightsByBook } from "./render/renderMarkdown";
 import { readClippingsFile } from "./sync/ClippingsReader";
 import { detectClippingsPath } from "./sync/KindleDetector";
+import { writeBookNotesToVault } from "./sync/VaultWriter";
 
 interface KindleSyncSettings {
 	clippingsPath: string;
@@ -52,11 +54,22 @@ export default class KindleSyncPlugin extends Plugin {
 			const rawText = await readClippingsFile(clippingsPath);
 			const highlights = parseClippings(rawText);
 
-			new Notice(`Parsed ${highlights.length} Kindle highlights/notes.`);
+			if (highlights.length === 0) {
+				// eslint-disable-next-line obsidianmd/ui/sentence-case
+				new Notice("No Kindle highlights or notes found to sync.");
+				return;
+			}
+
+			const bookGroups = groupHighlightsByBook(highlights);
+			const summary = await writeBookNotesToVault(this.app.vault, this.settings.highlightsFolder, bookGroups);
+
+			new Notice(
+				`Kindle sync complete: ${summary.books} books, ${summary.highlightsRendered} highlights/notes, ${summary.filesCreated} files created, ${summary.filesUpdated} files updated, ${summary.duplicatesSkipped} duplicates skipped.`
+			);
 		} catch (error) {
 			console.error("Failed to read or parse My Clippings.txt.", error);
 			// eslint-disable-next-line obsidianmd/ui/sentence-case
-			new Notice("Failed to read or parse My Clippings.txt. Check the file path and format.");
+			new Notice("Failed to sync My Clippings.txt. Check the file path, format, and target folder.");
 		}
 	}
 
