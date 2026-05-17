@@ -1,4 +1,3 @@
-/* eslint-disable import/no-nodejs-modules */
 import { readFile } from "fs/promises";
 
 export async function readClippingsFile(filePath: string): Promise<string> {

@@ -1,4 +1,4 @@
-import { normalizePath, TFile, Vault } from "obsidian";
+import type { TFile, Vault } from "obsidian";
 import {
 	dedupeClippings,
 	KindleBookGroup,
@@ -22,7 +22,7 @@ export async function writeBookNotesToVault(
 	highlightsFolder: string,
 	bookGroups: KindleBookGroup[]
 ): Promise<VaultWriteSummary> {
-	const folderPath = normalizePath(sanitizeVaultFolderPath(highlightsFolder));
+	const folderPath = normalizeVaultPath(sanitizeVaultFolderPath(highlightsFolder));
 	const summary: VaultWriteSummary = {
 		books: bookGroups.length,
 		filesCreated: 0,
@@ -55,7 +55,7 @@ export async function writeBookNotesToVault(
 			continue;
 		}
 
-		if (!(existingFile instanceof TFile)) {
+		if (!isVaultFile(existingFile)) {
 			throw new Error(`Cannot sync Kindle highlights because "${notePath}" is not a file.`);
 		}
 
@@ -79,7 +79,7 @@ async function ensureFolder(vault: Vault, folderPath: string): Promise<void> {
 	let currentPath = "";
 
 	for (const segment of folderSegments) {
-		currentPath = normalizePath(currentPath ? `${currentPath}/${segment}` : segment);
+		currentPath = normalizeVaultPath(currentPath ? `${currentPath}/${segment}` : segment);
 
 		const existingFile = vault.getAbstractFileByPath(currentPath);
 
@@ -88,7 +88,7 @@ async function ensureFolder(vault: Vault, folderPath: string): Promise<void> {
 			continue;
 		}
 
-		if (existingFile instanceof TFile) {
+		if (isVaultFile(existingFile)) {
 			throw new Error(`Cannot create Kindle highlights folder because "${currentPath}" is a file.`);
 		}
 	}
@@ -99,24 +99,45 @@ function createUniqueBookNotePath(
 	group: KindleBookGroup,
 	usedNotePaths: Set<string>
 ): string {
-	let filename = sanitizeMarkdownFilename(group.bookTitle);
-	let notePath = normalizePath(`${folderPath}/${filename}`);
+	const baseFilename = createBookNoteFilenameBase(group);
+	let filename = sanitizeMarkdownFilename(baseFilename);
+	let notePath = normalizeVaultPath(`${folderPath}/${filename}`);
 
 	if (!usedNotePaths.has(notePath)) {
 		usedNotePaths.add(notePath);
 		return notePath;
 	}
 
-	filename = sanitizeMarkdownFilename(`${group.bookTitle} - ${group.author}`);
-	notePath = normalizePath(`${folderPath}/${filename}`);
-
 	let index = 2;
 	while (usedNotePaths.has(notePath)) {
-		filename = sanitizeMarkdownFilename(`${group.bookTitle} - ${group.author} ${index}`);
-		notePath = normalizePath(`${folderPath}/${filename}`);
+		filename = sanitizeMarkdownFilename(`${baseFilename} ${index}`);
+		notePath = normalizeVaultPath(`${folderPath}/${filename}`);
 		index++;
 	}
 
 	usedNotePaths.add(notePath);
 	return notePath;
+}
+
+function createBookNoteFilenameBase(group: KindleBookGroup): string {
+	const title = group.bookTitle.trim() || "Untitled Kindle Book";
+	const author = group.author.trim();
+
+	if (author && author.toLowerCase() !== "unknown") {
+		return `${title} - ${author}`;
+	}
+
+	return title;
+}
+
+function normalizeVaultPath(path: string): string {
+	return path
+		.replace(/\\/g, "/")
+		.replace(/\/+/g, "/")
+		.replace(/^\/+/, "")
+		.replace(/\/+$/, "");
+}
+
+function isVaultFile(file: unknown): file is TFile {
+	return typeof file === "object" && file !== null && "extension" in file;
 }

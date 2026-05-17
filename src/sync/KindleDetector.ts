@@ -1,4 +1,3 @@
-/* eslint-disable import/no-nodejs-modules */
 import { access } from "fs/promises";
 import { homedir, userInfo } from "os";
 

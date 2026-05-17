@@ -1,4 +1,3 @@
-/* eslint-disable import/no-nodejs-modules */
 import { mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
