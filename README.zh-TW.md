@@ -231,4 +231,4 @@ npm test
 
 ## 授權
 
-本專案使用 `0-BSD` 授權。請參閱 [LICENSE](LICENSE)。
+本專案採用 MIT License 授權。請參閱 [LICENSE](LICENSE)。

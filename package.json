@@ -19,7 +19,7 @@
 		"local-first"
 	],
 	"author": "My Ky Quan",
-	"license": "0-BSD",
+	"license": "MIT",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/mykyquan/kindle-local-sync.git"

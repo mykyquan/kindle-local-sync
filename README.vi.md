@@ -231,4 +231,4 @@ npm test
 
 ## Giấy phép
 
-Dự án này được cấp phép theo giấy phép `0-BSD`. Xem [LICENSE](LICENSE).
+Dự án này được cấp phép theo MIT License. Xem [LICENSE](LICENSE).
