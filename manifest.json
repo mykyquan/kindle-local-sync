@@ -3,9 +3,8 @@
 	"name": "Kindle Local Sync",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Sync highlights from local My Clippings.txt directly into Obsidian without Amazon Cloud.",
+	"description": "Import Kindle highlights and notes from a local My Clippings.txt file into Obsidian.",
 	"author": "My Ky Quan",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"authorUrl": "https://github.com/mykyquan",
 	"isDesktopOnly": true
 }

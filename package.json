@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-sample-plugin",
+	"name": "kindle-local-sync",
 	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"description": "Local-only Obsidian plugin for importing Kindle highlights from My Clippings.txt.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
@@ -11,8 +11,23 @@
 		"lint": "eslint src",
 		"test": "vitest run"
 	},
-	"keywords": [],
+	"keywords": [
+		"obsidian",
+		"obsidian-plugin",
+		"kindle",
+		"highlights",
+		"local-first"
+	],
+	"author": "My Ky Quan",
 	"license": "0-BSD",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/mykyquan/kindle-local-sync.git"
+	},
+	"bugs": {
+		"url": "https://github.com/mykyquan/kindle-local-sync/issues"
+	},
+	"homepage": "https://github.com/mykyquan/kindle-local-sync#readme",
 	"devDependencies": {
 		"@eslint/js": "9.30.1",
 		"@types/node": "^20.19.41",
