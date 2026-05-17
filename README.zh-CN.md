@@ -231,4 +231,4 @@ npm test
 
 ## 许可证
 
-本项目使用 `0-BSD` 许可证。请参阅 [LICENSE](LICENSE)。
+本项目基于 MIT License 授权。请参阅 [LICENSE](LICENSE)。
