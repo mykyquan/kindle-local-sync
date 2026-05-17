@@ -167,4 +167,17 @@ describe("replaceOrAppendSyncRegion", () => {
 			`# Atomic Habits\n\nUser notes.\n\n## Kindle Highlights & Notes\n\n${newRegion}\n`
 		);
 	});
+
+	it("preserves a broken start marker as user content and appends a new region", () => {
+		const newRegion = renderSyncRegion({
+			bookTitle: "Atomic Habits",
+			author: "James Clear",
+			clippings: [atomicHighlight],
+		});
+		const existingMarkdown = `# Atomic Habits\n\nUser notes.\n\n${SYNC_START_MARKER}\n\npartial generated content`;
+
+		expect(replaceOrAppendSyncRegion(existingMarkdown, newRegion)).toBe(
+			`${existingMarkdown}\n\n## Kindle Highlights & Notes\n\n${newRegion}\n`
+		);
+	});
 });
