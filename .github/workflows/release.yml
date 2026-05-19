@@ -1,0 +1,52 @@
+name: Release
+
+on:
+    push:
+        tags:
+            - "v*"
+
+permissions:
+    contents: write
+
+jobs:
+    release:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Use Node.js 20
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: "npm"
+
+            - run: npm ci
+            - run: npm run build
+            - run: npm run lint
+            - run: npm test
+            - run: npm run package
+
+            - name: Verify tag matches manifest version
+              env:
+                  TAG_NAME: ${{ github.ref_name }}
+              run: |
+                  manifest_version="$(node -e "const fs = require('node:fs'); console.log(JSON.parse(fs.readFileSync('manifest.json', 'utf8')).version)")"
+                  if [ "$TAG_NAME" != "v$manifest_version" ]; then
+                    echo "Tag $TAG_NAME does not match manifest version $manifest_version. Expected v$manifest_version."
+                    exit 1
+                  fi
+
+            - name: Create GitHub Release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  TAG_NAME: ${{ github.ref_name }}
+              run: |
+                  assets="release/main.js release/manifest.json release/kindle-local-sync-v*.zip"
+                  if [ -f release/styles.css ]; then
+                    assets="$assets release/styles.css"
+                  fi
+
+                  gh release create "$TAG_NAME" $assets \
+                    --title "$TAG_NAME" \
+                    --generate-notes

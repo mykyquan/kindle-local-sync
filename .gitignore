@@ -45,3 +45,4 @@ coverage
 
 # Package output
 *.tgz
+release/
