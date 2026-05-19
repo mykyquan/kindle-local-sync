@@ -195,6 +195,14 @@ npm run lint
 npm test
 ```
 
+To create release assets locally:
+
+```bash
+npm run package
+```
+
+This builds the plugin and writes `main.js`, `manifest.json`, optional `styles.css`, and `kindle-local-sync-v<version>.zip` to `release/`.
+
 For development watch mode:
 
 ```bash
