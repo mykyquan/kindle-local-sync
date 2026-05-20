@@ -17,6 +17,8 @@ export interface VaultWriteSummary {
 	duplicatesSkipped: number;
 }
 
+type FileWriteResult = "created" | "updated" | "unchanged";
+
 export async function writeBookNotesToVault(
 	vault: Vault,
 	highlightsFolder: string,
@@ -47,31 +49,114 @@ export async function writeBookNotesToVault(
 		summary.highlightsRendered += uniqueGroup.clippings.length;
 		summary.duplicatesSkipped += deduped.duplicatesSkipped;
 
-		const existingFile = vault.getAbstractFileByPath(notePath);
+		const writeResult = await writeBookNote(vault, notePath, uniqueGroup);
 
-		if (!existingFile) {
-			await vault.create(notePath, renderBookMarkdown(uniqueGroup));
+		if (writeResult === "created") {
 			summary.filesCreated++;
-			continue;
-		}
-
-		if (!isVaultFile(existingFile)) {
-			throw new Error(`Cannot sync Kindle highlights because "${notePath}" is not a file.`);
-		}
-
-		const existingMarkdown = await vault.read(existingFile);
-		const updatedMarkdown = replaceOrAppendSyncRegion(existingMarkdown, renderSyncRegion(uniqueGroup));
-
-		if (updatedMarkdown === existingMarkdown) {
+		} else if (writeResult === "updated") {
+			summary.filesUpdated++;
+		} else {
 			summary.filesUnchanged++;
-			continue;
 		}
-
-		await vault.modify(existingFile, updatedMarkdown);
-		summary.filesUpdated++;
 	}
 
 	return summary;
+}
+
+async function writeBookNote(vault: Vault, notePath: string, group: KindleBookGroup): Promise<FileWriteResult> {
+	const newMarkdown = renderBookMarkdown(group);
+	const existingFile = vault.getAbstractFileByPath(notePath);
+
+	if (existingFile) {
+		if (!isVaultFile(existingFile)) {
+			throw new Error(`Cannot sync Kindle highlights because "${notePath}" is a folder.`);
+		}
+
+		return updateExistingVaultFile(vault, existingFile, group);
+	}
+
+	if (await adapterPathExists(vault, notePath)) {
+		return updateExistingAdapterFile(vault, notePath, group);
+	}
+
+	try {
+		await vault.create(notePath, newMarkdown);
+		return "created";
+	} catch (error) {
+		if (!isFileAlreadyExistsError(error)) {
+			throw error;
+		}
+
+		return updateExistingFileAfterCreateConflict(vault, notePath, group);
+	}
+}
+
+async function updateExistingFileAfterCreateConflict(
+	vault: Vault,
+	notePath: string,
+	group: KindleBookGroup
+): Promise<FileWriteResult> {
+	const existingFile = vault.getAbstractFileByPath(notePath);
+
+	if (existingFile) {
+		if (!isVaultFile(existingFile)) {
+			throw new Error(`Cannot sync Kindle highlights because "${notePath}" is a folder.`);
+		}
+
+		return updateExistingVaultFile(vault, existingFile, group);
+	}
+
+	if (await adapterPathExists(vault, notePath)) {
+		return updateExistingAdapterFile(vault, notePath, group);
+	}
+
+	throw new Error(`Cannot sync Kindle highlights because "${notePath}" already exists but could not be resolved.`);
+}
+
+async function updateExistingVaultFile(
+	vault: Vault,
+	existingFile: TFile,
+	group: KindleBookGroup
+): Promise<FileWriteResult> {
+	const existingMarkdown = await vault.read(existingFile);
+	const updatedMarkdown = replaceOrAppendSyncRegion(existingMarkdown, renderSyncRegion(group));
+
+	if (updatedMarkdown === existingMarkdown) {
+		return "unchanged";
+	}
+
+	await vault.modify(existingFile, updatedMarkdown);
+	return "updated";
+}
+
+async function updateExistingAdapterFile(
+	vault: Vault,
+	notePath: string,
+	group: KindleBookGroup
+): Promise<FileWriteResult> {
+	const stat = await vault.adapter.stat(notePath);
+
+	if (!stat) {
+		throw new Error(`Cannot sync Kindle highlights because "${notePath}" exists but could not be inspected.`);
+	}
+
+	if (stat.type !== "file") {
+		throw new Error(`Cannot sync Kindle highlights because "${notePath}" is a folder.`);
+	}
+
+	const existingMarkdown = await vault.adapter.read(notePath);
+	const updatedMarkdown = replaceOrAppendSyncRegion(existingMarkdown, renderSyncRegion(group));
+
+	if (updatedMarkdown === existingMarkdown) {
+		return "unchanged";
+	}
+
+	await vault.adapter.write(notePath, updatedMarkdown);
+	return "updated";
+}
+
+async function adapterPathExists(vault: Vault, path: string): Promise<boolean> {
+	return vault.adapter.exists(path);
 }
 
 async function ensureFolder(vault: Vault, folderPath: string): Promise<void> {
@@ -84,7 +169,30 @@ async function ensureFolder(vault: Vault, folderPath: string): Promise<void> {
 		const existingFile = vault.getAbstractFileByPath(currentPath);
 
 		if (!existingFile) {
-			await vault.createFolder(currentPath);
+			if (await adapterPathExists(vault, currentPath)) {
+				const stat = await vault.adapter.stat(currentPath);
+
+				if (stat?.type === "file") {
+					throw new Error(`Cannot create Kindle highlights folder because "${currentPath}" is a file.`);
+				}
+
+				continue;
+			}
+
+			try {
+				await vault.createFolder(currentPath);
+			} catch (error) {
+				if (!isFileAlreadyExistsError(error) || !(await adapterPathExists(vault, currentPath))) {
+					throw error;
+				}
+
+				const stat = await vault.adapter.stat(currentPath);
+
+				if (stat?.type === "file") {
+					throw new Error(`Cannot create Kindle highlights folder because "${currentPath}" is a file.`);
+				}
+			}
+
 			continue;
 		}
 
@@ -140,4 +248,8 @@ function normalizeVaultPath(path: string): string {
 
 function isVaultFile(file: unknown): file is TFile {
 	return typeof file === "object" && file !== null && "extension" in file;
+}
+
+function isFileAlreadyExistsError(error: unknown): boolean {
+	return error instanceof Error && /already exists/i.test(error.message);
 }

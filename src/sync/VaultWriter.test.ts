@@ -24,9 +24,70 @@ interface MockFolder {
 class MockVault {
 	private readonly files = new Map<string, string>();
 	private readonly folders = new Set<string>();
+	private readonly createCalls = new Map<string, number>();
+	private readonly lookupMisses = new Map<string, number>();
+	private readonly adapterExistsMisses = new Map<string, number>();
+
+	readonly adapter = {
+		exists: async (path: string): Promise<boolean> => {
+			const normalizedPath = normalizeMockPath(path);
+
+			if (this.consumeMiss(this.adapterExistsMisses, normalizedPath)) {
+				return false;
+			}
+
+			return this.files.has(normalizedPath) || this.folders.has(normalizedPath);
+		},
+		stat: async (path: string): Promise<{ type: "file" | "folder"; ctime: number; mtime: number; size: number } | null> => {
+			const normalizedPath = normalizeMockPath(path);
+
+			if (this.files.has(normalizedPath)) {
+				return {
+					type: "file",
+					ctime: 0,
+					mtime: 0,
+					size: this.files.get(normalizedPath)?.length ?? 0,
+				};
+			}
+
+			if (this.folders.has(normalizedPath)) {
+				return {
+					type: "folder",
+					ctime: 0,
+					mtime: 0,
+					size: 0,
+				};
+			}
+
+			return null;
+		},
+		read: async (path: string): Promise<string> => {
+			const normalizedPath = normalizeMockPath(path);
+			const content = this.files.get(normalizedPath);
+
+			if (content === undefined) {
+				throw new Error(`File not found: ${normalizedPath}`);
+			}
+
+			return content;
+		},
+		write: async (path: string, content: string): Promise<void> => {
+			const normalizedPath = normalizeMockPath(path);
+
+			if (this.folders.has(normalizedPath)) {
+				throw new Error("Folder already exists.");
+			}
+
+			this.files.set(normalizedPath, content);
+		},
+	};
 
 	getAbstractFileByPath(path: string): MockFolder | MockTFile | null {
 		const normalizedPath = normalizeMockPath(path);
+
+		if (this.consumeMiss(this.lookupMisses, normalizedPath)) {
+			return null;
+		}
 
 		if (this.files.has(normalizedPath)) {
 			return new MockTFile(normalizedPath);
@@ -40,11 +101,23 @@ class MockVault {
 	}
 
 	async createFolder(path: string): Promise<void> {
-		this.folders.add(normalizeMockPath(path));
+		const normalizedPath = normalizeMockPath(path);
+
+		if (this.files.has(normalizedPath) || this.folders.has(normalizedPath)) {
+			throw new Error("Folder already exists.");
+		}
+
+		this.folders.add(normalizedPath);
 	}
 
 	async create(path: string, content: string): Promise<MockTFile> {
 		const normalizedPath = normalizeMockPath(path);
+
+		this.createCalls.set(normalizedPath, (this.createCalls.get(normalizedPath) ?? 0) + 1);
+
+		if (this.files.has(normalizedPath) || this.folders.has(normalizedPath)) {
+			throw new Error("File already exists.");
+		}
 
 		this.files.set(normalizedPath, content);
 
@@ -69,6 +142,34 @@ class MockVault {
 
 	filePaths(): string[] {
 		return Array.from(this.files.keys()).sort();
+	}
+
+	createCount(path: string): number {
+		return this.createCalls.get(normalizeMockPath(path)) ?? 0;
+	}
+
+	missGetAbstractFileByPath(path: string, count = 1): void {
+		this.lookupMisses.set(normalizeMockPath(path), count);
+	}
+
+	missAdapterExists(path: string, count = 1): void {
+		this.adapterExistsMisses.set(normalizeMockPath(path), count);
+	}
+
+	private consumeMiss(misses: Map<string, number>, path: string): boolean {
+		const count = misses.get(path) ?? 0;
+
+		if (count <= 0) {
+			return false;
+		}
+
+		if (count === 1) {
+			misses.delete(path);
+		} else {
+			misses.set(path, count - 1);
+		}
+
+		return true;
 	}
 }
 
@@ -147,6 +248,51 @@ describe("writeBookNotesToVault", () => {
 			filesUnchanged: 0,
 			highlightsRendered: 2,
 			duplicatesSkipped: 0,
+		});
+	});
+
+	it("creates the book note on first sync", async () => {
+		const vault = new MockVault();
+
+		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
+			{
+				bookTitle: "Atomic Habits",
+				author: "James Clear",
+				clippings: [atomicHighlight],
+			},
+		]);
+		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
+		const fileContent = vault.readFile(notePath) ?? "";
+
+		expect(vault.filePaths()).toEqual([notePath]);
+		expect(vault.createCount(notePath)).toBe(1);
+		expect(fileContent).toContain("> Small habits make a big difference.");
+		expect(summary).toMatchObject({
+			filesCreated: 1,
+			filesUpdated: 0,
+			filesUnchanged: 0,
+		});
+	});
+
+	it("does not call create again when the book note already exists", async () => {
+		const vault = new MockVault();
+		const bookGroups = [
+			{
+				bookTitle: "Atomic Habits",
+				author: "James Clear",
+				clippings: [atomicHighlight],
+			},
+		];
+		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
+
+		await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", bookGroups);
+		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", bookGroups);
+
+		expect(vault.createCount(notePath)).toBe(1);
+		expect(summary).toMatchObject({
+			filesCreated: 0,
+			filesUpdated: 0,
+			filesUnchanged: 1,
 		});
 	});
 
@@ -245,15 +391,84 @@ describe("writeBookNotesToVault", () => {
 
 		await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", bookGroups);
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", bookGroups);
+		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
 		const fileContent = vault.readFile("Kindle Highlights/Atomic Habits - James Clear.md") ?? "";
 
 		expect(fileContent.match(/kindle-local-sync-id:/g)).toHaveLength(2);
+		expect(vault.createCount(notePath)).toBe(1);
 		expect(summary).toMatchObject({
 			filesCreated: 0,
 			filesUpdated: 0,
 			filesUnchanged: 1,
 			highlightsRendered: 2,
 			duplicatesSkipped: 0,
+		});
+	});
+
+	it("updates an existing adapter file when the Obsidian file lookup is stale", async () => {
+		const vault = new MockVault();
+		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
+		await vault.createFolder("Kindle Highlights");
+		await vault.create(
+			notePath,
+			[
+				"# Atomic Habits",
+				"",
+				"User introduction.",
+				"",
+				SYNC_START_MARKER,
+				"",
+				"old generated content",
+				"",
+				SYNC_END_MARKER,
+			].join("\n")
+		);
+		vault.missGetAbstractFileByPath(notePath);
+
+		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
+			{
+				bookTitle: "Atomic Habits",
+				author: "James Clear",
+				clippings: [atomicHighlight],
+			},
+		]);
+		const fileContent = vault.readFile(notePath) ?? "";
+
+		expect(vault.createCount(notePath)).toBe(1);
+		expect(fileContent).toContain("User introduction.");
+		expect(fileContent).not.toContain("old generated content");
+		expect(fileContent).toContain("> Small habits make a big difference.");
+		expect(summary).toMatchObject({
+			filesCreated: 0,
+			filesUpdated: 1,
+			filesUnchanged: 0,
+		});
+	});
+
+	it("recovers if create reports that the note file already exists", async () => {
+		const vault = new MockVault();
+		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
+		await vault.createFolder("Kindle Highlights");
+		await vault.create(notePath, renderExistingMarkdownWithUserContent());
+		vault.missGetAbstractFileByPath(notePath);
+		vault.missAdapterExists(notePath);
+
+		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
+			{
+				bookTitle: "Atomic Habits",
+				author: "James Clear",
+				clippings: [atomicHighlight],
+			},
+		]);
+		const fileContent = vault.readFile(notePath) ?? "";
+
+		expect(vault.createCount(notePath)).toBe(2);
+		expect(fileContent).toContain("User introduction.");
+		expect(fileContent).toContain("> Small habits make a big difference.");
+		expect(summary).toMatchObject({
+			filesCreated: 0,
+			filesUpdated: 1,
+			filesUnchanged: 0,
 		});
 	});
 
@@ -347,7 +562,39 @@ describe("writeBookNotesToVault", () => {
 		expect(vault.hasFolder("Kindle Bad/Highlights")).toBe(true);
 		expect(vault.filePaths()).toEqual(["Kindle Bad/Highlights/Secrets.md"]);
 	});
+
+	it("throws a clear error when the target note path is a folder", async () => {
+		const vault = new MockVault();
+		await vault.createFolder("Kindle Highlights");
+		await vault.createFolder("Kindle Highlights/Atomic Habits - James Clear.md");
+
+		await expect(
+			writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
+				{
+					bookTitle: "Atomic Habits",
+					author: "James Clear",
+					clippings: [atomicHighlight],
+				},
+			])
+		).rejects.toThrow('Cannot sync Kindle highlights because "Kindle Highlights/Atomic Habits - James Clear.md" is a folder.');
+	});
 });
+
+function renderExistingMarkdownWithUserContent(): string {
+	return [
+		"# Atomic Habits",
+		"",
+		"User introduction.",
+		"",
+		SYNC_START_MARKER,
+		"",
+		"old generated content",
+		"",
+		SYNC_END_MARKER,
+		"",
+		"User outro.",
+	].join("\n");
+}
 
 function createHighlight(overrides: Partial<KindleHighlight> = {}): KindleHighlight {
 	return {

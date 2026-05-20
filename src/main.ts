@@ -42,16 +42,20 @@ export default class KindleSyncPlugin extends Plugin {
 	}
 
 	async syncHighlights(): Promise<void> {
-		const clippingsPath = await detectClippingsPath(this.settings.clippingsPath);
-
-		if (!clippingsPath) {
-			// eslint-disable-next-line obsidianmd/ui/sentence-case
-			new Notice("Could not find My Clippings.txt. Please set the path manually.");
-			return;
-		}
+		let syncPhase = "detect";
 
 		try {
+			const clippingsPath = await detectClippingsPath(this.settings.clippingsPath);
+
+			if (!clippingsPath) {
+				// eslint-disable-next-line obsidianmd/ui/sentence-case
+				new Notice("Could not find My Clippings.txt. Please set the path manually.");
+				return;
+			}
+
+			syncPhase = "read";
 			const rawText = await readClippingsFile(clippingsPath);
+			syncPhase = "parse";
 			const highlights = parseClippings(rawText);
 
 			if (highlights.length === 0) {
@@ -60,14 +64,16 @@ export default class KindleSyncPlugin extends Plugin {
 				return;
 			}
 
+			syncPhase = "render/group";
 			const bookGroups = groupHighlightsByBook(highlights);
+			syncPhase = "vault write";
 			const summary = await writeBookNotesToVault(this.app.vault, this.settings.highlightsFolder, bookGroups);
 
 			new Notice(
 				`Kindle sync complete: ${summary.books} books, ${summary.highlightsRendered} highlights/notes, ${summary.filesCreated} files created, ${summary.filesUpdated} files updated, ${summary.duplicatesSkipped} duplicates skipped.`
 			);
 		} catch (error) {
-			console.error("Failed to read or parse My Clippings.txt.", error);
+			console.error(`Kindle sync failed during ${syncPhase}.`, error);
 			// eslint-disable-next-line obsidianmd/ui/sentence-case
 			new Notice("Failed to sync My Clippings.txt. Check the file path, format, and target folder.");
 		}
