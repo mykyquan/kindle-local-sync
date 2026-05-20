@@ -163,7 +163,9 @@ Added: Thursday, May 14, 2026 2:44 PM
 
 ## Ảnh chụp màn hình
 
-Screenshots/GIF demo coming soon.
+![Kindle Local Sync demo](docs/assets/demo.gif)
+
+Demo: cài đặt và bật plugin, thiết lập `My Clippings.txt`, sync highlight Kindle, và xem ghi chú Markdown được tạo.
 
 ## Tuyên bố quyền riêng tư
 

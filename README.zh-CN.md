@@ -163,7 +163,9 @@ Added: Thursday, May 14, 2026 2:44 PM
 
 ## 截图
 
-Screenshots/GIF demo coming soon.
+![Kindle Local Sync demo](docs/assets/demo.gif)
+
+演示：安装并启用插件，设置 `My Clippings.txt`，同步 Kindle 标注，并查看生成的 Markdown 笔记输出。
 
 ## 隐私声明
 

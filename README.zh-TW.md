@@ -163,7 +163,9 @@ Added: Thursday, May 14, 2026 2:44 PM
 
 ## 截圖
 
-Screenshots/GIF demo coming soon.
+![Kindle Local Sync demo](docs/assets/demo.gif)
+
+示範：安裝並啟用外掛，設定 `My Clippings.txt`，同步 Kindle 標註，並查看產生的 Markdown 筆記輸出。
 
 ## 隱私聲明
 

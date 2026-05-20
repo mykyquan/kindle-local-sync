@@ -163,7 +163,9 @@ Added: Thursday, May 14, 2026 2:44 PM
 
 ## Screenshots
 
-Screenshots/GIF demo coming soon.
+![Kindle Local Sync demo](docs/assets/demo.gif)
+
+Demo: install and enable the plugin, set `My Clippings.txt`, sync Kindle highlights, and review the generated Markdown note output.
 
 ## Privacy statement
 
