@@ -211,6 +211,12 @@ npm run dev
 - 为社区插件提交准备 release packaging checklist。
 - 根据用户反馈选择性改进笔记格式。
 
+## 反馈和 bug 报告
+
+请使用 GitHub Issues 提交 bug 和 feature request。sync、安装或 parsing 问题请使用 bug report template；新想法请使用 feature request template。
+
+分享日志或 `My Clippings.txt` 示例前，请先移除私人标注、个人笔记和敏感阅读数据。如果已启用 GitHub Discussions，也可以用于一般问题。
+
 ## 贡献
 
 如果贡献能保持插件的仅本地隐私模型，我们欢迎参与。

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: GitHub Discussions
+    url: https://github.com/mykyquan/kindle-local-sync/discussions
+    about: Use GitHub Discussions for general questions if Discussions are enabled.
+  - name: README documentation
+    url: https://github.com/mykyquan/kindle-local-sync#readme
+    about: Read setup, usage, privacy, and development documentation.
+  - name: GitHub Releases
+    url: https://github.com/mykyquan/kindle-local-sync/releases
+    about: Download release assets or check the latest published version.

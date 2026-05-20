@@ -1,0 +1,119 @@
+name: Bug report
+description: Report a sync, install, parsing, or vault-writing problem.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Kindle Local Sync.
+
+        Privacy reminder: do not paste private book highlights, personal notes, filenames, or sensitive reading data unless you have removed or privately sanitized the content.
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: The Kindle Local Sync version you are using.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: obsidian-version
+    attributes:
+      label: Obsidian version
+      placeholder: "1.8.x"
+    validations:
+      required: true
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Install method
+      options:
+        - Community Plugin
+        - BRAT
+        - GitHub Release ZIP
+        - Build from source
+    validations:
+      required: true
+  - type: dropdown
+    id: kindle-source
+    attributes:
+      label: Kindle source
+      options:
+        - USB-connected Kindle
+        - Manually selected My Clippings.txt
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: What did you expect Kindle Local Sync to do?
+    validations:
+      required: true
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual behavior
+      description: What actually happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      description: List the smallest sequence of steps that reproduces the issue.
+      placeholder: |
+        1. Connect Kindle over USB
+        2. Run Sync local kindle highlights
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: repeated-sync
+    attributes:
+      label: Does the issue happen after running sync multiple times?
+      options:
+        - "Yes"
+        - "No"
+        - "Not sure"
+    validations:
+      required: true
+  - type: dropdown
+    id: user-content-affected
+    attributes:
+      label: Was user-written content outside sync markers affected?
+      description: Sync markers are `<!-- kindle-local-sync:start -->` and `<!-- kindle-local-sync:end -->`.
+      options:
+        - "Yes"
+        - "No"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: sample-clipping
+    attributes:
+      label: Sanitized sample clipping block
+      description: If relevant, paste a private-sanitized sample from `My Clippings.txt`. Remove personal notes and sensitive reading data first.
+      render: text
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or GIF
+      description: Add screenshots or a short GIF if it helps explain the issue.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or console errors
+      description: Paste relevant Obsidian console errors or logs, with private paths and personal data removed.
+      render: text

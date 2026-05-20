@@ -1,0 +1,65 @@
+name: Feature request
+description: Suggest an improvement for Kindle Local Sync.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing an idea.
+
+        Reminder: Kindle Local Sync does not use cloud services, Amazon APIs, Readwise APIs, telemetry, or external sync services. Feature ideas should preserve the local-only privacy model unless there is a clear, explicit opt-in reason.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and what is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you would like Kindle Local Sync to support.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternative solutions considered
+      description: What workarounds or other designs have you considered?
+  - type: textarea
+    id: example-workflow
+    attributes:
+      label: Example workflow
+      description: Show how a user would use this feature from start to finish.
+      placeholder: |
+        1. Connect Kindle over USB
+        2. Open settings
+        3. ...
+  - type: checkboxes
+    id: affected-area
+    attributes:
+      label: Affected area
+      description: Select any areas this feature would likely touch.
+      options:
+        - label: Parsing
+        - label: Markdown output
+        - label: Vault writing
+        - label: Settings
+        - label: Install/release flow
+  - type: dropdown
+    id: local-only
+    attributes:
+      label: Should this remain fully local-only?
+      options:
+        - "Yes"
+        - "No"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context or screenshots
+      description: Add any extra details, screenshots, or mockups that would help explain the request.

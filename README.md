@@ -219,6 +219,12 @@ npm run dev
 - Release packaging checklist for community plugin submission.
 - Optional note format refinements based on user feedback.
 
+## Feedback and bug reports
+
+Use GitHub Issues for bugs and feature requests. Use the bug report template for sync, install, or parsing issues, and use the feature request template for new ideas.
+
+Remove private highlights, personal notes, and sensitive reading data before sharing logs or `My Clippings.txt` examples. GitHub Discussions may be used for general questions if enabled.
+
 ## Contributing
 
 Contributions are welcome if they preserve the plugin's local-only privacy model.

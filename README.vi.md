@@ -211,6 +211,12 @@ npm run dev
 - Checklist đóng gói release cho quy trình gửi plugin cộng đồng.
 - Tinh chỉnh định dạng ghi chú tùy theo phản hồi người dùng.
 
+## Phản hồi và báo lỗi
+
+Sử dụng GitHub Issues cho bug và feature request. Dùng bug report template cho lỗi sync, cài đặt, hoặc parsing; dùng feature request template cho ý tưởng mới.
+
+Hãy xóa highlight riêng tư, ghi chú cá nhân, và dữ liệu đọc nhạy cảm trước khi chia sẻ log hoặc ví dụ `My Clippings.txt`. Có thể dùng GitHub Discussions cho câu hỏi chung nếu tính năng này được bật.
+
 ## Đóng góp
 
 Mọi đóng góp đều được hoan nghênh nếu vẫn giữ mô hình quyền riêng tư local-only của plugin.
