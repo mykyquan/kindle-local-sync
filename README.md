@@ -215,7 +215,6 @@ npm run dev
 
 - Broader parser fixtures from real Kindle clipping variants.
 - More manual QA across macOS, Windows, and Linux.
-- Screenshots and GIF demo.
 - Release packaging checklist for community plugin submission.
 - Optional note format refinements based on user feedback.
 

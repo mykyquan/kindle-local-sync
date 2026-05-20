@@ -207,7 +207,6 @@ npm run dev
 
 - 增加來自真實 Kindle clipping 變體的 parser fixtures。
 - 在 macOS、Windows 和 Linux 上進行更多 manual QA。
-- 添加 screenshots 和 GIF demo。
 - 為社群外掛提交準備 release packaging checklist。
 - 根據使用者回饋選擇性改進筆記格式。
 

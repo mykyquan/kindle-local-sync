@@ -24,6 +24,7 @@ Use this checklist before tagging or publishing a Kindle Local Sync release.
   - Plugin files are at the root of the zip.
 - Release packaging validates desktop-only metadata, MIT license, matching versions, and `versions.json`.
 - No generated release artifacts are committed.
+- Obsidian Community Plugin submission expects the GitHub release tag to match `manifest.json` version exactly, without a leading `v`.
 
 ## Maintainer release flow
 
@@ -38,19 +39,21 @@ npm test
 2. Update `manifest.json` and `package.json` versions if needed.
 3. Run `npm run package` and inspect `release/`.
 4. Commit the release metadata and documentation changes.
-5. Create a tag:
+5. Create the community-compatible tag:
 
 ```bash
-git tag v0.1.0
+git tag 0.1.0
 ```
 
 6. Push the tag:
 
 ```bash
-git push origin v0.1.0
+git push origin 0.1.0
 ```
 
 7. GitHub Actions creates the GitHub Release and uploads `main.js`, `manifest.json`, optional `styles.css`, and the release zip.
+
+For Obsidian Community Plugin submission, use a tag like `0.1.0` so it matches `manifest.json` exactly. A tag like `v0.1.0` can remain supported for GitHub beta releases, but the community-compatible tag should be `0.1.0`.
 
 ## User install flow
 
