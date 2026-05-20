@@ -1,6 +1,6 @@
 {
 	"name": "kindle-local-sync",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Local-only Obsidian plugin for importing Kindle highlights from My Clippings.txt.",
 	"main": "main.js",
 	"type": "module",
