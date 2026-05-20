@@ -10,6 +10,12 @@ Languages:
 
 Kindle Local Sync 是一個僅適用於桌面端的 Obsidian 外掛。它會讀取透過 USB 連接的 Kindle 上的本機 `My Clippings.txt` 檔案，並將 Kindle 標註與筆記寫入你的 Obsidian 資料庫中的 Markdown 檔案。
 
+## 截圖
+
+![Kindle Local Sync demo](docs/assets/demo.gif)
+
+示範：設定本機 `My Clippings.txt` 路徑，同步 Kindle 標註，並查看產生的 Markdown 筆記輸出。
+
 ## 它能做什麼
 
 - 從已連接的 Kindle 或手動設定的路徑偵測 `My Clippings.txt`。
@@ -160,12 +166,6 @@ Added: Thursday, May 14, 2026 2:44 PM
 
 <!-- kindle-local-sync:end -->
 ```
-
-## 截圖
-
-![Kindle Local Sync demo](docs/assets/demo.gif)
-
-示範：安裝並啟用外掛，設定 `My Clippings.txt`，同步 Kindle 標註，並查看產生的 Markdown 筆記輸出。
 
 ## 隱私聲明
 

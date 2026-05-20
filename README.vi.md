@@ -10,6 +10,12 @@ Ngôn ngữ:
 
 Kindle Local Sync là plugin Obsidian chỉ dành cho desktop. Plugin đọc file `My Clippings.txt` cục bộ từ Kindle được kết nối qua USB, rồi ghi highlight và ghi chú Kindle thành các file Markdown bên trong vault Obsidian của bạn.
 
+## Ảnh chụp màn hình
+
+![Kindle Local Sync demo](docs/assets/demo.gif)
+
+Demo: thiết lập đường dẫn cục bộ đến `My Clippings.txt`, sync highlight Kindle, và xem ghi chú Markdown được tạo.
+
 ## Công cụ này làm gì
 
 - Phát hiện `My Clippings.txt` từ Kindle đang kết nối hoặc từ đường dẫn được cấu hình thủ công.
@@ -160,12 +166,6 @@ Added: Thursday, May 14, 2026 2:44 PM
 
 <!-- kindle-local-sync:end -->
 ```
-
-## Ảnh chụp màn hình
-
-![Kindle Local Sync demo](docs/assets/demo.gif)
-
-Demo: cài đặt và bật plugin, thiết lập `My Clippings.txt`, sync highlight Kindle, và xem ghi chú Markdown được tạo.
 
 ## Tuyên bố quyền riêng tư
 
