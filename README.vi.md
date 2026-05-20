@@ -207,7 +207,6 @@ npm run dev
 
 - Thêm fixture parser từ nhiều biến thể clipping Kindle thực tế hơn.
 - Thêm manual QA trên macOS, Windows và Linux.
-- Thêm screenshots và GIF demo.
 - Checklist đóng gói release cho quy trình gửi plugin cộng đồng.
 - Tinh chỉnh định dạng ghi chú tùy theo phản hồi người dùng.
 
