@@ -211,6 +211,12 @@ npm run dev
 - 為社群外掛提交準備 release packaging checklist。
 - 根據使用者回饋選擇性改進筆記格式。
 
+## 回饋與 bug 回報
+
+請使用 GitHub Issues 提交 bug 和 feature request。sync、安裝或 parsing 問題請使用 bug report template；新想法請使用 feature request template。
+
+分享 log 或 `My Clippings.txt` 範例前，請先移除私人標註、個人筆記和敏感閱讀資料。如果已啟用 GitHub Discussions，也可以用於一般問題。
+
 ## 貢獻
 
 如果貢獻能保留外掛的僅本機隱私模型，我們歡迎參與。
