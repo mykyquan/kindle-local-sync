@@ -5,6 +5,8 @@ export class MockElement {
 	textContent = "";
 	children: MockElement[] = [];
 	classes = new Set<string>();
+	scrollTop = 0;
+	scrollIntoViewCalls: unknown[] = [];
 	private clickHandler: ClickHandler | null = null;
 
 	constructor(tagName = "div", text = "") {
@@ -42,6 +44,10 @@ export class MockElement {
 
 	async click(): Promise<void> {
 		await this.clickHandler?.();
+	}
+
+	scrollIntoView(options?: unknown): void {
+		this.scrollIntoViewCalls.push(options);
 	}
 
 	text(): string {

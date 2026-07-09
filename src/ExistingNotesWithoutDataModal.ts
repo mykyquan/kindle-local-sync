@@ -1,3 +1,4 @@
+/* eslint-disable obsidianmd/ui/sentence-case */
 import { App, ButtonComponent, Modal } from "obsidian";
 import type KindleLocalSyncPlugin from "./main";
 
@@ -11,10 +12,8 @@ export class ExistingNotesWithoutDataModal extends Modal {
 
 	onOpen(): void {
 		this.contentEl.empty();
-		// eslint-disable-next-line obsidianmd/ui/sentence-case
 		this.contentEl.createEl("h2", { text: "Existing Kindle highlight notes found" });
 		this.contentEl.createEl("p", {
-			// eslint-disable-next-line obsidianmd/ui/sentence-case
 			text: "This vault already contains Kindle highlight notes, but Kindle Local Sync does not have saved plugin data for this vault.",
 		});
 		this.contentEl.createEl("p", {
@@ -23,11 +22,14 @@ export class ExistingNotesWithoutDataModal extends Modal {
 
 		const continueOption = this.createOptionSection(
 			"Continue with existing notes",
-			"Recommended if these notes were already created by Kindle Local Sync. This will create plugin data and continue syncing without reviewing all notes again."
+			[
+				"Choose this if these notes were already created by Kindle Local Sync.",
+				"We'll keep your existing notes and continue syncing from here.",
+			]
 		);
 
 		new ButtonComponent(continueOption)
-			.setButtonText("Continue with existing notes")
+			.setButtonText("Continue With Existing Notes")
 			.setCta()
 			.onClick(async () => {
 				this.close();
@@ -40,7 +42,7 @@ export class ExistingNotesWithoutDataModal extends Modal {
 		);
 
 		new ButtonComponent(reviewOption)
-			.setButtonText("Review as first sync")
+			.setButtonText("Review As First Sync")
 			.onClick(async () => {
 				this.close();
 				await this.plugin.reviewExistingNotesWithoutDataAsFirstSync();
@@ -56,10 +58,13 @@ export class ExistingNotesWithoutDataModal extends Modal {
 			.onClick(() => this.close());
 	}
 
-	private createOptionSection(title: string, description: string): HTMLElement {
+	private createOptionSection(title: string, description: string | string[]): HTMLElement {
 		const section = this.contentEl.createDiv();
 		section.createEl("h3", { text: title });
-		section.createEl("p", { text: description });
+
+		for (const paragraph of Array.isArray(description) ? description : [description]) {
+			section.createEl("p", { text: paragraph });
+		}
 
 		return section;
 	}

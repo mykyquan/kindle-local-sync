@@ -38,7 +38,7 @@ describe("IgnoredHighlightsModal", () => {
 		const modal = new IgnoredHighlightsModal(new App() as never, plugin as never);
 
 		modal.onOpen();
-		await findByText(modal.contentEl, "Remove from ignore list").click();
+		await findByText(modal.contentEl, "Remove From Ignore List").click();
 
 		expect(plugin.unignoreHighlight).toHaveBeenCalledWith("one");
 		expect(readText(modal.contentEl)).toContain("No ignored highlights");

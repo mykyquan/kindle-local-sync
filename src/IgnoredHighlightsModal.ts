@@ -1,3 +1,4 @@
+/* eslint-disable obsidianmd/ui/sentence-case */
 import { App, ButtonComponent, Modal } from "obsidian";
 import type KindleLocalSyncPlugin from "./main";
 import { IgnoredHighlight } from "./settings";
@@ -30,7 +31,7 @@ export class IgnoredHighlightsModal extends Modal {
 				row.createEl("p", { text: `Ignored ${new Date(highlight.ignoredAt).toLocaleDateString()}` });
 
 				new ButtonComponent(row)
-					.setButtonText("Remove from ignore list")
+					.setButtonText("Remove From Ignore List")
 					.onClick(async () => {
 						await this.plugin.unignoreHighlight(highlight.id);
 						this.onOpen();

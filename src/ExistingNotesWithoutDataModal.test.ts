@@ -109,7 +109,7 @@ describe("existing notes without data.json", () => {
 		});
 	});
 
-	it("Review as first sync keeps hasCompletedFirstSync false and opens first sync preview", async () => {
+	it("Review As First Sync keeps hasCompletedFirstSync false and opens first sync preview", async () => {
 		const plugin = createPlugin(createVaultWithExistingNotes());
 		const saveCalls = captureSaveCalls(plugin);
 
@@ -141,12 +141,24 @@ describe("existing notes without data.json", () => {
 });
 
 describe("ExistingNotesWithoutDataModal improved layout", () => {
+	it("uses Title Case button labels in Existing Notes Without Data modal", () => {
+		const modal = createModal(createTransitionPlugin());
+
+		modal.onOpen();
+
+		expect(buttonTexts(modal.contentEl)).toEqual([
+			"Continue With Existing Notes",
+			"Review As First Sync",
+			"Cancel",
+		]);
+	});
+
 	it("shows the improved option titles", () => {
 		const modal = createModal(createTransitionPlugin());
 
 		modal.onOpen();
 
-		expect(readText(modal.contentEl)).toContain("Continue with existing notes");
+		expect(readText(modal.contentEl)).toContain("Continue With Existing Notes");
 		expect(readText(modal.contentEl)).toContain("Review everything before syncing");
 		expect(readText(modal.contentEl)).toContain("Cancel");
 	});
@@ -157,7 +169,10 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 		modal.onOpen();
 
 		expect(readText(modal.contentEl)).toContain(
-			"Recommended if these notes were already created by Kindle Local Sync. This will create plugin data and continue syncing without reviewing all notes again."
+			"Choose this if these notes were already created by Kindle Local Sync."
+		);
+		expect(readText(modal.contentEl)).toContain(
+			"We'll keep your existing notes and continue syncing from here."
 		);
 		expect(readText(modal.contentEl)).toContain(
 			"Choose this if you want to review books and highlights before importing again."
@@ -167,23 +182,34 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 		);
 	});
 
-	it("keeps Continue with existing notes behavior unchanged", async () => {
+	it("shows the updated Continue With Existing Notes explanation", () => {
+		const modal = createModal(createTransitionPlugin());
+
+		modal.onOpen();
+
+		expect(paragraphTexts(modal.contentEl)).toEqual(expect.arrayContaining([
+			"Choose this if these notes were already created by Kindle Local Sync.",
+			"We'll keep your existing notes and continue syncing from here.",
+		]));
+	});
+
+	it("keeps Continue With Existing Notes behavior unchanged", async () => {
 		const plugin = createTransitionPlugin();
 		const modal = createModal(plugin);
 
 		modal.onOpen();
-		await findButtonByText(modal.contentEl, "Continue with existing notes").click();
+		await findButtonByText(modal.contentEl, "Continue With Existing Notes").click();
 
 		expect(plugin.continueExistingNotesWithoutDataSync).toHaveBeenCalledTimes(1);
 		expect(plugin.reviewExistingNotesWithoutDataAsFirstSync).not.toHaveBeenCalled();
 	});
 
-	it("keeps Review as first sync behavior unchanged", async () => {
+	it("keeps Review As First Sync behavior unchanged", async () => {
 		const plugin = createTransitionPlugin();
 		const modal = createModal(plugin);
 
 		modal.onOpen();
-		await findButtonByText(modal.contentEl, "Review as first sync").click();
+		await findButtonByText(modal.contentEl, "Review As First Sync").click();
 
 		expect(plugin.reviewExistingNotesWithoutDataAsFirstSync).toHaveBeenCalledTimes(1);
 		expect(plugin.continueExistingNotesWithoutDataSync).not.toHaveBeenCalled();
@@ -290,4 +316,38 @@ function findButton(element: TestElement, text: string): TestElement | null {
 	}
 
 	return null;
+}
+
+function buttonTexts(element: unknown): string[] {
+	const texts: string[] = [];
+	collectButtonTexts(element as TestElement, texts);
+
+	return texts;
+}
+
+function collectButtonTexts(element: TestElement, texts: string[]): void {
+	if (element.tagName === "button") {
+		texts.push(element.text());
+	}
+
+	for (const child of element.children) {
+		collectButtonTexts(child, texts);
+	}
+}
+
+function paragraphTexts(element: unknown): string[] {
+	const paragraphs: string[] = [];
+	collectParagraphTexts(element as TestElement, paragraphs);
+
+	return paragraphs;
+}
+
+function collectParagraphTexts(element: TestElement, paragraphs: string[]): void {
+	if (element.tagName === "p") {
+		paragraphs.push(element.text());
+	}
+
+	for (const child of element.children) {
+		collectParagraphTexts(child, paragraphs);
+	}
 }

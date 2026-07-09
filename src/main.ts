@@ -13,6 +13,7 @@ import {
 import { readClippingsFile } from "./sync/ClippingsReader";
 import { hasExistingHighlightNotes } from "./sync/ExistingHighlightNotes";
 import { detectClippingsPath } from "./sync/KindleDetector";
+import { removeIgnoredHighlightBlocksFromExistingNotes } from "./sync/IgnoredHighlightCleanup";
 import { classifyHighlightsForSync } from "./sync/SyncClassifier";
 import { createVaultHighlightLookup } from "./sync/VaultHighlightLookup";
 import { writeBookNotesToVault } from "./sync/VaultWriter";
@@ -115,6 +116,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		this.settings.hasCompletedFirstSync = true;
 		this.hasSavedPluginData = true;
 		await this.saveSettings();
+		await this.cleanupIgnoredHighlightBlocks(ignoreHighlights.map(createClippingId));
 
 		new SyncSummaryModal(this.app, this, {
 			classification: {
@@ -161,11 +163,13 @@ export default class KindleLocalSyncPlugin extends Plugin {
 	async ignoreHighlights(highlights: KindleHighlight[]): Promise<void> {
 		this.addIgnoredHighlights(highlights);
 		await this.saveSettings();
+		await this.cleanupIgnoredHighlightBlocks(highlights.map(createClippingId));
 	}
 
 	async ignoreSummaryHighlight(highlight: SyncSummaryHighlightItem): Promise<void> {
 		this.addIgnoredSummaryHighlights([highlight]);
 		await this.saveSettings();
+		await this.cleanupIgnoredHighlightBlocks([highlight.id]);
 	}
 
 	async unignoreHighlight(id: string): Promise<void> {
@@ -251,6 +255,18 @@ export default class KindleLocalSyncPlugin extends Plugin {
 			...this.settings.ignoredHighlights,
 			...records,
 		];
+	}
+
+	private async cleanupIgnoredHighlightBlocks(ignoredHighlightIds: string[]): Promise<void> {
+		try {
+			await removeIgnoredHighlightBlocksFromExistingNotes(
+				this.app.vault,
+				this.settings.highlightsFolder,
+				ignoredHighlightIds
+			);
+		} catch (error) {
+			console.error("Failed to remove ignored highlights from existing Kindle notes.", error);
+		}
 	}
 
 	private async syncExistingHighlights(

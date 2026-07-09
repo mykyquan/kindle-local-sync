@@ -1,3 +1,4 @@
+/* eslint-disable obsidianmd/ui/sentence-case */
 import { App, ButtonComponent, Modal } from "obsidian";
 import type KindleLocalSyncPlugin from "./main";
 import { KindleHighlight } from "./parser/parseClippings";
@@ -18,6 +19,13 @@ export class SyncSummaryModal extends Modal {
 	private importedCount: number;
 	private suspiciousHighlights: KindleHighlight[];
 	private skippedThisSyncHighlights: SyncSummaryHighlightItem[];
+	private summaryScrollTop = 0;
+	private ignoredHighlightsScrollTop = 0;
+	private skippedBooksScrollTop = 0;
+	private skippedBookScrollTopByTitle = new Map<string, number>();
+	private skippedBookSectionEls = new Map<string, HTMLElement>();
+	private skippedBooksReturnAnchorKey: string | null = null;
+	private shouldRestoreSkippedBooksAnchor = false;
 
 	constructor(app: App, plugin: KindleLocalSyncPlugin, options: SyncSummaryModalOptions) {
 		super(app);
@@ -51,25 +59,37 @@ export class SyncSummaryModal extends Modal {
 
 		if (this.suspiciousHighlights.length > 0) {
 			new ButtonComponent(this.contentEl)
-				.setButtonText("Review suspicious items")
-				.onClick(() => this.renderSuspiciousItems());
+				.setButtonText("Review Suspicious Items")
+				.onClick(() => {
+					this.saveSummaryScrollPosition();
+					this.renderSuspiciousItems();
+				});
 		}
 
 		if (this.classification.ignoredHighlights.length > 0) {
 			new ButtonComponent(this.contentEl)
-				.setButtonText("View ignored highlights")
-				.onClick(() => this.renderIgnoredHighlights());
+				.setButtonText("View Ignored Highlights")
+				.onClick(() => {
+					this.saveSummaryScrollPosition();
+					this.renderIgnoredHighlights();
+				});
 		}
 
 		if (this.skippedThisSyncHighlights.length > 0) {
 			new ButtonComponent(this.contentEl)
-				.setButtonText("Review skipped this sync")
-				.onClick(() => this.renderSkippedBooks());
+				.setButtonText("Review Skipped This Sync")
+				.onClick(() => {
+					this.saveSummaryScrollPosition();
+					this.clearSkippedBooksReturnAnchor();
+					this.renderSkippedBooks();
+				});
 		}
 
 		new ButtonComponent(this.contentEl)
 			.setButtonText("Close")
 			.onClick(() => this.close());
+
+		this.restoreScrollPosition(this.summaryScrollTop);
 	}
 
 	private renderSuspiciousItems(): void {
@@ -77,7 +97,7 @@ export class SyncSummaryModal extends Modal {
 		this.contentEl.createEl("h2", { text: "Possible reappeared highlights" });
 
 		new ButtonComponent(this.contentEl)
-			.setButtonText("Back to summary")
+			.setButtonText("Back To Summary")
 			.onClick(() => this.renderSummary());
 
 		for (const highlight of this.suspiciousHighlights) {
@@ -87,7 +107,7 @@ export class SyncSummaryModal extends Modal {
 			const actions = row.createDiv();
 
 			new ButtonComponent(actions)
-				.setButtonText("Import again")
+				.setButtonText("Import Again")
 				.onClick(async () => {
 					const sameBookHighlights = this.automaticHighlights.filter((candidate) => isSameBook(candidate, highlight));
 					await this.plugin.importHighlights([...sameBookHighlights, highlight]);
@@ -97,7 +117,7 @@ export class SyncSummaryModal extends Modal {
 				});
 
 			new ButtonComponent(actions)
-				.setButtonText("Ignore forever")
+				.setButtonText("Ignore Forever")
 				.onClick(async () => {
 					await this.plugin.ignoreHighlights([highlight]);
 					this.removeSuspiciousHighlight(highlight);
@@ -106,7 +126,7 @@ export class SyncSummaryModal extends Modal {
 				.buttonEl.addClass("mod-warning");
 
 			new ButtonComponent(actions)
-				.setButtonText("Skip this time")
+				.setButtonText("Skip This Time")
 				.onClick(() => {
 					this.removeSuspiciousHighlight(highlight);
 					this.renderSuspiciousItems();
@@ -125,14 +145,18 @@ export class SyncSummaryModal extends Modal {
 	private renderIgnoredHighlights(): void {
 		this.contentEl.empty();
 		new ButtonComponent(this.contentEl)
-			.setButtonText("Back to summary")
-			.onClick(() => this.renderSummary());
+			.setButtonText("Back To Summary")
+			.onClick(() => {
+				this.saveIgnoredHighlightsScrollPosition();
+				this.renderSummary();
+			});
 		this.contentEl.createEl("h2", { text: "Ignored highlights" });
 
 		if (this.plugin.settings.ignoredHighlights.length === 0) {
 			this.contentEl.createEl("p", {
 				text: "No ignored highlights. Highlights you ignore during sync will appear here.",
 			});
+			this.restoreScrollPosition(this.ignoredHighlightsScrollTop);
 			return;
 		}
 
@@ -145,43 +169,59 @@ export class SyncSummaryModal extends Modal {
 				row.createEl("p", { text: `Ignored ${new Date(highlight.ignoredAt).toLocaleDateString()}` });
 
 				new ButtonComponent(row)
-					.setButtonText("Remove from ignore list")
+					.setButtonText("Remove From Ignore List")
 					.onClick(async () => {
+						this.saveIgnoredHighlightsScrollPosition();
 						await this.plugin.unignoreHighlight(highlight.id);
 						this.renderIgnoredHighlights();
 					});
 			}
 		}
+
+		this.restoreScrollPosition(this.ignoredHighlightsScrollTop);
 	}
 
 	private renderSkippedBooks(): void {
 		this.contentEl.empty();
+		this.skippedBookSectionEls.clear();
 		this.contentEl.createEl("h2", { text: "Skipped this sync" });
 		this.contentEl.createEl("p", {
 			text: "These highlights were skipped only for this sync. They may appear again next time unless ignored.",
 		});
 
 		new ButtonComponent(this.contentEl)
-			.setButtonText("Back to summary")
-			.onClick(() => this.renderSummary());
+			.setButtonText("Back To Summary")
+			.onClick(() => {
+				this.saveSkippedBooksScrollPosition();
+				this.renderSummary();
+			});
 
 		if (this.skippedThisSyncHighlights.length === 0) {
 			this.contentEl.createEl("p", { text: "No skipped highlights left to review." });
+			this.restoreSkippedBooksPosition();
 			return;
 		}
 
 		for (const [title, highlights] of groupSummaryHighlightsByTitle(this.skippedThisSyncHighlights)) {
+			const bookKey = createSkippedBookAnchorKey(title);
 			const section = this.contentEl.createDiv();
+
+			this.skippedBookSectionEls.set(bookKey, section);
 			section.createEl("h3", { text: title });
 			section.createEl("p", { text: `${highlights.length} highlights skipped this sync` });
 
 			new ButtonComponent(section)
-				.setButtonText("Review highlights")
-				.onClick(() => this.renderSkippedBookHighlights(title));
+				.setButtonText("Review Highlights")
+				.onClick(() => {
+					this.saveSkippedBooksScrollPosition();
+					this.skippedBooksReturnAnchorKey = bookKey;
+					this.renderSkippedBookHighlights(title);
+				});
 
 			new ButtonComponent(section)
-				.setButtonText("Ignore all highlights")
+				.setButtonText("Ignore All Highlights")
 				.onClick(async () => {
+					this.saveSkippedBooksScrollPosition();
 					for (const highlight of highlights) {
 						await this.plugin.ignoreSummaryHighlight(highlight);
 					}
@@ -191,6 +231,8 @@ export class SyncSummaryModal extends Modal {
 					this.renderSkippedBooks();
 				});
 		}
+
+		this.restoreSkippedBooksPosition();
 	}
 
 	private renderSkippedBookHighlights(bookTitle: string): void {
@@ -198,13 +240,18 @@ export class SyncSummaryModal extends Modal {
 		this.contentEl.createEl("h2", { text: bookTitle });
 
 		new ButtonComponent(this.contentEl)
-			.setButtonText("Back to skipped books")
-			.onClick(() => this.renderSkippedBooks());
+			.setButtonText("Back To Skipped Books")
+			.onClick(() => {
+				this.saveSkippedBookScrollPosition(bookTitle);
+				this.shouldRestoreSkippedBooksAnchor = true;
+				this.renderSkippedBooks();
+			});
 
 		const highlights = this.skippedThisSyncHighlights.filter((highlight) => getSummaryTitle(highlight) === bookTitle);
 
 		if (highlights.length === 0) {
 			this.contentEl.createEl("p", { text: "No skipped highlights left in this book." });
+			this.restoreScrollPosition(this.skippedBookScrollTopByTitle.get(bookTitle) ?? 0);
 			return;
 		}
 
@@ -217,13 +264,74 @@ export class SyncSummaryModal extends Modal {
 			}
 
 			new ButtonComponent(row)
-				.setButtonText("Ignore going forward")
+				.setButtonText("Ignore Going Forward")
 				.onClick(async () => {
+					this.saveSkippedBookScrollPosition(bookTitle);
 					await this.plugin.ignoreSummaryHighlight(highlight);
 					this.skippedThisSyncHighlights = this.skippedThisSyncHighlights.filter((candidate) => candidate.id !== highlight.id);
 					this.renderSkippedBookHighlights(bookTitle);
 				});
 		}
+
+		this.restoreScrollPosition(this.skippedBookScrollTopByTitle.get(bookTitle) ?? 0);
+	}
+
+	private saveSummaryScrollPosition(): void {
+		this.summaryScrollTop = this.contentEl.scrollTop;
+	}
+
+	private saveIgnoredHighlightsScrollPosition(): void {
+		this.ignoredHighlightsScrollTop = this.contentEl.scrollTop;
+	}
+
+	private saveSkippedBooksScrollPosition(): void {
+		this.skippedBooksScrollTop = this.contentEl.scrollTop;
+	}
+
+	private saveSkippedBookScrollPosition(bookTitle: string): void {
+		this.skippedBookScrollTopByTitle.set(bookTitle, this.contentEl.scrollTop);
+	}
+
+	private clearSkippedBooksReturnAnchor(): void {
+		this.skippedBooksReturnAnchorKey = null;
+		this.shouldRestoreSkippedBooksAnchor = false;
+	}
+
+	private restoreSkippedBooksPosition(): void {
+		const anchorKey = this.shouldRestoreSkippedBooksAnchor ? this.skippedBooksReturnAnchorKey : null;
+
+		this.shouldRestoreSkippedBooksAnchor = false;
+
+		if (!anchorKey) {
+			this.restoreScrollPosition(this.skippedBooksScrollTop);
+			return;
+		}
+
+		this.afterRender(() => {
+			const section = this.skippedBookSectionEls.get(anchorKey);
+
+			if (section && typeof section.scrollIntoView === "function") {
+				section.scrollIntoView({ block: "center" });
+				return;
+			}
+
+			this.contentEl.scrollTop = this.skippedBooksScrollTop;
+		});
+	}
+
+	private restoreScrollPosition(scrollTop: number): void {
+		this.afterRender(() => {
+			this.contentEl.scrollTop = scrollTop;
+		});
+	}
+
+	private afterRender(callback: () => void): void {
+		if (typeof requestAnimationFrame === "function") {
+			requestAnimationFrame(callback);
+			return;
+		}
+
+		callback();
 	}
 }
 
@@ -267,4 +375,8 @@ function groupSummaryHighlightsByTitle(highlights: SyncSummaryHighlightItem[]): 
 
 function getSummaryTitle(highlight: SyncSummaryHighlightItem): string {
 	return highlight.title || "Untitled Kindle Book";
+}
+
+function createSkippedBookAnchorKey(bookTitle: string): string {
+	return bookTitle;
 }
