@@ -1,24 +1,27 @@
 import { App, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
-import { parseClippings } from "./parser/parseClippings";
-import { groupHighlightsByBook } from "./render/renderMarkdown";
+import { ExistingNotesWithoutDataModal } from "./ExistingNotesWithoutDataModal";
+import { FirstSyncPreviewModal } from "./FirstSyncPreviewModal";
+import { IgnoredHighlightsModal } from "./IgnoredHighlightsModal";
+import { KindleHighlight, parseClippings } from "./parser/parseClippings";
+import { createClippingId, groupHighlightsByBook, KindleBookGroup } from "./render/renderMarkdown";
+import {
+	ImportedHighlightRecord,
+	IgnoredHighlight,
+	KindleSyncSettings,
+	migrateSettings,
+} from "./settings";
 import { readClippingsFile } from "./sync/ClippingsReader";
+import { hasExistingHighlightNotes } from "./sync/ExistingHighlightNotes";
 import { detectClippingsPath } from "./sync/KindleDetector";
+import { classifyHighlightsForSync } from "./sync/SyncClassifier";
+import { createVaultHighlightLookup } from "./sync/VaultHighlightLookup";
 import { writeBookNotesToVault } from "./sync/VaultWriter";
+import { SyncSummaryModal } from "./SyncSummaryModal";
+import { SyncSummaryHighlightItem } from "./SyncSummaryTypes";
 
-interface KindleSyncSettings {
-	clippingsPath: string;
-	highlightsFolder: string;
-	strictLocalOnly: boolean;
-}
-
-const DEFAULT_SETTINGS: KindleSyncSettings = {
-	clippingsPath: "",
-	highlightsFolder: "Kindle Highlights",
-	strictLocalOnly: true,
-};
-
-export default class KindleSyncPlugin extends Plugin {
-	settings: KindleSyncSettings = { ...DEFAULT_SETTINGS };
+export default class KindleLocalSyncPlugin extends Plugin {
+	settings: KindleSyncSettings = migrateSettings(null);
+	private hasSavedPluginData = false;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -35,6 +38,12 @@ export default class KindleSyncPlugin extends Plugin {
 			},
 		});
 
+		this.addCommand({
+			id: "show-ignored-highlights",
+			name: "Show ignored highlights",
+			callback: () => new IgnoredHighlightsModal(this.app, this).open(),
+		});
+
 		this.addSettingTab(new KindleSettingTab(this.app, this));
 	}
 
@@ -45,6 +54,11 @@ export default class KindleSyncPlugin extends Plugin {
 		let syncPhase = "detect";
 
 		try {
+			if (!this.hasSavedPluginData && await hasExistingHighlightNotes(this.app, this.settings.highlightsFolder)) {
+				new ExistingNotesWithoutDataModal(this.app, this).open();
+				return;
+			}
+
 			const clippingsPath = await detectClippingsPath(this.settings.clippingsPath);
 
 			if (!clippingsPath) {
@@ -66,12 +80,13 @@ export default class KindleSyncPlugin extends Plugin {
 
 			syncPhase = "render/group";
 			const bookGroups = groupHighlightsByBook(highlights);
-			syncPhase = "vault write";
-			const summary = await writeBookNotesToVault(this.app.vault, this.settings.highlightsFolder, bookGroups);
 
-			new Notice(
-				`Kindle sync complete: ${summary.books} books, ${summary.highlightsRendered} highlights/notes, ${summary.filesCreated} files created, ${summary.filesUpdated} files updated, ${summary.duplicatesSkipped} duplicates skipped.`
-			);
+			if (!this.settings.hasCompletedFirstSync) {
+				new FirstSyncPreviewModal(this.app, this, bookGroups).open();
+				return;
+			}
+
+			await this.syncExistingHighlights(highlights, bookGroups);
 		} catch (error) {
 			console.error(`Kindle sync failed during ${syncPhase}.`, error);
 			// eslint-disable-next-line obsidianmd/ui/sentence-case
@@ -80,23 +95,198 @@ export default class KindleSyncPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		const loadedData = (await this.loadData()) as Partial<KindleSyncSettings> | null;
+		const loadedData = (await this.loadData()) as Partial<KindleSyncSettings> | null | undefined;
 
-		this.settings = {
-			...DEFAULT_SETTINGS,
-			...loadedData,
-		};
+		this.hasSavedPluginData = loadedData != null;
+		this.settings = migrateSettings(loadedData ?? null);
 	}
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
 	}
+
+	async completeFirstSync(
+		importHighlights: KindleHighlight[],
+		ignoreHighlights: KindleHighlight[],
+		skippedThisSyncHighlights: SyncSummaryHighlightItem[] = []
+	): Promise<void> {
+		await this.importHighlights(importHighlights, false);
+		this.addIgnoredHighlights(ignoreHighlights);
+		this.settings.hasCompletedFirstSync = true;
+		this.hasSavedPluginData = true;
+		await this.saveSettings();
+
+		new SyncSummaryModal(this.app, this, {
+			classification: {
+				newHighlights: importHighlights,
+				duplicateHighlights: [],
+				ignoredHighlights: ignoreHighlights,
+				possibleReappearedHighlights: [],
+			},
+			automaticHighlights: importHighlights,
+			importedCount: importHighlights.length,
+			skippedThisSyncHighlights,
+		}).open();
+	}
+
+	async continueExistingNotesWithoutDataSync(): Promise<void> {
+		this.settings.hasCompletedFirstSync = true;
+		this.settings.importedHighlights = [];
+		this.settings.ignoredHighlights = [];
+		this.hasSavedPluginData = true;
+		await this.saveSettings();
+		await this.syncHighlights();
+	}
+
+	async reviewExistingNotesWithoutDataAsFirstSync(): Promise<void> {
+		this.settings.hasCompletedFirstSync = false;
+		this.hasSavedPluginData = true;
+		await this.saveSettings();
+		await this.syncHighlights();
+	}
+
+	async importHighlights(highlights: KindleHighlight[], persist = true): Promise<Awaited<ReturnType<typeof writeBookNotesToVault>>> {
+		const bookGroups = groupHighlightsByBook(highlights);
+		const summary = await writeBookNotesToVault(this.app.vault, this.settings.highlightsFolder, bookGroups);
+
+		this.addImportedHighlights(highlights);
+
+		if (persist) {
+			await this.saveSettings();
+		}
+
+		return summary;
+	}
+
+	async ignoreHighlights(highlights: KindleHighlight[]): Promise<void> {
+		this.addIgnoredHighlights(highlights);
+		await this.saveSettings();
+	}
+
+	async ignoreSummaryHighlight(highlight: SyncSummaryHighlightItem): Promise<void> {
+		this.addIgnoredSummaryHighlights([highlight]);
+		await this.saveSettings();
+	}
+
+	async unignoreHighlight(id: string): Promise<void> {
+		this.settings.ignoredHighlights = this.settings.ignoredHighlights.filter((highlight) => highlight.id !== id);
+		await this.saveSettings();
+	}
+
+	private addImportedHighlights(highlights: KindleHighlight[]): void {
+		const existingIds = new Set(this.settings.importedHighlights.map((highlight) => highlight.id));
+		const importedAt = new Date().toISOString();
+		const records: ImportedHighlightRecord[] = [];
+
+		for (const highlight of highlights) {
+			const id = createClippingId(highlight);
+
+			if (existingIds.has(id)) {
+				continue;
+			}
+
+			existingIds.add(id);
+			records.push({
+				id,
+				title: highlight.bookTitle,
+				textPreview: createTextPreview(highlight),
+				importedAt,
+			});
+		}
+
+		this.settings.importedHighlights = [
+			...this.settings.importedHighlights,
+			...records,
+		];
+	}
+
+	private addIgnoredHighlights(highlights: KindleHighlight[]): void {
+		const existingIds = new Set(this.settings.ignoredHighlights.map((highlight) => highlight.id));
+		const ignoredAt = new Date().toISOString();
+		const records: IgnoredHighlight[] = [];
+
+		for (const highlight of highlights) {
+			const id = createClippingId(highlight);
+
+			if (existingIds.has(id)) {
+				continue;
+			}
+
+			existingIds.add(id);
+			records.push({
+				id,
+				title: highlight.bookTitle,
+				textPreview: createTextPreview(highlight),
+				ignoredAt,
+			});
+		}
+
+		this.settings.ignoredHighlights = [
+			...this.settings.ignoredHighlights,
+			...records,
+		];
+	}
+
+	private addIgnoredSummaryHighlights(highlights: SyncSummaryHighlightItem[]): void {
+		const existingIds = new Set(this.settings.ignoredHighlights.map((highlight) => highlight.id));
+		const ignoredAt = new Date().toISOString();
+		const records: IgnoredHighlight[] = [];
+
+		for (const highlight of highlights) {
+			if (existingIds.has(highlight.id)) {
+				continue;
+			}
+
+			existingIds.add(highlight.id);
+			records.push({
+				id: highlight.id,
+				title: highlight.title,
+				textPreview: highlight.textPreview,
+				ignoredAt,
+				lang: highlight.lang,
+			});
+		}
+
+		this.settings.ignoredHighlights = [
+			...this.settings.ignoredHighlights,
+			...records,
+		];
+	}
+
+	private async syncExistingHighlights(
+		highlights: KindleHighlight[],
+		bookGroups: KindleBookGroup[]
+	): Promise<void> {
+		const classification = await classifyHighlightsForSync(highlights, {
+			ignoredHighlights: this.settings.ignoredHighlights,
+			importedHighlights: this.settings.importedHighlights,
+			highlightExistsInNote: createVaultHighlightLookup(this.app.vault, this.settings.highlightsFolder, bookGroups),
+		});
+		const automaticIds = new Set(
+			[
+				...classification.newHighlights,
+				...classification.duplicateHighlights,
+			].map((highlight) => createClippingId(highlight))
+		);
+		const automaticHighlights = highlights.filter((highlight) => automaticIds.has(createClippingId(highlight)));
+		const summary = await this.importHighlights(automaticHighlights);
+
+		new SyncSummaryModal(this.app, this, {
+			classification,
+			automaticHighlights,
+			importedCount: classification.newHighlights.length,
+		}).open();
+
+		if (summary.highlightsRendered === 0 && classification.possibleReappearedHighlights.length === 0) {
+			new Notice("Kindle sync complete: no new highlights to import.");
+		}
+	}
 }
 
 class KindleSettingTab extends PluginSettingTab {
-	plugin: KindleSyncPlugin;
+	plugin: KindleLocalSyncPlugin;
 
-	constructor(app: App, plugin: KindleSyncPlugin) {
+	constructor(app: App, plugin: KindleLocalSyncPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -146,4 +336,8 @@ class KindleSettingTab extends PluginSettingTab {
 					})
 			);
 	}
+}
+
+function createTextPreview(highlight: KindleHighlight): string {
+	return highlight.content.replace(/\s+/g, " ").trim().slice(0, 120);
 }

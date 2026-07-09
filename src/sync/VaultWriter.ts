@@ -63,6 +63,16 @@ export async function writeBookNotesToVault(
 	return summary;
 }
 
+export function createBookNotePath(
+	highlightsFolder: string,
+	group: KindleBookGroup,
+	usedNotePaths: Set<string>
+): string {
+	const folderPath = normalizeVaultPath(sanitizeVaultFolderPath(highlightsFolder));
+
+	return createUniqueBookNotePath(folderPath, group, usedNotePaths);
+}
+
 async function writeBookNote(vault: Vault, notePath: string, group: KindleBookGroup): Promise<FileWriteResult> {
 	const newMarkdown = renderBookMarkdown(group);
 	const existingFile = vault.getAbstractFileByPath(notePath);

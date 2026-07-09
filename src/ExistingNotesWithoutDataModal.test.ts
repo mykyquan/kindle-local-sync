@@ -1,0 +1,293 @@
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { App } from "../__mocks__/obsidian";
+
+const mocks = vi.hoisted(() => {
+	const highlight = {
+		bookTitle: "Atomic Habits",
+		author: "James Clear",
+		location: "154",
+		content: "Small habits make a big difference.",
+		dateAdded: "Thursday, May 14, 2026 2:44 PM",
+		type: "Highlight" as const,
+	};
+
+	return {
+		highlight,
+		detectClippingsPath: vi.fn(),
+		readClippingsFile: vi.fn(),
+		parseClippings: vi.fn(),
+		firstSyncPreviewOpen: vi.fn(),
+		writeBookNotesToVault: vi.fn(),
+		highlightExistsInNote: vi.fn(),
+	};
+});
+
+vi.mock("./sync/KindleDetector", () => ({
+	detectClippingsPath: mocks.detectClippingsPath,
+}));
+
+vi.mock("./sync/ClippingsReader", () => ({
+	readClippingsFile: mocks.readClippingsFile,
+}));
+
+vi.mock("./parser/parseClippings", () => ({
+	parseClippings: mocks.parseClippings,
+}));
+
+vi.mock("./FirstSyncPreviewModal", () => ({
+	FirstSyncPreviewModal: class {
+		open(): void {
+			mocks.firstSyncPreviewOpen();
+		}
+	},
+}));
+
+vi.mock("./sync/VaultWriter", () => ({
+	writeBookNotesToVault: mocks.writeBookNotesToVault,
+}));
+
+vi.mock("./sync/VaultHighlightLookup", () => ({
+	createVaultHighlightLookup: () => mocks.highlightExistsInNote,
+}));
+
+let KindleLocalSyncPlugin: typeof import("./main").default;
+let ExistingNotesWithoutDataModal: typeof import("./ExistingNotesWithoutDataModal").ExistingNotesWithoutDataModal;
+
+beforeAll(async () => {
+	KindleLocalSyncPlugin = (await import("./main")).default;
+	ExistingNotesWithoutDataModal = (await import("./ExistingNotesWithoutDataModal")).ExistingNotesWithoutDataModal;
+});
+
+beforeEach(() => {
+	vi.clearAllMocks();
+	mocks.detectClippingsPath.mockResolvedValue("/Volumes/Kindle/documents/My Clippings.txt");
+	mocks.readClippingsFile.mockResolvedValue("raw clippings");
+	mocks.parseClippings.mockReturnValue([mocks.highlight]);
+	mocks.firstSyncPreviewOpen.mockClear();
+	mocks.writeBookNotesToVault.mockResolvedValue({
+		books: 1,
+		filesCreated: 0,
+		filesUpdated: 1,
+		filesUnchanged: 0,
+		highlightsRendered: 1,
+		duplicatesSkipped: 0,
+	});
+	mocks.highlightExistsInNote.mockResolvedValue(true);
+});
+
+describe("existing notes without data.json", () => {
+	it("does not show first sync preview immediately when existing notes are found", async () => {
+		const plugin = createPlugin(createVaultWithExistingNotes());
+
+		await plugin.syncHighlights();
+
+		expect(mocks.firstSyncPreviewOpen).not.toHaveBeenCalled();
+		expect(mocks.detectClippingsPath).not.toHaveBeenCalled();
+		expect(mocks.writeBookNotesToVault).not.toHaveBeenCalled();
+	});
+
+	it("Continue as existing vault saves hasCompletedFirstSync true", async () => {
+		const plugin = createPlugin(createVaultWithExistingNotes());
+		const saveCalls = captureSaveCalls(plugin);
+
+		await plugin.continueExistingNotesWithoutDataSync();
+
+		expect(saveCalls[0]).toMatchObject({
+			hasCompletedFirstSync: true,
+		});
+	});
+
+	it("Continue as existing vault initializes importedHighlights as an empty array", async () => {
+		const plugin = createPlugin(createVaultWithExistingNotes());
+		const saveCalls = captureSaveCalls(plugin);
+
+		await plugin.continueExistingNotesWithoutDataSync();
+
+		expect(saveCalls[0]).toMatchObject({
+			importedHighlights: [],
+			ignoredHighlights: [],
+		});
+	});
+
+	it("Review as first sync keeps hasCompletedFirstSync false and opens first sync preview", async () => {
+		const plugin = createPlugin(createVaultWithExistingNotes());
+		const saveCalls = captureSaveCalls(plugin);
+
+		await plugin.reviewExistingNotesWithoutDataAsFirstSync();
+
+		expect(saveCalls[0]).toMatchObject({
+			hasCompletedFirstSync: false,
+		});
+		expect(mocks.firstSyncPreviewOpen).toHaveBeenCalledTimes(1);
+	});
+
+	it("Cancel does not save settings or sync", async () => {
+		const plugin = {
+			continueExistingNotesWithoutDataSync: vi.fn(),
+			reviewExistingNotesWithoutDataAsFirstSync: vi.fn(),
+		};
+		const modal = new ExistingNotesWithoutDataModal(
+			new App(createVaultWithExistingNotes()) as never,
+			plugin as never
+		);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Cancel").click();
+
+		expect(plugin.continueExistingNotesWithoutDataSync).not.toHaveBeenCalled();
+		expect(plugin.reviewExistingNotesWithoutDataAsFirstSync).not.toHaveBeenCalled();
+		expect(mocks.writeBookNotesToVault).not.toHaveBeenCalled();
+	});
+});
+
+describe("ExistingNotesWithoutDataModal improved layout", () => {
+	it("shows the improved option titles", () => {
+		const modal = createModal(createTransitionPlugin());
+
+		modal.onOpen();
+
+		expect(readText(modal.contentEl)).toContain("Continue with existing notes");
+		expect(readText(modal.contentEl)).toContain("Review everything before syncing");
+		expect(readText(modal.contentEl)).toContain("Cancel");
+	});
+
+	it("shows descriptions for each option", () => {
+		const modal = createModal(createTransitionPlugin());
+
+		modal.onOpen();
+
+		expect(readText(modal.contentEl)).toContain(
+			"Recommended if these notes were already created by Kindle Local Sync. This will create plugin data and continue syncing without reviewing all notes again."
+		);
+		expect(readText(modal.contentEl)).toContain(
+			"Choose this if you want to review books and highlights before importing again."
+		);
+		expect(readText(modal.contentEl)).toContain(
+			"Do nothing for now. No settings or notes will be changed."
+		);
+	});
+
+	it("keeps Continue with existing notes behavior unchanged", async () => {
+		const plugin = createTransitionPlugin();
+		const modal = createModal(plugin);
+
+		modal.onOpen();
+		await findButtonByText(modal.contentEl, "Continue with existing notes").click();
+
+		expect(plugin.continueExistingNotesWithoutDataSync).toHaveBeenCalledTimes(1);
+		expect(plugin.reviewExistingNotesWithoutDataAsFirstSync).not.toHaveBeenCalled();
+	});
+
+	it("keeps Review as first sync behavior unchanged", async () => {
+		const plugin = createTransitionPlugin();
+		const modal = createModal(plugin);
+
+		modal.onOpen();
+		await findButtonByText(modal.contentEl, "Review as first sync").click();
+
+		expect(plugin.reviewExistingNotesWithoutDataAsFirstSync).toHaveBeenCalledTimes(1);
+		expect(plugin.continueExistingNotesWithoutDataSync).not.toHaveBeenCalled();
+	});
+
+	it("keeps Cancel behavior unchanged", async () => {
+		const plugin = createTransitionPlugin();
+		const modal = createModal(plugin);
+
+		modal.onOpen();
+		await findButtonByText(modal.contentEl, "Cancel").click();
+
+		expect(plugin.continueExistingNotesWithoutDataSync).not.toHaveBeenCalled();
+		expect(plugin.reviewExistingNotesWithoutDataAsFirstSync).not.toHaveBeenCalled();
+	});
+});
+
+function createPlugin(vault: unknown): InstanceType<typeof KindleLocalSyncPlugin> {
+	return new KindleLocalSyncPlugin(new App(vault) as never, {} as never);
+}
+
+function createModal(plugin: ReturnType<typeof createTransitionPlugin>) {
+	return new ExistingNotesWithoutDataModal(
+		new App(createVaultWithExistingNotes()) as never,
+		plugin as never
+	);
+}
+
+function createTransitionPlugin() {
+	return {
+		continueExistingNotesWithoutDataSync: vi.fn(async () => {}),
+		reviewExistingNotesWithoutDataAsFirstSync: vi.fn(async () => {}),
+	};
+}
+
+function captureSaveCalls(plugin: InstanceType<typeof KindleLocalSyncPlugin>): unknown[] {
+	const saveCalls: unknown[] = [];
+	const pluginWithSaveData = plugin as unknown as { saveData: (data: unknown) => Promise<void> };
+
+	pluginWithSaveData.saveData = vi.fn(async (data: unknown) => {
+		saveCalls.push(JSON.parse(JSON.stringify(data)) as unknown);
+	});
+
+	return saveCalls;
+}
+
+function createVaultWithExistingNotes() {
+	return {
+		getAbstractFileByPath: (path: string) => {
+			if (path !== "Kindle Highlights") {
+				return null;
+			}
+
+			return {
+				children: [{ extension: "md" }],
+			};
+		},
+	};
+}
+
+interface TestElement {
+	tagName: string;
+	children: TestElement[];
+	text: () => string;
+	findByText: (text: string) => TestElement | null;
+	click: () => Promise<void>;
+}
+
+function readText(element: unknown): string {
+	return (element as TestElement).text();
+}
+
+function findByText(element: unknown, text: string): TestElement {
+	const match = (element as TestElement).findByText(text);
+
+	if (!match) {
+		throw new Error(`Could not find text: ${text}`);
+	}
+
+	return match;
+}
+
+function findButtonByText(element: unknown, text: string): TestElement {
+	const match = findButton((element as TestElement), text);
+
+	if (!match) {
+		throw new Error(`Could not find button text: ${text}`);
+	}
+
+	return match;
+}
+
+function findButton(element: TestElement, text: string): TestElement | null {
+	if (element.tagName === "button" && element.text() === text) {
+		return element;
+	}
+
+	for (const child of element.children) {
+		const match = findButton(child, text);
+
+		if (match) {
+			return match;
+		}
+	}
+
+	return null;
+}
