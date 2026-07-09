@@ -7,15 +7,192 @@ If your plugin does not need CSS, delete this file.
 
 */
 
+.kls-first-sync-modal {
+	display: flex;
+	flex-direction: column;
+	max-height: min(72vh, 760px);
+	overflow: hidden;
+}
+
+.kls-modal-scroll-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	padding-right: 0.25em;
+}
+
+.kls-section,
+.kls-book-section,
+.kls-highlight-row {
+	margin-top: 1em;
+}
+
+.kls-section ul,
+.kls-choice-help {
+	margin-top: 0.5em;
+	margin-bottom: 0.75em;
+	padding-left: 1.5em;
+}
+
+.kls-section li,
 .kls-choice-help li {
-	margin-bottom: 0.4em;
+	margin-bottom: 0.35em;
+	line-height: 1.4;
+}
+
+.kls-review-progress-groups {
+	display: grid;
+	gap: 0.75em;
+	margin-top: 0.5em;
+}
+
+.kls-review-progress-group h4 {
+	margin: 0 0 0.35em;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: 700;
+}
+
+.kls-review-progress-group ul {
+	margin-top: 0;
+	margin-bottom: 0;
+}
+
+.kls-button-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5em;
+}
+
+.kls-book-actions {
+	margin: 0.75em 0;
+}
+
+.kls-summary-actions {
+	margin-top: 1em;
+}
+
+.kls-action-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	min-height: 2.25em;
+	padding: 0.45em 0.8em;
+	border-radius: var(--button-radius, var(--radius-s));
+	font-size: var(--font-ui-small);
+	line-height: 1.2;
+	vertical-align: middle;
+	white-space: nowrap;
+}
+
+.kls-book-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4em;
+	max-width: 100%;
+	margin-top: 0.75em;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.3;
+}
+
+.kls-book-status-label {
+	font-weight: 700;
+	color: var(--text-muted);
+}
+
+.kls-status-badge {
+	display: inline-flex;
+	align-items: center;
+	width: fit-content;
+	max-width: 100%;
+	padding: 0.25em 0.65em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	font-size: var(--font-ui-smaller);
+	font-weight: 700;
+	line-height: 1.3;
+}
+
+.kls-book-status-ready-to-import .kls-status-badge,
+.kls-status-badge-ready-to-import,
+.kls-selected-decision-value-import {
+	color: var(--text-accent);
+	background: var(--background-modifier-hover);
+	border-color: var(--interactive-accent);
+}
+
+.kls-book-status-ignored .kls-status-badge,
+.kls-status-badge-ignored,
+.kls-selected-decision-value-ignore {
+	color: var(--text-muted);
+	background: var(--background-secondary);
+	border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+}
+
+.kls-book-status-skipped-this-sync .kls-status-badge,
+.kls-status-badge-skipped-this-sync,
+.kls-selected-decision-value-skip {
+	color: var(--text-warning, var(--text-normal));
+	background: var(--background-modifier-warning, var(--background-secondary));
+	border-color: var(--background-modifier-warning, var(--background-modifier-border));
+}
+
+.kls-book-status-mixed-decisions .kls-status-badge,
+.kls-status-badge-mixed-decisions {
+	color: var(--text-normal);
+	background: var(--background-secondary);
+	border-color: var(--text-muted);
+}
+
+.kls-book-status-needs-review .kls-status-badge,
+.kls-status-badge-needs-review {
+	color: var(--text-warning, var(--text-normal));
+	background: var(--background-modifier-warning, var(--background-secondary));
+	border-color: var(--background-modifier-warning, var(--background-modifier-border));
+}
+
+.kls-selected-decision {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4em;
+	margin-top: 0.6em;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.3;
+}
+
+.kls-selected-decision-label {
+	font-weight: 700;
+	color: var(--text-muted);
+}
+
+.kls-decision-button-active {
+	box-shadow: 0 0 0 1px var(--interactive-accent);
+	font-weight: 700;
 }
 
 .kls-sticky-actions {
-	position: sticky;
-	top: 0;
-	z-index: 1;
+	flex: 0 0 auto;
+	position: relative;
+	z-index: 10;
+	justify-content: flex-end;
 	background: var(--background-primary);
-	padding: 0.5em 0;
-	border-bottom: 1px solid var(--background-modifier-border);
+	padding: 0.9em 0 0.25em;
+	margin-top: 0.75em;
+	border-top: 1px solid var(--background-modifier-border);
+	box-shadow: 0 -0.75em 1em var(--background-primary);
+}
+
+.kls-option-description {
+	margin-left: 1.25em;
+	padding-left: 0.75em;
+	border-left: 2px solid var(--background-modifier-border);
+}
+
+.kls-option-description p {
+	margin-top: 0.4em;
+	margin-bottom: 0.4em;
 }

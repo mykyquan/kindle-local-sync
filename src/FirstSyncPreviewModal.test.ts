@@ -146,10 +146,11 @@ describe("FirstSyncPreviewModal UI polish", () => {
 
 		modal.onOpen();
 
-		const lists = elementsByTag(modal.contentEl, "ul");
-		const items = elementsByTag(modal.contentEl, "li").map((element) => element.text());
+		const choicesList = elementByClassAt(modal.contentEl, "kls-choice-help", 0);
+		const items = choicesList.children
+			.filter((element) => element.tagName === "li")
+			.map((element) => element.text());
 
-		expect(lists).toHaveLength(1);
 		expect(items).toEqual([
 			"Review highlights: Choose item by item.",
 			"Import all: Import all current highlights from this book.",
@@ -206,13 +207,14 @@ describe("FirstSyncPreviewModal UI polish", () => {
 		expect(skipIndex).toBeLessThan(ignoreIndex);
 	});
 
-	it("styles per-highlight Import as CTA", async () => {
+	it("does not show an active per-highlight decision before a choice is selected", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Highlights").click();
 
-		expect(findByText(modal.contentEl, "Import").classes.has("mod-cta")).toBe(true);
+		expect(findByText(modal.contentEl, "Import").classes.has("mod-cta")).toBe(false);
+		expect(findByText(modal.contentEl, "Import").classes.has("kls-decision-button-active")).toBe(false);
 	});
 
 	it("does not style per-highlight Ignore as mod-warning", async () => {
@@ -222,6 +224,50 @@ describe("FirstSyncPreviewModal UI polish", () => {
 		await findByText(modal.contentEl, "Review Highlights").click();
 
 		expect(findByText(modal.contentEl, "Ignore").classes.has("mod-warning")).toBe(false);
+	});
+});
+
+describe("FirstSyncPreviewModal selected decision states", () => {
+	it("renders per-highlight selected decision as a user-facing badge", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		await findByText(modal.contentEl, "Skip This Sync").click();
+		const selected = elementsByClass(modal.contentEl, "kls-selected-decision")[0];
+		const selectedBadge = elementsByClass(selected, "kls-selected-decision-value")[0];
+
+		expect(selected?.text()).toContain("Selected: Skip This Sync");
+		expect(selectedBadge?.classes.has("kls-status-badge")).toBe(true);
+		expect(selectedBadge?.classes.has("kls-selected-decision-value-skip")).toBe(true);
+		expect(readText(modal.contentEl)).not.toContain("Selected: skip");
+	});
+
+	it("marks only the selected per-highlight decision button active", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		await findByText(modal.contentEl, "Skip This Sync").click();
+
+		expect(buttonByTextAt(modal.contentEl, "Skip This Sync", 0).classes.has("kls-decision-button-active")).toBe(true);
+		expect(buttonByTextAt(modal.contentEl, "Skip This Sync", 0).classes.has("mod-cta")).toBe(true);
+		expect(buttonByTextAt(modal.contentEl, "Import", 0).classes.has("kls-decision-button-active")).toBe(false);
+		expect(buttonByTextAt(modal.contentEl, "Ignore", 0).classes.has("kls-decision-button-active")).toBe(false);
+
+		await buttonByTextAt(modal.contentEl, "Ignore", 0).click();
+
+		expect(buttonByTextAt(modal.contentEl, "Ignore", 0).classes.has("kls-decision-button-active")).toBe(true);
+		expect(buttonByTextAt(modal.contentEl, "Ignore", 0).classes.has("mod-cta")).toBe(true);
+		expect(buttonByTextAt(modal.contentEl, "Skip This Sync", 0).classes.has("kls-decision-button-active")).toBe(false);
+		expect(buttonByTextAt(modal.contentEl, "Import", 0).classes.has("kls-decision-button-active")).toBe(false);
+
+		await buttonByTextAt(modal.contentEl, "Import", 0).click();
+
+		expect(buttonByTextAt(modal.contentEl, "Import", 0).classes.has("kls-decision-button-active")).toBe(true);
+		expect(buttonByTextAt(modal.contentEl, "Import", 0).classes.has("mod-cta")).toBe(true);
+		expect(buttonByTextAt(modal.contentEl, "Skip This Sync", 0).classes.has("kls-decision-button-active")).toBe(false);
+		expect(buttonByTextAt(modal.contentEl, "Ignore", 0).classes.has("kls-decision-button-active")).toBe(false);
 	});
 });
 
@@ -323,12 +369,26 @@ describe("FirstSyncPreviewModal sticky actions", () => {
 });
 
 describe("FirstSyncPreviewModal book status", () => {
-	it("shows Not Reviewed Yet for untouched books", () => {
+	it("shows Needs Review for untouched books", () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 
-		expect(readText(modal.contentEl)).toContain("Status: Not Reviewed Yet");
+		expect(readText(modal.contentEl)).toContain("Status: Needs Review");
+	});
+
+	it("renders untouched book status as a needs-review badge", () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		const status = elementsByClass(modal.contentEl, "kls-book-status")[0];
+		const statusBadge = elementsByClass(status, "kls-status-badge")[0];
+
+		expect(status?.classes.has("kls-book-status-needs-review")).toBe(true);
+		expect(statusBadge?.classes.has("kls-book-status-value")).toBe(true);
+		expect(statusBadge?.classes.has("kls-status-badge-needs-review")).toBe(true);
+		expect(statusBadge?.text()).toBe("Needs Review");
+		expect(status?.text()).toContain("Status: Needs Review");
 	});
 
 	it("shows import status after Import All", async () => {
@@ -337,7 +397,22 @@ describe("FirstSyncPreviewModal book status", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Import All").click();
 
-		expect(readText(modal.contentEl)).toContain("Status: All Current Highlights Selected To Import");
+		expect(readText(modal.contentEl)).toContain("Status: Ready to Import");
+	});
+
+	it("renders import book status as a ready-to-import badge", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All").click();
+		const status = elementsByClass(modal.contentEl, "kls-book-status")[0];
+		const statusBadge = elementsByClass(status, "kls-status-badge")[0];
+
+		expect(status?.classes.has("kls-book-status-ready-to-import")).toBe(true);
+		expect(statusBadge?.classes.has("kls-book-status-value")).toBe(true);
+		expect(statusBadge?.classes.has("kls-status-badge-ready-to-import")).toBe(true);
+		expect(statusBadge?.text()).toBe("Ready to Import");
+		expect(status?.text()).toContain("Status: Ready to Import");
 	});
 
 	it("shows ignore status after Ignore All Highlights", async () => {
@@ -346,7 +421,10 @@ describe("FirstSyncPreviewModal book status", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Ignore All Highlights").click();
 
-		expect(readText(modal.contentEl)).toContain("Status: All Current Highlights Selected To Ignore");
+		const statusBadge = elementsByClass(modal.contentEl, "kls-status-badge")[0];
+		expect(statusBadge?.classes.has("kls-status-badge-ignored")).toBe(true);
+		expect(statusBadge?.text()).toBe("Ignored");
+		expect(readText(modal.contentEl)).toContain("Status: Ignored");
 	});
 
 	it("shows skip status after Skip This Sync", async () => {
@@ -355,10 +433,13 @@ describe("FirstSyncPreviewModal book status", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Skip This Sync").click();
 
-		expect(readText(modal.contentEl)).toContain("Status: All Current Highlights Selected To Skip This Sync");
+		const statusBadge = elementsByClass(modal.contentEl, "kls-status-badge")[0];
+		expect(statusBadge?.classes.has("kls-status-badge-skipped-this-sync")).toBe(true);
+		expect(statusBadge?.text()).toBe("Skipped This Sync");
+		expect(readText(modal.contentEl)).toContain("Status: Skipped This Sync");
 	});
 
-	it("shows partial review status for books reviewed item by item", async () => {
+	it("shows Needs Review while a book still has undecided highlights", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
@@ -366,10 +447,12 @@ describe("FirstSyncPreviewModal book status", () => {
 		await findByText(modal.contentEl, "Import").click();
 		await findByText(modal.contentEl, "Back To Book List").click();
 
-		expect(readText(modal.contentEl)).toContain("Status: Partially Reviewed · 1 Import");
+		const statusBadge = elementsByClass(modal.contentEl, "kls-status-badge")[0];
+		expect(statusBadge?.classes.has("kls-status-badge-needs-review")).toBe(true);
+		expect(statusBadge?.text()).toBe("Needs Review");
 	});
 
-	it("shows reviewed status when all highlights in a book have explicit choices", async () => {
+	it("shows Mixed Decisions for import and ignore decisions", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
@@ -378,7 +461,42 @@ describe("FirstSyncPreviewModal book status", () => {
 		await buttonByTextAt(modal.contentEl, "Ignore", 1).click();
 		await findByText(modal.contentEl, "Back To Book List").click();
 
-		expect(readText(modal.contentEl)).toContain("Status: Reviewed · 1 Import · 1 Ignore");
+		const statusBadge = elementsByClass(modal.contentEl, "kls-status-badge")[0];
+		expect(statusBadge?.classes.has("kls-status-badge-mixed-decisions")).toBe(true);
+		expect(statusBadge?.text()).toBe("Mixed Decisions");
+		expect(statusBadge?.text()).not.toBe("");
+		expect(readText(modal.contentEl)).toContain("Status: Mixed Decisions");
+		expect(readText(modal.contentEl)).not.toContain("Status: Reviewed");
+	});
+
+	it("shows Mixed Decisions for import and skip decisions", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		await findByText(modal.contentEl, "Import").click();
+		await buttonByTextAt(modal.contentEl, "Skip This Sync", 1).click();
+		await findByText(modal.contentEl, "Back To Book List").click();
+
+		const statusBadge = elementsByClass(modal.contentEl, "kls-status-badge")[0];
+		expect(statusBadge?.classes.has("kls-status-badge-mixed-decisions")).toBe(true);
+		expect(statusBadge?.text()).toBe("Mixed Decisions");
+	});
+
+	it("shows Mixed Decisions for skip and ignore decisions", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		await findByText(modal.contentEl, "Skip This Sync").click();
+		await buttonByTextAt(modal.contentEl, "Ignore", 1).click();
+		await findByText(modal.contentEl, "Back To Book List").click();
+
+		const statusBadge = elementsByClass(modal.contentEl, "kls-status-badge")[0];
+		expect(statusBadge?.classes.has("kls-status-badge-mixed-decisions")).toBe(true);
+		expect(statusBadge?.classes.has("kls-status-badge-ready-to-import")).toBe(false);
+		expect(statusBadge?.text()).toBe("Mixed Decisions");
+		expect(statusBadge?.text().trim()).not.toBe("");
 	});
 });
 
@@ -387,15 +505,22 @@ describe("FirstSyncPreviewModal review progress", () => {
 		const modal = createModal(createPlugin(), [createBookGroup("Atomic Habits"), createBookGroup("Deep Work")]);
 
 		modal.onOpen();
+		const progress = findSectionByHeading(modal.contentEl, "Review Progress");
 
-		expect(readText(modal.contentEl)).toContain("Review Progress");
-		expect(readText(modal.contentEl)).toContain("Reviewed: 0 of 2 books");
-		expect(readText(modal.contentEl)).toContain("Partially Reviewed: 0 books");
-		expect(readText(modal.contentEl)).toContain("Not Reviewed: 2 books");
-		expect(readText(modal.contentEl)).toContain("To Import: 0 highlights");
-		expect(readText(modal.contentEl)).toContain("To Ignore: 0 highlights");
-		expect(readText(modal.contentEl)).toContain("To Skip This Sync: 0 highlights");
-		expect(readText(modal.contentEl)).toContain("Not Reviewed Yet: 4 highlights");
+		expect(readText(progress)).toContain("Review Progress");
+		expect(elementsByTag(progress, "h4").map((element) => element.text())).toEqual([
+			"Books",
+			"Highlight Decisions",
+		]);
+		expect(progressSummaryItems(progress)).toEqual([
+			"Checked: 0 of 2 books",
+			"Still Need Review: 2 books",
+			"Marked to Ignore: 0 highlights",
+			"Skipped This Sync: 0 highlights",
+		]);
+		expect(readText(progress)).not.toContain("To Import");
+		expect(readText(progress)).not.toContain("Partially Reviewed");
+		expect(readText(progress)).not.toContain("Imported");
 	});
 
 	it("updates progress after Import All", async () => {
@@ -404,9 +529,10 @@ describe("FirstSyncPreviewModal review progress", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Import All").click();
 
-		expect(readText(modal.contentEl)).toContain("Reviewed: 1 of 1 books");
-		expect(readText(modal.contentEl)).toContain("To Import: 2 highlights");
-		expect(readText(modal.contentEl)).toContain("Not Reviewed Yet: 0 highlights");
+		const progress = findSectionByHeading(modal.contentEl, "Review Progress");
+		expect(readText(progress)).toContain("Checked: 1 of 1 books");
+		expect(readText(progress)).toContain("Still Need Review: 0 books");
+		expect(readText(progress)).not.toContain("Imported");
 	});
 
 	it("updates progress after Ignore All Highlights", async () => {
@@ -415,8 +541,9 @@ describe("FirstSyncPreviewModal review progress", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Ignore All Highlights").click();
 
-		expect(readText(modal.contentEl)).toContain("Reviewed: 1 of 1 books");
-		expect(readText(modal.contentEl)).toContain("To Ignore: 2 highlights");
+		const progress = findSectionByHeading(modal.contentEl, "Review Progress");
+		expect(readText(progress)).toContain("Checked: 1 of 1 books");
+		expect(readText(progress)).toContain("Marked to Ignore: 2 highlights");
 	});
 
 	it("updates progress after Skip This Sync", async () => {
@@ -425,8 +552,9 @@ describe("FirstSyncPreviewModal review progress", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Skip This Sync").click();
 
-		expect(readText(modal.contentEl)).toContain("Reviewed: 1 of 1 books");
-		expect(readText(modal.contentEl)).toContain("To Skip This Sync: 2 highlights");
+		const progress = findSectionByHeading(modal.contentEl, "Review Progress");
+		expect(readText(progress)).toContain("Checked: 1 of 1 books");
+		expect(readText(progress)).toContain("Skipped This Sync: 2 highlights");
 	});
 
 	it("updates progress after item-by-item review", async () => {
@@ -437,18 +565,23 @@ describe("FirstSyncPreviewModal review progress", () => {
 		await findByText(modal.contentEl, "Import").click();
 		await findByText(modal.contentEl, "Back To Book List").click();
 
-		expect(readText(modal.contentEl)).toContain("Reviewed: 0 of 1 books");
-		expect(readText(modal.contentEl)).toContain("Partially Reviewed: 1 books");
-		expect(readText(modal.contentEl)).toContain("To Import: 1 highlights");
-		expect(readText(modal.contentEl)).toContain("Not Reviewed Yet: 1 highlights");
+		const progress = findSectionByHeading(modal.contentEl, "Review Progress");
+		expect(readText(progress)).toContain("Checked: 0 of 1 books");
+		expect(readText(progress)).toContain("Still Need Review: 1 books");
 	});
 
-	it("counts not reviewed highlights correctly", () => {
+	it("counts partially reviewed books as not reviewed", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup("Atomic Habits"), createBookGroup("Deep Work")]);
 
 		modal.onOpen();
+		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Review Highlights").click();
+		await findByText(modal.contentEl, "Import").click();
+		await findByText(modal.contentEl, "Back To Book List").click();
 
-		expect(readText(modal.contentEl)).toContain("Not Reviewed Yet: 4 highlights");
+		const progress = findSectionByHeading(modal.contentEl, "Review Progress");
+		expect(readText(progress)).toContain("Checked: 0 of 2 books");
+		expect(readText(progress)).toContain("Still Need Review: 2 books");
+		expect(readText(progress)).not.toContain("Partially Reviewed");
 	});
 });
 
@@ -524,12 +657,14 @@ describe("FirstSyncPreviewModal per-book review scroll", () => {
 
 		modal.onOpen();
 		const deepWorkSection = findSectionByHeading(modal.contentEl, "2 of 2 — Deep Work");
+		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 320);
 		setScrollTop(modal.contentEl, 320);
 		await findByText(deepWorkSection, "Review Highlights").click();
 
 		expect(elementsByTag(modal.contentEl, "h2").map((element) => element.text())).toContain("2 of 2 — Deep Work");
 		expect(readText(modal.contentEl)).toContain("Location 154: Small habits make a big difference.");
 		expect(scrollTop(modal.contentEl)).toBe(0);
+		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(0);
 		expect(scrollIntoViewCalls(deepWorkSection)).toHaveLength(0);
 	});
 
@@ -773,11 +908,26 @@ function elementsByTag(element: unknown, tagName: string): TestElement[] {
 	return matches;
 }
 
+function progressSummaryItems(element: unknown): string[] {
+	return elementsByTag(element, "li").map((child) => child.text());
+}
+
 function elementsByClass(element: unknown, className: string): TestElement[] {
 	const matches: TestElement[] = [];
 	collectElementsByClass(element as TestElement, className, matches);
 
 	return matches;
+}
+
+function elementByClassAt(element: unknown, className: string, index: number): TestElement {
+	const elements = elementsByClass(element, className);
+	const match = elements[index];
+
+	if (!match) {
+		throw new Error(`Could not find ${className} element at index ${index}.`);
+	}
+
+	return match;
 }
 
 function collectElementsByTag(element: TestElement, tagName: string, matches: TestElement[]): void {

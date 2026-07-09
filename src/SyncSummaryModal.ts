@@ -57,9 +57,12 @@ export class SyncSummaryModal extends Modal {
 			text: `${this.suspiciousHighlights.length} possible reappeared highlights need review`,
 		});
 
+		const actions = this.contentEl.createDiv();
+		actions.addClass("kls-button-row");
+		actions.addClass("kls-summary-actions");
+
 		if (this.suspiciousHighlights.length > 0) {
-			new ButtonComponent(this.contentEl)
-				.setButtonText("Review Suspicious Items")
+			this.createActionButton(actions, "Review Suspicious Items")
 				.onClick(() => {
 					this.saveSummaryScrollPosition();
 					this.renderSuspiciousItems();
@@ -67,8 +70,7 @@ export class SyncSummaryModal extends Modal {
 		}
 
 		if (this.classification.ignoredHighlights.length > 0) {
-			new ButtonComponent(this.contentEl)
-				.setButtonText("View Ignored Highlights")
+			this.createActionButton(actions, "View Ignored Highlights")
 				.onClick(() => {
 					this.saveSummaryScrollPosition();
 					this.renderIgnoredHighlights();
@@ -76,20 +78,25 @@ export class SyncSummaryModal extends Modal {
 		}
 
 		if (this.skippedThisSyncHighlights.length > 0) {
-			new ButtonComponent(this.contentEl)
-				.setButtonText("Review Skipped This Sync")
+			this.createActionButton(actions, "Review Skipped This Sync")
 				.onClick(() => {
 					this.saveSummaryScrollPosition();
 					this.clearSkippedBooksReturnAnchor();
 					this.renderSkippedBooks();
-				});
+			});
 		}
 
-		new ButtonComponent(this.contentEl)
-			.setButtonText("Close")
+		this.createActionButton(actions, "Close")
 			.onClick(() => this.close());
 
 		this.restoreScrollPosition(this.summaryScrollTop);
+	}
+
+	private createActionButton(containerEl: HTMLElement, text: string): ButtonComponent {
+		const button = new ButtonComponent(containerEl).setButtonText(text);
+
+		button.buttonEl.addClass("kls-action-button");
+		return button;
 	}
 
 	private renderSuspiciousItems(): void {

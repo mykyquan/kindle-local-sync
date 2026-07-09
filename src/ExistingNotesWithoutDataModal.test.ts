@@ -182,6 +182,14 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 		);
 	});
 
+	it("visually nests option descriptions under their titles", () => {
+		const modal = createModal(createTransitionPlugin());
+
+		modal.onOpen();
+
+		expect(elementsByClass(modal.contentEl, "kls-option-description")).toHaveLength(3);
+	});
+
 	it("shows the updated Continue With Existing Notes explanation", () => {
 		const modal = createModal(createTransitionPlugin());
 
@@ -273,6 +281,7 @@ function createVaultWithExistingNotes() {
 interface TestElement {
 	tagName: string;
 	children: TestElement[];
+	classes: Set<string>;
 	text: () => string;
 	findByText: (text: string) => TestElement | null;
 	click: () => Promise<void>;
@@ -342,6 +351,13 @@ function paragraphTexts(element: unknown): string[] {
 	return paragraphs;
 }
 
+function elementsByClass(element: unknown, className: string): TestElement[] {
+	const matches: TestElement[] = [];
+	collectElementsByClass(element as TestElement, className, matches);
+
+	return matches;
+}
+
 function collectParagraphTexts(element: TestElement, paragraphs: string[]): void {
 	if (element.tagName === "p") {
 		paragraphs.push(element.text());
@@ -349,5 +365,15 @@ function collectParagraphTexts(element: TestElement, paragraphs: string[]): void
 
 	for (const child of element.children) {
 		collectParagraphTexts(child, paragraphs);
+	}
+}
+
+function collectElementsByClass(element: TestElement, className: string, matches: TestElement[]): void {
+	if (element.classes.has(className)) {
+		matches.push(element);
+	}
+
+	for (const child of element.children) {
+		collectElementsByClass(child, className, matches);
 	}
 }

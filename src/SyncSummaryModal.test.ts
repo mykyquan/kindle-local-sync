@@ -12,6 +12,32 @@ beforeAll(async () => {
 });
 
 describe("SyncSummaryModal ignored highlights navigation", () => {
+	it("uses shared modal action button styling in the summary action row", () => {
+		const modal = createModal({
+			plugin: createPlugin({
+				ignoredHighlights: [createIgnoredHighlight()],
+			}),
+			classification: createClassification({
+				ignoredHighlights: [createHighlight()],
+			}),
+			skippedThisSyncHighlights: [createSummaryItem()],
+		});
+
+		modal.onOpen();
+		const actionRow = elementByClass(modal.contentEl, "kls-summary-actions");
+		const actionButtons = elementsByClass(actionRow, "kls-action-button");
+
+		expect(elementsByClass(modal.contentEl, "kls-summary-actions")).toHaveLength(1);
+		expect(actionRow.classes.has("kls-button-row")).toBe(true);
+		expect(actionButtons.map((button) => button.text())).toEqual([
+			"View Ignored Highlights",
+			"Review Skipped This Sync",
+			"Close",
+		]);
+		expect(findByText(actionRow, "Close").classes.has("mod-cta")).toBe(false);
+		expect(findByText(actionRow, "Close").classes.has("mod-warning")).toBe(false);
+	});
+
 	it("uses Title Case button labels in Sync Summary", async () => {
 		const modal = createModal({
 			plugin: createPlugin({
@@ -486,6 +512,7 @@ function createSummaryItem(overrides: Partial<SyncSummaryHighlightItem> = {}): S
 interface TestElement {
 	tagName: string;
 	children: TestElement[];
+	classes: Set<string>;
 	text: () => string;
 	findByText: (text: string) => TestElement | null;
 	click: () => Promise<void>;
@@ -514,6 +541,23 @@ function buttonTexts(element: unknown): string[] {
 	return texts;
 }
 
+function elementsByClass(element: unknown, className: string): TestElement[] {
+	const matches: TestElement[] = [];
+	collectElementsByClass(element as TestElement, className, matches);
+
+	return matches;
+}
+
+function elementByClass(element: unknown, className: string): TestElement {
+	const match = elementsByClass(element, className)[0];
+
+	if (!match) {
+		throw new Error(`Could not find class: ${className}`);
+	}
+
+	return match;
+}
+
 function collectButtonTexts(element: TestElement, texts: string[]): void {
 	if (element.tagName === "button") {
 		texts.push(element.text());
@@ -521,6 +565,16 @@ function collectButtonTexts(element: TestElement, texts: string[]): void {
 
 	for (const child of element.children) {
 		collectButtonTexts(child, texts);
+	}
+}
+
+function collectElementsByClass(element: TestElement, className: string, matches: TestElement[]): void {
+	if (element.classes.has(className)) {
+		matches.push(element);
+	}
+
+	for (const child of element.children) {
+		collectElementsByClass(child, className, matches);
 	}
 }
 

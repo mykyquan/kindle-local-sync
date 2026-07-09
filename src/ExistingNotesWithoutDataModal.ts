@@ -61,9 +61,12 @@ export class ExistingNotesWithoutDataModal extends Modal {
 	private createOptionSection(title: string, description: string | string[]): HTMLElement {
 		const section = this.contentEl.createDiv();
 		section.createEl("h3", { text: title });
+		const descriptionEl = section.createDiv();
+
+		descriptionEl.addClass("kls-option-description");
 
 		for (const paragraph of Array.isArray(description) ? description : [description]) {
-			section.createEl("p", { text: paragraph });
+			descriptionEl.createEl("p", { text: paragraph });
 		}
 
 		return section;
