@@ -1,5 +1,5 @@
 /* eslint-disable obsidianmd/ui/sentence-case */
-import { App, ButtonComponent, Modal, Notice } from "obsidian";
+import { App, ButtonComponent, Modal, Notice, setIcon } from "obsidian";
 import type KindleLocalSyncPlugin from "./main";
 import { KindleHighlight } from "./parser/parseClippings";
 import { createClippingId, KindleBookGroup } from "./render/renderMarkdown";
@@ -7,6 +7,19 @@ import { createSyncSummaryHighlightItem, SyncSummaryHighlightItem } from "./Sync
 
 type FirstSyncChoice = "import" | "ignore" | "skip";
 type BookStatusTone = "ready-to-import" | "ignored" | "skipped-this-sync" | "mixed-decisions" | "needs-review";
+type BookStatusFilter = "all" | "needs-review" | "checked";
+
+export interface FirstSyncReviewCompletion {
+	importHighlights: KindleHighlight[];
+	ignoreHighlights: KindleHighlight[];
+	skippedThisSyncHighlights: SyncSummaryHighlightItem[];
+}
+
+export interface FirstSyncPreviewModalOptions {
+	title?: string;
+	completionNotice?: (importedCount: number) => string;
+	onComplete?: (completion: FirstSyncReviewCompletion) => Promise<void>;
+}
 
 interface ReviewProgress {
 	reviewedBooks: number;
@@ -19,22 +32,46 @@ interface ReviewProgress {
 interface BookStatus {
 	text: string;
 	tone: BookStatusTone;
+	isChecked: boolean;
+	counts: Map<FirstSyncChoice, number>;
+	selectedCount: number;
+	needsReviewCount: number;
+}
+
+interface VisibleBookEntry {
+	group: KindleBookGroup;
+	originalIndex: number;
+	status: BookStatus;
 }
 
 export class FirstSyncPreviewModal extends Modal {
 	private readonly plugin: KindleLocalSyncPlugin;
 	private readonly bookGroups: KindleBookGroup[];
+	private readonly options: FirstSyncPreviewModalOptions;
 	private readonly choices = new Map<string, FirstSyncChoice>();
 	private readonly bookSectionEls = new Map<string, HTMLElement>();
+	private readonly filterButtonEls = new Map<BookStatusFilter, HTMLElement>();
 	private scrollBodyEl: HTMLElement | null = null;
+	private bookListContentEl: HTMLElement | null = null;
+	private choicesHelpPanelEl: HTMLElement | null = null;
 	private bookListReturnAnchorKey: string | null = null;
 	private bookListScrollTop = 0;
 	private shouldRestoreBookListAnchor = false;
+	private shouldRestoreBookListScroll = false;
+	private isChoicesHelpOpen = false;
+	private bookSearchQuery = "";
+	private bookStatusFilter: BookStatusFilter = "all";
 
-	constructor(app: App, plugin: KindleLocalSyncPlugin, bookGroups: KindleBookGroup[]) {
+	constructor(
+		app: App,
+		plugin: KindleLocalSyncPlugin,
+		bookGroups: KindleBookGroup[],
+		options: FirstSyncPreviewModalOptions = {}
+	) {
 		super(app);
 		this.plugin = plugin;
 		this.bookGroups = bookGroups;
+		this.options = options;
 	}
 
 	onOpen(): void {
@@ -44,22 +81,188 @@ export class FirstSyncPreviewModal extends Modal {
 	private renderBookList(): void {
 		const bodyEl = this.createModalBody();
 
-		this.bookSectionEls.clear();
-		bodyEl.createEl("h2", { text: "First Sync Preview" });
+		bodyEl.createEl("h2", { text: this.getTitle() });
 		bodyEl.createEl("p", {
 			text: `Found ${this.totalHighlights()} highlights from ${this.bookGroups.length} books.`,
 		});
 		bodyEl.createEl("p", {
-			text: "Kindle may keep deleted highlights in My Clippings.txt. Review before importing if you want to avoid bringing old deleted highlights into Obsidian.",
+			text: "Kindle may keep deleted highlights in My Clippings.txt.",
 		});
+		bodyEl.createEl("p", {
+			text: "Review before importing to avoid bringing old deleted highlights into Obsidian.",
+		});
+		this.renderStickyReviewSummary(bodyEl);
 		this.renderReviewProgress(bodyEl);
 
-		const choicesHelp = bodyEl.createDiv();
-		choicesHelp.addClass("kls-section");
-		choicesHelp.createEl("p", { text: "How choices work:" });
-		const choicesList = choicesHelp.createEl("ul");
-		choicesList.addClass("kls-choice-help");
+		this.bookListContentEl = bodyEl.createDiv();
+		this.bookListContentEl.addClass("kls-book-list");
+		this.renderVisibleBookCards();
+		this.createChoicesHelpPanel();
 
+		const footer = this.createStickyActions();
+
+		this.addFinishSyncButton(footer);
+		this.addChoicesHelpButton(footer);
+		this.addCancelButton(footer);
+
+		this.restoreBookListPosition();
+	}
+
+	private renderVisibleBookCards(): void {
+		const bookListEl = this.bookListContentEl;
+
+		if (!bookListEl) {
+			return;
+		}
+
+		bookListEl.empty();
+		this.bookSectionEls.clear();
+
+		const visibleBooks = this.visibleBookEntries();
+
+		if (visibleBooks.length === 0) {
+			bookListEl.createEl("p", { text: "No matching books." }).addClass("kls-empty-state");
+		}
+
+		for (const { group, originalIndex, status } of visibleBooks) {
+			const bookKey = createBookAnchorKey(group, originalIndex);
+			const section = bookListEl.createDiv();
+			section.addClass("kls-book-section");
+			section.addClass("kls-book-card");
+
+			this.bookSectionEls.set(bookKey, section);
+			const header = section.createDiv();
+			header.addClass("kls-book-header");
+
+			const titleEl = header.createEl("h3", { text: this.createBookLabel(group, originalIndex) });
+			titleEl.addClass("kls-book-title");
+
+			this.createActionButton(header, "Review Highlights")
+				.onClick(() => {
+					this.saveBookListPosition();
+					this.bookListReturnAnchorKey = bookKey;
+					this.renderHighlightReview(group);
+					this.scrollToTopAfterRender();
+				});
+
+			if (group.author && group.author.toLowerCase() !== "unknown") {
+				section.createEl("p", { text: group.author }).addClass("kls-book-meta");
+			}
+
+			this.renderBookStatus(section, status);
+			section.createEl("p", { text: createBookReviewSummary(group, status) }).addClass("kls-book-review-summary");
+
+			const actions = section.createDiv();
+			actions.addClass("kls-button-row");
+			actions.addClass("kls-book-actions");
+
+			this.createActionButton(actions, "Import All")
+				.setCta()
+				.onClick(() => {
+					this.saveBookListPosition();
+					this.shouldRestoreBookListScroll = true;
+					this.setGroupChoice(group, "import");
+					this.renderBookList();
+				});
+
+			this.createActionButton(actions, "Ignore All Highlights")
+				.onClick(() => {
+					this.saveBookListPosition();
+					this.shouldRestoreBookListScroll = true;
+					this.setGroupChoice(group, "ignore");
+					this.renderBookList();
+				});
+
+			this.createActionButton(actions, "Skip This Sync")
+				.onClick(() => {
+					this.saveBookListPosition();
+					this.shouldRestoreBookListScroll = true;
+					this.setGroupChoice(group, "skip");
+					this.renderBookList();
+				});
+		}
+	}
+
+	private renderBookListControls(bodyEl: HTMLElement): void {
+		const controls = bodyEl.createDiv();
+		controls.addClass("kls-book-list-controls");
+		this.filterButtonEls.clear();
+
+		const searchControl = controls.createDiv();
+		searchControl.addClass("kls-book-search-control");
+
+		const searchInput = searchControl.createEl("input");
+		searchInput.type = "search";
+		searchInput.placeholder = "Search books...";
+		searchInput.value = this.bookSearchQuery;
+		searchInput.addClass("kls-book-search-input");
+		searchInput.addEventListener("input", () => {
+			this.bookSearchQuery = searchInput.value;
+			this.renderVisibleBookCards();
+		});
+
+		const searchButton = new ButtonComponent(searchControl);
+		searchButton.buttonEl.addClass("kls-book-search-button");
+		searchButton.buttonEl.setAttribute("aria-label", "Focus book search");
+		searchButton.buttonEl.setAttribute("title", "Focus book search");
+		setIcon(searchButton.buttonEl, "search");
+		searchButton.onClick(() => {
+			searchInput.focus();
+			this.renderVisibleBookCards();
+		});
+
+		const filters = controls.createDiv();
+		filters.addClass("kls-button-row");
+		filters.addClass("kls-book-filter-row");
+
+		this.createFilterButton(filters, "All", "all");
+		this.createFilterButton(filters, "Needs Review", "needs-review");
+		this.createFilterButton(filters, "Checked", "checked");
+		this.updateBookFilterButtonStates();
+	}
+
+	private renderStickyReviewSummary(bodyEl: HTMLElement): void {
+		const stickySummary = bodyEl.createDiv();
+
+		stickySummary.addClass("kls-review-sticky-summary");
+		this.renderBookListControls(stickySummary);
+		this.renderCompactReviewProgress(stickySummary);
+	}
+
+	private renderCompactReviewProgress(containerEl: HTMLElement): void {
+		const progress = this.reviewProgress();
+		const progressEl = containerEl.createDiv();
+
+		progressEl.addClass("kls-compact-review-progress");
+		progressEl.createEl("span", {
+			text: `Checked: ${progress.reviewedBooks}/${this.bookGroups.length} · Need Review: ${progress.notReviewedBooks} · Ignore: ${progress.ignoreHighlights} · Skip: ${progress.skipThisSyncHighlights}`,
+		});
+	}
+
+	private createChoicesHelpPanel(): void {
+		this.choicesHelpPanelEl = this.contentEl.createDiv();
+		this.choicesHelpPanelEl.addClass("kls-choice-help-panel");
+		this.renderChoicesHelpPanel();
+	}
+
+	private renderChoicesHelpPanel(): void {
+		const panelEl = this.choicesHelpPanelEl;
+
+		if (!panelEl) {
+			return;
+		}
+
+		panelEl.empty();
+		if (!this.isChoicesHelpOpen) {
+			panelEl.addClass("kls-choice-help-panel-closed");
+			return;
+		}
+
+		panelEl.removeClass("kls-choice-help-panel-closed");
+		panelEl.createEl("h3", { text: "How choices work" });
+		const choicesList = panelEl.createEl("ul");
+
+		choicesList.addClass("kls-choice-help");
 		choicesList.createEl("li", { text: "Review highlights: Choose item by item." });
 		choicesList.createEl("li", { text: "Import all: Import all current highlights from this book." });
 		choicesList.createEl("li", {
@@ -68,65 +271,39 @@ export class FirstSyncPreviewModal extends Modal {
 		choicesList.createEl("li", {
 			text: "Skip this sync: Skip only this run. They may appear again next time.",
 		});
+	}
 
-		for (const [index, group] of this.bookGroups.entries()) {
-			const bookKey = createBookAnchorKey(group, index);
-			const section = bodyEl.createDiv();
-			section.addClass("kls-book-section");
+	private toggleChoicesHelp(): void {
+		const scrollTop = this.getCurrentScrollTop();
 
-			this.bookSectionEls.set(bookKey, section);
-			section.createEl("h3", { text: this.createBookLabel(group, index) });
-			section.createEl("p", { text: `${group.clippings.length} highlights found` });
+		this.isChoicesHelpOpen = !this.isChoicesHelpOpen;
+		this.renderChoicesHelpPanel();
+		this.restoreScrollTopAfterRender(scrollTop);
+	}
 
-			const actions = section.createDiv();
-			actions.addClass("kls-button-row");
-			actions.addClass("kls-book-actions");
+	private createFilterButton(containerEl: HTMLElement, label: string, filter: BookStatusFilter): void {
+		const button = this.createActionButton(containerEl, label);
 
-			this.createActionButton(actions, "Review Highlights")
-				.onClick(() => {
-					this.saveBookListPosition();
-					this.bookListReturnAnchorKey = bookKey;
-					this.renderHighlightReview(group);
-					this.scrollToTopAfterRender();
-				});
+		button.buttonEl.addClass("kls-book-filter-button");
+		this.filterButtonEls.set(filter, button.buttonEl);
 
-			this.createActionButton(actions, "Import All")
-				.setCta()
-				.onClick(() => {
-					this.saveBookListPosition();
-					this.bookListReturnAnchorKey = bookKey;
-					this.shouldRestoreBookListAnchor = true;
-					this.setGroupChoice(group, "import");
-					this.renderBookList();
-				});
+		button.onClick(() => {
+			this.bookStatusFilter = filter;
+			this.updateBookFilterButtonStates();
+			this.renderVisibleBookCards();
+		});
+	}
 
-			this.createActionButton(actions, "Ignore All Highlights")
-				.onClick(() => {
-					this.saveBookListPosition();
-					this.bookListReturnAnchorKey = bookKey;
-					this.shouldRestoreBookListAnchor = true;
-					this.setGroupChoice(group, "ignore");
-					this.renderBookList();
-				});
-
-			this.createActionButton(actions, "Skip This Sync")
-				.onClick(() => {
-					this.saveBookListPosition();
-					this.bookListReturnAnchorKey = bookKey;
-					this.shouldRestoreBookListAnchor = true;
-					this.setGroupChoice(group, "skip");
-					this.renderBookList();
-				});
-
-			this.renderBookStatus(section, group);
+	private updateBookFilterButtonStates(): void {
+		for (const [filter, buttonEl] of this.filterButtonEls.entries()) {
+			if (this.bookStatusFilter === filter) {
+				buttonEl.addClass("mod-cta");
+				buttonEl.addClass("kls-book-filter-button-active");
+			} else {
+				buttonEl.removeClass("mod-cta");
+				buttonEl.removeClass("kls-book-filter-button-active");
+			}
 		}
-
-		const footer = this.createStickyActions();
-
-		this.addFinishSyncButton(footer);
-		this.addCancelButton(footer);
-
-		this.restoreBookListPosition();
 	}
 
 	private renderHighlightReview(group: KindleBookGroup): void {
@@ -147,20 +324,26 @@ export class FirstSyncPreviewModal extends Modal {
 
 			this.createDecisionButton(actions, "Import", choice, "import")
 				.onClick(() => {
+					const scrollTop = this.getCurrentScrollTop();
 					this.choices.set(id, "import");
 					this.renderHighlightReview(group);
+					this.restoreScrollTopAfterRender(scrollTop);
 				});
 
 			this.createDecisionButton(actions, "Skip This Sync", choice, "skip")
 				.onClick(() => {
+					const scrollTop = this.getCurrentScrollTop();
 					this.choices.set(id, "skip");
 					this.renderHighlightReview(group);
+					this.restoreScrollTopAfterRender(scrollTop);
 				});
 
 			this.createDecisionButton(actions, "Ignore", choice, "ignore")
 				.onClick(() => {
+					const scrollTop = this.getCurrentScrollTop();
 					this.choices.set(id, "ignore");
 					this.renderHighlightReview(group);
+					this.restoreScrollTopAfterRender(scrollTop);
 				});
 
 			if (choice) {
@@ -168,25 +351,29 @@ export class FirstSyncPreviewModal extends Modal {
 			}
 		}
 
+		this.createChoicesHelpPanel();
 		const stickyActions = this.createStickyActions();
 		this.addBackToBookListButton(stickyActions);
+		this.addChoicesHelpButton(stickyActions);
 		this.addCancelButton(stickyActions);
 	}
 
 	private renderFinishConfirmation(): void {
 		const bodyEl = this.createModalBody();
 
-		bodyEl.createEl("h2", { text: "First Sync Preview" });
+		bodyEl.createEl("h2", { text: this.getTitle() });
 		bodyEl.createEl("p", { text: "Some highlights have not been reviewed." });
 		bodyEl.createEl("p", {
 			text: "Highlights not reviewed yet will be skipped only for this sync and may appear again next time.",
 		});
 
+		this.createChoicesHelpPanel();
 		const actions = this.createStickyActions();
 
 		this.addFinishSyncButton(actions, true);
 		this.createActionButton(actions, "Go Back")
 			.onClick(() => this.renderBookList());
+		this.addChoicesHelpButton(actions);
 	}
 
 	private setGroupChoice(group: KindleBookGroup, choice: FirstSyncChoice): void {
@@ -213,8 +400,7 @@ export class FirstSyncPreviewModal extends Modal {
 		);
 	}
 
-	private renderBookStatus(section: HTMLElement, group: KindleBookGroup): void {
-		const status = this.groupStatus(group);
+	private renderBookStatus(section: HTMLElement, status: BookStatus): void {
 		const statusEl = section.createDiv();
 
 		statusEl.addClass("kls-book-status");
@@ -242,28 +428,84 @@ export class FirstSyncPreviewModal extends Modal {
 	private groupStatus(group: KindleBookGroup): BookStatus {
 		const counts = this.countGroupChoices(group);
 		const reviewedCount = countSelectedChoices(counts);
+		const needsReviewCount = group.clippings.length - reviewedCount;
 
 		if (reviewedCount === 0) {
-			return { text: "Needs Review", tone: "needs-review" };
+			return {
+				text: "Needs Review",
+				tone: "needs-review",
+				isChecked: false,
+				counts,
+				selectedCount: reviewedCount,
+				needsReviewCount,
+			};
 		}
 
 		if (reviewedCount === group.clippings.length) {
 			if ((counts.get("import") ?? 0) === group.clippings.length) {
-				return { text: "Ready to Import", tone: "ready-to-import" };
+				return {
+					text: "Ready to Import",
+					tone: "ready-to-import",
+					isChecked: true,
+					counts,
+					selectedCount: reviewedCount,
+					needsReviewCount,
+				};
 			}
 
 			if ((counts.get("ignore") ?? 0) === group.clippings.length) {
-				return { text: "Ignored", tone: "ignored" };
+				return {
+					text: "Ignored",
+					tone: "ignored",
+					isChecked: true,
+					counts,
+					selectedCount: reviewedCount,
+					needsReviewCount,
+				};
 			}
 
 			if ((counts.get("skip") ?? 0) === group.clippings.length) {
-				return { text: "Skipped This Sync", tone: "skipped-this-sync" };
+				return {
+					text: "Skipped This Sync",
+					tone: "skipped-this-sync",
+					isChecked: true,
+					counts,
+					selectedCount: reviewedCount,
+					needsReviewCount,
+				};
 			}
 
-			return { text: "Mixed Decisions", tone: "mixed-decisions" };
+			return {
+				text: "Mixed Decisions",
+				tone: "mixed-decisions",
+				isChecked: true,
+				counts,
+				selectedCount: reviewedCount,
+				needsReviewCount,
+			};
 		}
 
-		return { text: "Needs Review", tone: "needs-review" };
+		return {
+			text: "Needs Review",
+			tone: "needs-review",
+			isChecked: false,
+			counts,
+			selectedCount: reviewedCount,
+			needsReviewCount,
+		};
+	}
+
+	private visibleBookEntries(): VisibleBookEntry[] {
+		const normalizedSearch = normalizeSearch(this.bookSearchQuery);
+		return this.bookGroups
+			.map((group, originalIndex) => ({
+				group,
+				originalIndex,
+				status: this.groupStatus(group),
+			}))
+			.filter(({ group, status }) =>
+				matchesBookSearch(group, normalizedSearch) && matchesBookStatusFilter(status, this.bookStatusFilter)
+			);
 	}
 
 	private countGroupChoices(group: KindleBookGroup): Map<FirstSyncChoice, number> {
@@ -348,6 +590,7 @@ export class FirstSyncPreviewModal extends Modal {
 	private createModalBody(): HTMLElement {
 		this.contentEl.empty();
 		this.contentEl.addClass("kls-first-sync-modal");
+		this.choicesHelpPanelEl = null;
 
 		const bodyEl = this.contentEl.createDiv();
 
@@ -397,6 +640,11 @@ export class FirstSyncPreviewModal extends Modal {
 			});
 	}
 
+	private addChoicesHelpButton(containerEl: HTMLElement): void {
+		this.createActionButton(containerEl, "How choices work")
+			.onClick(() => this.toggleChoicesHelp());
+	}
+
 	private addCancelButton(containerEl: HTMLElement): void {
 		this.createActionButton(containerEl, "Cancel")
 			.onClick(() => this.close());
@@ -416,9 +664,27 @@ export class FirstSyncPreviewModal extends Modal {
 		const ignoreHighlights = this.getHighlightsByChoice("ignore");
 		const skippedThisSyncHighlights = this.getSkippedThisSyncHighlights();
 
-		await this.plugin.completeFirstSync(importHighlights, ignoreHighlights, skippedThisSyncHighlights);
+		if (this.options.onComplete) {
+			await this.options.onComplete({
+				importHighlights,
+				ignoreHighlights,
+				skippedThisSyncHighlights,
+			});
+		} else {
+			await this.plugin.completeFirstSync(importHighlights, ignoreHighlights, skippedThisSyncHighlights);
+		}
+
 		this.close();
-		new Notice(`First sync complete: ${importHighlights.length} highlights imported.`);
+		new Notice(this.createCompletionNotice(importHighlights.length));
+	}
+
+	private getTitle(): string {
+		return this.options.title ?? "First Sync Preview";
+	}
+
+	private createCompletionNotice(importedCount: number): string {
+		return this.options.completionNotice?.(importedCount)
+			?? `First sync complete: ${importedCount} highlights imported.`;
 	}
 
 	private saveBookListPosition(): void {
@@ -427,14 +693,25 @@ export class FirstSyncPreviewModal extends Modal {
 
 	private restoreBookListPosition(): void {
 		const anchorKey = this.shouldRestoreBookListAnchor ? this.bookListReturnAnchorKey : null;
+		const shouldRestoreScroll = this.shouldRestoreBookListScroll;
 
 		this.shouldRestoreBookListAnchor = false;
+		this.shouldRestoreBookListScroll = false;
 
-		if (!anchorKey) {
+		if (!anchorKey && !shouldRestoreScroll) {
 			return;
 		}
 
 		this.afterRender(() => {
+			if (shouldRestoreScroll) {
+				this.setScrollTop(this.bookListScrollTop);
+				return;
+			}
+
+			if (!anchorKey) {
+				return;
+			}
+
 			const section = this.bookSectionEls.get(anchorKey);
 
 			if (section && typeof section.scrollIntoView === "function") {
@@ -443,6 +720,13 @@ export class FirstSyncPreviewModal extends Modal {
 			}
 
 			this.setScrollTop(this.bookListScrollTop);
+		});
+	}
+
+	private restoreScrollTopAfterRender(scrollTop: number): void {
+		this.setScrollTop(scrollTop);
+		this.afterRender(() => {
+			this.setScrollTop(scrollTop);
 		});
 	}
 
@@ -497,6 +781,45 @@ function createHighlightPreview(highlight: KindleHighlight): string {
 
 function createBookAnchorKey(group: KindleBookGroup, index: number): string {
 	return `${index}:${group.bookTitle}:${group.author}`;
+}
+
+function createBookReviewSummary(group: KindleBookGroup, status: BookStatus): string {
+	const ignoreCount = status.counts.get("ignore") ?? 0;
+	const skipCount = status.counts.get("skip") ?? 0;
+
+	return [
+		`${status.needsReviewCount} ${pluralize("highlight", status.needsReviewCount)} need review`,
+		`${ignoreCount} marked to ignore`,
+		`${skipCount} skipped this sync`,
+	].join(" · ");
+}
+
+function pluralize(word: string, count: number): string {
+	return count === 1 ? word : `${word}s`;
+}
+
+function normalizeSearch(value: string): string {
+	return value.trim().toLowerCase();
+}
+
+function matchesBookSearch(group: KindleBookGroup, normalizedSearch: string): boolean {
+	if (!normalizedSearch) {
+		return true;
+	}
+
+	return [group.bookTitle, group.author]
+		.some((value) => value.toLowerCase().includes(normalizedSearch));
+}
+
+function matchesBookStatusFilter(status: BookStatus, filter: BookStatusFilter): boolean {
+	switch (filter) {
+		case "all":
+			return true;
+		case "needs-review":
+			return !status.isChecked;
+		case "checked":
+			return status.isChecked;
+	}
 }
 
 function countSelectedChoices(counts: Map<FirstSyncChoice, number>): number {

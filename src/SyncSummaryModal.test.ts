@@ -12,6 +12,18 @@ beforeAll(async () => {
 });
 
 describe("SyncSummaryModal ignored highlights navigation", () => {
+	it("explains that unreviewed or skipped highlights return on the next sync", () => {
+		const modal = createModal({
+			skippedThisSyncHighlights: [createSummaryItem()],
+		});
+
+		modal.onOpen();
+
+		expect(readText(modal.contentEl)).toContain(
+			"Unreviewed or skipped highlights will appear again next time you sync."
+		);
+	});
+
 	it("uses shared modal action button styling in the summary action row", () => {
 		const modal = createModal({
 			plugin: createPlugin({
@@ -189,6 +201,24 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		expect(readText(modal.contentEl)).toContain("Deep Work");
 	});
 
+	it("uses shared button classes in skipped books review rows", async () => {
+		const modal = createModal({
+			skippedThisSyncHighlights: [createSummaryItem()],
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Skipped This Sync").click();
+
+		const card = elementByClass(modal.contentEl, "kls-book-card");
+		const actions = elementByClass(card, "kls-book-actions");
+
+		expect(actions.classes.has("kls-button-row")).toBe(true);
+		expect(elementsByClass(actions, "kls-action-button").map((button) => button.text())).toEqual([
+			"Review Highlights",
+			"Ignore All Highlights",
+		]);
+	});
+
 	it("shows Back To Summary in skipped books view", async () => {
 		const modal = createModal({
 			skippedThisSyncHighlights: [createSummaryItem()],
@@ -223,6 +253,23 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 
 		expect(readText(modal.contentEl)).toContain("Small habits make a big difference.");
 		expect(readText(modal.contentEl)).toContain("Ignore Going Forward");
+	});
+
+	it("uses shared button classes in per-book skipped highlight review", async () => {
+		const modal = createModal({
+			skippedThisSyncHighlights: [createSummaryItem()],
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Skipped This Sync").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+
+		const row = elementByClass(modal.contentEl, "kls-highlight-row");
+		const buttonRow = elementByClass(row, "kls-button-row");
+
+		expect(elementsByClass(buttonRow, "kls-action-button").map((button) => button.text())).toEqual([
+			"Ignore Going Forward",
+		]);
 	});
 
 	it("shows Back To Skipped Books in per-book review", async () => {
@@ -310,6 +357,28 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		await findByText(modal.contentEl, "Ignore All Highlights").click();
 
 		expect(readText(modal.contentEl)).toContain("No skipped highlights left to review.");
+	});
+});
+
+describe("SyncSummaryModal suspicious item button styling", () => {
+	it("uses shared button classes in suspicious item review rows", async () => {
+		const modal = createModal({
+			classification: createClassification({
+				possibleReappearedHighlights: [createHighlight()],
+			}),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Suspicious Items").click();
+
+		const row = elementByClass(modal.contentEl, "kls-highlight-row");
+		const buttonRow = elementByClass(row, "kls-button-row");
+
+		expect(elementsByClass(buttonRow, "kls-action-button").map((button) => button.text())).toEqual([
+			"Import Again",
+			"Ignore Forever",
+			"Skip This Time",
+		]);
 	});
 });
 

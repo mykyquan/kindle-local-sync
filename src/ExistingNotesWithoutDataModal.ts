@@ -14,22 +14,22 @@ export class ExistingNotesWithoutDataModal extends Modal {
 		this.contentEl.empty();
 		this.contentEl.createEl("h2", { text: "Existing Kindle highlight notes found" });
 		this.contentEl.createEl("p", {
-			text: "This vault already contains Kindle highlight notes, but Kindle Local Sync does not have saved plugin data for this vault.",
+			text: "This vault already has Kindle highlight notes, but Kindle Local Sync has no saved data for this vault.",
 		});
 		this.contentEl.createEl("p", {
-			text: "Choose how you want to continue:",
+			text: "Choose how to continue:",
 		});
 
 		const continueOption = this.createOptionSection(
 			"Continue with existing notes",
 			[
-				"Choose this if these notes were already created by Kindle Local Sync.",
-				"We'll keep your existing notes and continue syncing from here.",
+				"Use this if these notes were already created by Kindle Local Sync.",
+				"Existing notes stay as-is. New highlights will still require review before import.",
 			]
 		);
 
 		new ButtonComponent(continueOption)
-			.setButtonText("Continue With Existing Notes")
+			.setButtonText("Continue with existing notes")
 			.setCta()
 			.onClick(async () => {
 				this.close();
@@ -38,11 +38,14 @@ export class ExistingNotesWithoutDataModal extends Modal {
 
 		const reviewOption = this.createOptionSection(
 			"Review everything before syncing",
-			"Choose this if you want to review books and highlights before importing again."
+			[
+				"Use this if you want to check all detected books and highlights first.",
+				"Nothing new will be imported until you finish review.",
+			]
 		);
 
 		new ButtonComponent(reviewOption)
-			.setButtonText("Review As First Sync")
+			.setButtonText("Review everything")
 			.onClick(async () => {
 				this.close();
 				await this.plugin.reviewExistingNotesWithoutDataAsFirstSync();
@@ -50,7 +53,7 @@ export class ExistingNotesWithoutDataModal extends Modal {
 
 		const cancelOption = this.createOptionSection(
 			"Cancel",
-			"Do nothing for now. No settings or notes will be changed."
+			"No settings or notes will be changed."
 		);
 
 		new ButtonComponent(cancelOption)

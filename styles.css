@@ -7,16 +7,42 @@ If your plugin does not need CSS, delete this file.
 
 */
 
+.modal:has(.kls-first-sync-modal) {
+	box-sizing: border-box;
+	width: min(980px, calc(100vw - 32px));
+	max-width: calc(100vw - 32px);
+}
+
 .kls-first-sync-modal {
 	display: flex;
 	flex-direction: column;
-	max-height: min(72vh, 760px);
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	max-height: min(84vh, 860px);
 	overflow: hidden;
+}
+
+.kls-first-sync-modal h2 {
+	margin-bottom: 0.35em;
+}
+
+.kls-first-sync-modal h2 + p,
+.kls-first-sync-modal h2 + p + p {
+	margin-top: 0.35em;
+	margin-bottom: 0.45em;
+	line-height: 1.35;
 }
 
 .kls-modal-scroll-body {
 	flex: 1 1 auto;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
 	min-height: 0;
+	min-width: 0;
+	overflow-x: hidden;
 	overflow-y: auto;
 	padding-right: 0.25em;
 }
@@ -24,26 +50,65 @@ If your plugin does not need CSS, delete this file.
 .kls-section,
 .kls-book-section,
 .kls-highlight-row {
+	box-sizing: border-box;
+	max-width: 100%;
+	min-width: 0;
 	margin-top: 1em;
+}
+
+.kls-review-progress {
+	margin-top: 0.75em;
+}
+
+.kls-review-progress h3 {
+	margin: 0 0 0.4em;
+}
+
+.kls-book-list {
+	display: grid;
+	gap: 0.85em;
+	width: 100%;
+	min-width: 0;
+	margin-top: 0.85em;
+}
+
+.kls-book-card {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	margin-top: 0;
+	padding: 0.9em 1em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-secondary);
+	overflow-wrap: anywhere;
 }
 
 .kls-section ul,
 .kls-choice-help {
-	margin-top: 0.5em;
-	margin-bottom: 0.75em;
+	margin-top: 0.45em;
+	margin-bottom: 0.2em;
 	padding-left: 1.5em;
 }
 
 .kls-section li,
 .kls-choice-help li {
-	margin-bottom: 0.35em;
+	margin-bottom: 0.3em;
 	line-height: 1.4;
 }
 
 .kls-review-progress-groups {
 	display: grid;
-	gap: 0.75em;
-	margin-top: 0.5em;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+	gap: 0.5em 1em;
+	min-width: 0;
+	margin-top: 0;
+}
+
+.kls-review-progress-group {
+	min-width: 0;
+	overflow-wrap: anywhere;
 }
 
 .kls-review-progress-group h4 {
@@ -56,6 +121,11 @@ If your plugin does not need CSS, delete this file.
 .kls-review-progress-group ul {
 	margin-top: 0;
 	margin-bottom: 0;
+	padding-left: 1.25em;
+}
+
+.kls-review-progress-group li {
+	overflow-wrap: anywhere;
 }
 
 .kls-button-row {
@@ -63,10 +133,183 @@ If your plugin does not need CSS, delete this file.
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 0.5em;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.kls-book-list-controls {
+	display: grid;
+	gap: 0.55em;
+	width: 100%;
+	min-width: 0;
+	margin-top: 0.75em;
+}
+
+.kls-review-sticky-summary {
+	position: sticky;
+	top: 0;
+	z-index: 5;
+	display: grid;
+	gap: 0.45em;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	margin-top: 0.75em;
+	padding: 0.5em 0 0.55em;
+	background: var(--background-primary);
+	box-shadow: 0 0.45em 0.75em var(--background-primary);
+}
+
+.kls-review-sticky-summary .kls-book-list-controls {
+	margin-top: 0;
+}
+
+.kls-compact-review-progress {
+	box-sizing: border-box;
+	max-width: 100%;
+	min-width: 0;
+	padding: 0.35em 0.55em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--button-radius, var(--radius-s));
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	line-height: 1.35;
+	overflow-wrap: anywhere;
+}
+
+.kls-book-search-control {
+	position: relative;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+}
+
+.kls-book-search-input {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	padding-right: 2.5em;
+}
+
+.kls-book-search-button {
+	position: absolute;
+	top: 50%;
+	right: 0.25em;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 2em;
+	height: 2em;
+	min-height: 0;
+	padding: 0;
+	border: 0;
+	border-radius: var(--button-radius, var(--radius-s));
+	background: transparent;
+	color: var(--text-muted);
+	transform: translateY(-50%);
+}
+
+.kls-book-search-button:hover,
+.kls-book-search-button:focus-visible {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.kls-book-filter-row {
+	gap: 0.4em;
+}
+
+.kls-book-filter-button-active {
+	font-weight: 700;
+}
+
+.kls-book-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 0.75em;
+	min-width: 0;
+}
+
+.kls-book-title {
+	flex: 1 1 14em;
+	min-width: 0;
+	max-width: 100%;
+	margin-top: 0;
+	margin-bottom: 0;
+	line-height: 1.3;
+	overflow-wrap: anywhere;
+}
+
+.kls-book-meta,
+.kls-book-review-summary {
+	min-width: 0;
+	max-width: 100%;
+	margin-top: 0.45em;
+	margin-bottom: 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+	overflow-wrap: anywhere;
 }
 
 .kls-book-actions {
-	margin: 0.75em 0;
+	margin: 0.8em 0 0;
+}
+
+.kls-choice-help-details {
+	margin-top: 0.85em;
+	border-top: 1px solid var(--background-modifier-border);
+	padding-top: 0.55em;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.kls-choice-help-details summary {
+	cursor: pointer;
+	color: var(--text-normal);
+	font-weight: 600;
+}
+
+.kls-choice-help-panel {
+	flex: 0 0 auto;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	max-height: 32vh;
+	overflow-x: hidden;
+	overflow-y: auto;
+	margin-top: 0.6em;
+	padding: 0.65em 0.75em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--button-radius, var(--radius-s));
+	background: var(--background-secondary);
+	box-shadow: 0 -0.25em 0.75em var(--background-primary);
+}
+
+.kls-choice-help-panel-closed {
+	display: none;
+}
+
+.kls-choice-help-panel h3 {
+	margin: 0 0 0.35em;
+	font-size: var(--font-ui-small);
+}
+
+.kls-choice-help-panel .kls-choice-help {
+	margin-bottom: 0;
+}
+
+.kls-empty-state {
+	margin-top: 1em;
+	color: var(--text-muted);
 }
 
 .kls-summary-actions {
@@ -75,22 +318,28 @@ If your plugin does not need CSS, delete this file.
 
 .kls-action-button {
 	display: inline-flex;
+	flex: 0 1 auto;
 	align-items: center;
 	justify-content: center;
 	box-sizing: border-box;
+	max-width: 100%;
 	min-height: 2.25em;
 	padding: 0.45em 0.8em;
 	border-radius: var(--button-radius, var(--radius-s));
 	font-size: var(--font-ui-small);
 	line-height: 1.2;
+	text-align: center;
 	vertical-align: middle;
-	white-space: nowrap;
+	white-space: normal;
+	overflow-wrap: anywhere;
 }
 
 .kls-book-status {
 	display: inline-flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 0.4em;
+	min-width: 0;
 	max-width: 100%;
 	margin-top: 0.75em;
 	font-size: var(--font-ui-smaller);
@@ -107,6 +356,7 @@ If your plugin does not need CSS, delete this file.
 	align-items: center;
 	width: fit-content;
 	max-width: 100%;
+	min-width: 0;
 	padding: 0.25em 0.65em;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 999px;
@@ -115,6 +365,7 @@ If your plugin does not need CSS, delete this file.
 	font-size: var(--font-ui-smaller);
 	font-weight: 700;
 	line-height: 1.3;
+	overflow-wrap: anywhere;
 }
 
 .kls-book-status-ready-to-import .kls-status-badge,
@@ -157,8 +408,11 @@ If your plugin does not need CSS, delete this file.
 
 .kls-selected-decision {
 	display: inline-flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 0.4em;
+	max-width: 100%;
+	min-width: 0;
 	margin-top: 0.6em;
 	font-size: var(--font-ui-smaller);
 	line-height: 1.3;
@@ -179,6 +433,9 @@ If your plugin does not need CSS, delete this file.
 	position: relative;
 	z-index: 10;
 	justify-content: flex-end;
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 0;
 	background: var(--background-primary);
 	padding: 0.9em 0 0.25em;
 	margin-top: 0.75em;

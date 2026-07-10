@@ -14,7 +14,7 @@ import { readClippingsFile } from "./sync/ClippingsReader";
 import { hasExistingHighlightNotes } from "./sync/ExistingHighlightNotes";
 import { detectClippingsPath } from "./sync/KindleDetector";
 import { removeIgnoredHighlightBlocksFromExistingNotes } from "./sync/IgnoredHighlightCleanup";
-import { classifyHighlightsForSync } from "./sync/SyncClassifier";
+import { classifyHighlightsForSync, SyncClassification } from "./sync/SyncClassifier";
 import { createVaultHighlightLookup } from "./sync/VaultHighlightLookup";
 import { writeBookNotesToVault } from "./sync/VaultWriter";
 import { SyncSummaryModal } from "./SyncSummaryModal";
@@ -60,22 +60,10 @@ export default class KindleLocalSyncPlugin extends Plugin {
 				return;
 			}
 
-			const clippingsPath = await detectClippingsPath(this.settings.clippingsPath);
+			syncPhase = "read/parse";
+			const highlights = await this.readDetectedHighlights();
 
-			if (!clippingsPath) {
-				// eslint-disable-next-line obsidianmd/ui/sentence-case
-				new Notice("Could not find My Clippings.txt. Please set the path manually.");
-				return;
-			}
-
-			syncPhase = "read";
-			const rawText = await readClippingsFile(clippingsPath);
-			syncPhase = "parse";
-			const highlights = parseClippings(rawText);
-
-			if (highlights.length === 0) {
-				// eslint-disable-next-line obsidianmd/ui/sentence-case
-				new Notice("No Kindle highlights or notes found to sync.");
+			if (!highlights) {
 				return;
 			}
 
@@ -131,20 +119,68 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		}).open();
 	}
 
+	async completeReviewedSync(
+		importHighlights: KindleHighlight[],
+		ignoreHighlights: KindleHighlight[],
+		skippedThisSyncHighlights: SyncSummaryHighlightItem[],
+		automaticHighlights: KindleHighlight[],
+		classification: SyncClassification
+	): Promise<void> {
+		const highlightsToWrite = combineHighlightsById(automaticHighlights, importHighlights);
+		await this.importHighlights(highlightsToWrite, false);
+		this.addIgnoredHighlights(ignoreHighlights);
+		this.settings.hasCompletedFirstSync = true;
+		this.hasSavedPluginData = true;
+		await this.saveSettings();
+		await this.cleanupIgnoredHighlightBlocks(ignoreHighlights.map(createClippingId));
+
+		new SyncSummaryModal(this.app, this, {
+			classification: {
+				...classification,
+				newHighlights: importHighlights,
+				ignoredHighlights: [
+					...classification.ignoredHighlights,
+					...ignoreHighlights,
+				],
+			},
+			automaticHighlights: highlightsToWrite,
+			importedCount: importHighlights.length,
+			skippedThisSyncHighlights,
+		}).open();
+	}
+
 	async continueExistingNotesWithoutDataSync(): Promise<void> {
+		const highlights = await this.readDetectedHighlights();
+
+		if (!highlights) {
+			return;
+		}
+
+		const bookGroups = groupHighlightsByBook(highlights);
+		const trustedExistingHighlights = await this.findHighlightsAlreadyInVault(highlights, bookGroups);
+
 		this.settings.hasCompletedFirstSync = true;
 		this.settings.importedHighlights = [];
 		this.settings.ignoredHighlights = [];
+		this.addImportedHighlights(trustedExistingHighlights);
 		this.hasSavedPluginData = true;
 		await this.saveSettings();
-		await this.syncHighlights();
+		await this.syncExistingHighlights(highlights, bookGroups);
 	}
 
 	async reviewExistingNotesWithoutDataAsFirstSync(): Promise<void> {
+		const highlights = await this.readDetectedHighlights();
+
+		if (!highlights) {
+			return;
+		}
+
 		this.settings.hasCompletedFirstSync = false;
 		this.hasSavedPluginData = true;
 		await this.saveSettings();
-		await this.syncHighlights();
+		new FirstSyncPreviewModal(this.app, this, groupHighlightsByBook(highlights), {
+			title: "Review Everything Before Syncing",
+		}).open();
 	}
 
 	async importHighlights(highlights: KindleHighlight[], persist = true): Promise<Awaited<ReturnType<typeof writeBookNotesToVault>>> {
@@ -278,13 +314,25 @@ export default class KindleLocalSyncPlugin extends Plugin {
 			importedHighlights: this.settings.importedHighlights,
 			highlightExistsInNote: createVaultHighlightLookup(this.app.vault, this.settings.highlightsFolder, bookGroups),
 		});
-		const automaticIds = new Set(
-			[
-				...classification.newHighlights,
-				...classification.duplicateHighlights,
-			].map((highlight) => createClippingId(highlight))
-		);
-		const automaticHighlights = highlights.filter((highlight) => automaticIds.has(createClippingId(highlight)));
+		const automaticHighlights = this.getReviewedHighlightsForAutomaticSync(highlights, classification);
+
+		if (classification.newHighlights.length > 0) {
+			new FirstSyncPreviewModal(this.app, this, groupHighlightsByBook(classification.newHighlights), {
+				title: "Review New Highlights",
+				completionNotice: (importedCount) => `Sync complete: ${importedCount} highlights imported.`,
+				onComplete: async ({ importHighlights, ignoreHighlights, skippedThisSyncHighlights }) => {
+					await this.completeReviewedSync(
+						importHighlights,
+						ignoreHighlights,
+						skippedThisSyncHighlights,
+						automaticHighlights,
+						classification
+					);
+				},
+			}).open();
+			return;
+		}
+
 		const summary = await this.importHighlights(automaticHighlights);
 
 		new SyncSummaryModal(this.app, this, {
@@ -296,6 +344,64 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		if (summary.highlightsRendered === 0 && classification.possibleReappearedHighlights.length === 0) {
 			new Notice("Kindle sync complete: no new highlights to import.");
 		}
+	}
+
+	private async readDetectedHighlights(): Promise<KindleHighlight[] | null> {
+		const clippingsPath = await detectClippingsPath(this.settings.clippingsPath);
+
+		if (!clippingsPath) {
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
+			new Notice("Could not find My Clippings.txt. Please set the path manually.");
+			return null;
+		}
+
+		const rawText = await readClippingsFile(clippingsPath);
+		const highlights = parseClippings(rawText);
+
+		if (highlights.length === 0) {
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
+			new Notice("No Kindle highlights or notes found to sync.");
+			return null;
+		}
+
+		return highlights;
+	}
+
+	private async findHighlightsAlreadyInVault(
+		highlights: KindleHighlight[],
+		bookGroups: KindleBookGroup[]
+	): Promise<KindleHighlight[]> {
+		const highlightExistsInNote = createVaultHighlightLookup(this.app.vault, this.settings.highlightsFolder, bookGroups);
+		const trustedHighlights: KindleHighlight[] = [];
+
+		for (const highlight of highlights) {
+			const id = createClippingId(highlight);
+
+			try {
+				if (await highlightExistsInNote(id, highlight)) {
+					trustedHighlights.push(highlight);
+				}
+			} catch {
+				// If an existing note cannot be safely matched, keep that clipping untrusted so the review gate handles it.
+			}
+		}
+
+		return trustedHighlights;
+	}
+
+	private getReviewedHighlightsForAutomaticSync(
+		highlights: KindleHighlight[],
+		classification: SyncClassification
+	): KindleHighlight[] {
+		const importedIds = new Set(this.settings.importedHighlights.map((highlight) => highlight.id));
+		const ignoredIds = new Set(this.settings.ignoredHighlights.map((highlight) => highlight.id));
+		const suspiciousIds = new Set(classification.possibleReappearedHighlights.map(createClippingId));
+
+		return highlights.filter((highlight) => {
+			const id = createClippingId(highlight);
+
+			return importedIds.has(id) && !ignoredIds.has(id) && !suspiciousIds.has(id);
+		});
 	}
 }
 
@@ -356,4 +462,25 @@ class KindleSettingTab extends PluginSettingTab {
 
 function createTextPreview(highlight: KindleHighlight): string {
 	return highlight.content.replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+function combineHighlightsById(
+	firstHighlights: KindleHighlight[],
+	secondHighlights: KindleHighlight[]
+): KindleHighlight[] {
+	const seenIds = new Set<string>();
+	const combinedHighlights: KindleHighlight[] = [];
+
+	for (const highlight of [...firstHighlights, ...secondHighlights]) {
+		const id = createClippingId(highlight);
+
+		if (seenIds.has(id)) {
+			continue;
+		}
+
+		seenIds.add(id);
+		combinedHighlights.push(highlight);
+	}
+
+	return combinedHighlights;
 }

@@ -104,14 +104,15 @@ describe("FirstSyncPreviewModal wording and layout", () => {
 
 		modal.onOpen();
 
-		expect(countText(readText(modal.contentEl), "How choices work:")).toBe(1);
-		expect(countText(readText(modal.contentEl), "Ignore all highlights: Ignore current highlights from this book")).toBe(1);
+		expect(countText(readText(modal.contentEl), "How choices work")).toBe(1);
+		expect(countText(readText(modal.contentEl), "Ignore all highlights: Ignore current highlights from this book")).toBe(0);
 	});
 
-	it("does not repeat the skip explanation under each book", () => {
+	it("does not repeat the skip explanation under each book", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup(), createBookGroup("Deep Work")]);
 
 		modal.onOpen();
+		await findByText(elementsByClass(modal.contentEl, "kls-sticky-actions")[0], "How choices work").click();
 
 		expect(countText(readText(modal.contentEl), "Skip this sync: Skip only this run. They may appear again next time.")).toBe(1);
 		expect(readText(modal.contentEl)).not.toContain(
@@ -141,10 +142,16 @@ describe("FirstSyncPreviewModal wording and layout", () => {
 });
 
 describe("FirstSyncPreviewModal UI polish", () => {
-	it("renders How choices work as a bullet list", () => {
+	it("opens How choices work from a footer button with a bullet list", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
+
+		const stickyActions = elementByClassAt(modal.contentEl, "kls-sticky-actions", 0);
+		expect(buttonTexts(stickyActions)).toContain("How choices work");
+		expect(elementsByClass(modal.contentEl, "kls-choice-help")).toHaveLength(0);
+
+		await findByText(stickyActions, "How choices work").click();
 
 		const choicesList = elementByClassAt(modal.contentEl, "kls-choice-help", 0);
 		const items = choicesList.children
@@ -159,10 +166,51 @@ describe("FirstSyncPreviewModal UI polish", () => {
 		]);
 	});
 
-	it("explains Import All, Ignore All Highlights, and Skip This Sync clearly", () => {
+	it("opens help without resetting decisions", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
+		await findByText(modal.contentEl, "Import All").click();
+		await findByText(elementsByClass(modal.contentEl, "kls-sticky-actions")[0], "How choices work").click();
+
+		expect(readText(findSectionByHeading(modal.contentEl, "1 of 1 — Atomic Habits"))).toContain("Status: Ready to Import");
+		expect(readText(modal.contentEl)).toContain("Review highlights: Choose item by item.");
+	});
+
+	it("opens help without resetting search text", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		await searchBooks(modal, "Deep");
+		await findByText(elementsByClass(modal.contentEl, "kls-sticky-actions")[0], "How choices work").click();
+
+		expect(elementsByTag(modal.contentEl, "input")[0]?.value).toBe("Deep");
+		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
+	});
+
+	it("opens help without changing scroll position", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 180);
+		setScrollTop(modal.contentEl, 180);
+		await findByText(elementsByClass(modal.contentEl, "kls-sticky-actions")[0], "How choices work").click();
+
+		expect(scrollTop(modal.contentEl)).toBe(180);
+		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(180);
+	});
+
+	it("explains Import All, Ignore All Highlights, and Skip This Sync clearly", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		await findByText(elementsByClass(modal.contentEl, "kls-sticky-actions")[0], "How choices work").click();
 
 		const items = elementsByTag(modal.contentEl, "li").map((element) => element.text());
 		expect(items.some((text) => text.startsWith("Review highlights:"))).toBe(true);
@@ -172,12 +220,29 @@ describe("FirstSyncPreviewModal UI polish", () => {
 		expect(readText(modal.contentEl)).not.toContain("unselected highlights");
 	});
 
-	it("shows the top-level explanation only once", () => {
+	it("puts sticky search, filters, compact progress, full progress, and book cards in order", () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		const body = elementByClassAt(modal.contentEl, "kls-modal-scroll-body", 0);
+		const stickyIndex = directChildIndexByClass(body, "kls-review-sticky-summary");
+		const progressIndex = directChildIndexByClass(body, "kls-review-progress");
+		const bookListIndex = directChildIndexByClass(body, "kls-book-list");
+
+		expect(stickyIndex).toBeGreaterThan(-1);
+		expect(elementsByClass(body, "kls-book-list-controls")).toHaveLength(1);
+		expect(elementsByClass(body, "kls-compact-review-progress")).toHaveLength(1);
+		expect(progressIndex).toBeGreaterThan(stickyIndex);
+		expect(bookListIndex).toBeGreaterThan(progressIndex);
+		expect(elementsByClass(body, "kls-choice-help-details")).toHaveLength(0);
+	});
+
+	it("shows the top-level help content only once", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup(), createBookGroup("Deep Work")]);
 
 		modal.onOpen();
+		await findByText(elementsByClass(modal.contentEl, "kls-sticky-actions")[0], "How choices work").click();
 
-		expect(countText(readText(modal.contentEl), "How choices work:")).toBe(1);
 		expect(countText(readText(modal.contentEl), "Skip this sync: Skip only this run. They may appear again next time.")).toBe(1);
 	});
 
@@ -188,7 +253,7 @@ describe("FirstSyncPreviewModal UI polish", () => {
 		await findByText(modal.contentEl, "Review Highlights").click();
 
 		expect(readText(modal.contentEl)).not.toContain("Skipped highlights are only skipped for this sync.");
-		expect(readText(modal.contentEl)).not.toContain("How choices work:");
+		expect(buttonTexts(elementsByClass(modal.contentEl, "kls-sticky-actions")[0])).toContain("How choices work");
 	});
 
 	it("orders per-highlight buttons as Import, Skip This Sync, Ignore", async () => {
@@ -224,6 +289,357 @@ describe("FirstSyncPreviewModal UI polish", () => {
 		await findByText(modal.contentEl, "Review Highlights").click();
 
 		expect(findByText(modal.contentEl, "Ignore").classes.has("mod-warning")).toBe(false);
+	});
+});
+
+describe("FirstSyncPreviewModal book dashboard controls", () => {
+	it("filters books by title search", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		await searchBooks(modal, "Deep");
+
+		expect(readText(modal.contentEl)).toContain("Deep Work");
+		expect(readText(modal.contentEl)).not.toContain("Atomic Habits");
+	});
+
+	it("filters books by title case-insensitively", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		await searchBooks(modal, "atomic");
+
+		expect(readText(modal.contentEl)).toContain("Atomic Habits");
+		expect(readText(modal.contentEl)).not.toContain("Deep Work");
+	});
+
+	it("filters books by author search", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits", "James Clear"),
+			createBookGroup("The Left Hand of Darkness", "Ursula K. Le Guin"),
+		]);
+
+		modal.onOpen();
+		await searchBooks(modal, "le guin");
+
+		expect(readText(modal.contentEl)).toContain("The Left Hand of Darkness");
+		expect(readText(modal.contentEl)).not.toContain("Atomic Habits");
+	});
+
+	it("keeps the search input mounted and typed value intact while filtering", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		const input = elementsByTag(modal.contentEl, "input")[0];
+
+		if (!input) {
+			throw new Error("Could not find book search input.");
+		}
+
+		await input.input("De");
+
+		expect(elementsByTag(modal.contentEl, "input")[0]).toBe(input);
+		expect(input.value).toBe("De");
+		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
+	});
+
+	it("renders a usable search icon button beside the book search input", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		const input = elementsByTag(modal.contentEl, "input")[0];
+		const searchButton = elementByClassAt(modal.contentEl, "kls-book-search-button", 0);
+
+		if (!input) {
+			throw new Error("Could not find book search input.");
+		}
+
+		expect(searchButton.tagName).toBe("button");
+		expect(searchButton.iconName).toBe("search");
+
+		await searchButton.click();
+
+		expect(input.focusCalls).toBe(1);
+	});
+
+	it("renders search and filter controls inside the book list controls", () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		const controls = elementByClassAt(modal.contentEl, "kls-book-list-controls", 0);
+		const searchControl = elementByClassAt(controls, "kls-book-search-control", 0);
+		const filters = elementByClassAt(controls, "kls-book-filter-row", 0);
+
+		expect(elementsByTag(searchControl, "input")).toHaveLength(1);
+		expect(elementByClassAt(searchControl, "kls-book-search-button", 0).iconName).toBe("search");
+		expect(buttonTexts(filters)).toEqual(["All", "Needs Review", "Checked"]);
+	});
+
+	it("keeps search text and visible filtering when the search icon is clicked", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		const input = elementsByTag(modal.contentEl, "input")[0];
+
+		if (!input) {
+			throw new Error("Could not find book search input.");
+		}
+
+		await input.input("Deep");
+		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 160);
+		setScrollTop(modal.contentEl, 160);
+		await elementByClassAt(modal.contentEl, "kls-book-search-button", 0).click();
+
+		expect(input.value).toBe("Deep");
+		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
+		expect(scrollTop(modal.contentEl)).toBe(160);
+		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(160);
+	});
+
+	it("does not reset selected decisions when the search icon is clicked", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Import All").click();
+		await searchBooks(modal, "Deep");
+		await elementByClassAt(modal.contentEl, "kls-book-search-button", 0).click();
+		await searchBooks(modal, "");
+
+		expect(readText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"))).toContain("Status: Ready to Import");
+	});
+
+	it("does not change scroll position while searching", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 210);
+		setScrollTop(modal.contentEl, 210);
+		await searchBooks(modal, "Deep");
+
+		expect(scrollTop(modal.contentEl)).toBe(210);
+		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(210);
+	});
+
+	it("shows an empty state when no books match search", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup("Atomic Habits")]);
+
+		modal.onOpen();
+		await searchBooks(modal, "missing");
+
+		expect(readText(modal.contentEl)).toContain("No matching books.");
+		expect(elementsByClass(modal.contentEl, "kls-book-section")).toHaveLength(0);
+	});
+
+	it("filters All, Needs Review, and Checked books", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Import All").click();
+
+		await findByText(modal.contentEl, "Needs Review").click();
+		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
+
+		await findByText(modal.contentEl, "Checked").click();
+		expect(bookHeadings(modal)).toEqual(["1 of 2 — Atomic Habits"]);
+
+		await findByText(modal.contentEl, "All").click();
+		expect(bookHeadings(modal)).toEqual([
+			"1 of 2 — Atomic Habits",
+			"2 of 2 — Deep Work",
+		]);
+	});
+
+	it("preserves the original My Clippings book order instead of sorting alphabetically", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Zebra Notes"),
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		expect(bookHeadings(modal)).toEqual([
+			"1 of 3 — Zebra Notes",
+			"2 of 3 — Atomic Habits",
+			"3 of 3 — Deep Work",
+		]);
+
+		await findByText(findSectionByHeading(modal.contentEl, "2 of 3 — Atomic Habits"), "Import All").click();
+		expect(bookHeadings(modal)).toEqual([
+			"1 of 3 — Zebra Notes",
+			"2 of 3 — Atomic Habits",
+			"3 of 3 — Deep Work",
+		]);
+	});
+
+	it("preserves original relative order while search hides non-matching books", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Zebra Notes", "Morgan Field"),
+			createBookGroup("Atomic Habits", "James Clear"),
+			createBookGroup("Deep Work", "Morgan Newport"),
+		]);
+
+		modal.onOpen();
+		await searchBooks(modal, "morgan");
+
+		expect(bookHeadings(modal)).toEqual([
+			"1 of 3 — Zebra Notes",
+			"3 of 3 — Deep Work",
+		]);
+	});
+
+	it("combines search and status filter", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Import All").click();
+		await searchBooks(modal, "Deep");
+		await findByText(modal.contentEl, "Checked").click();
+
+		expect(readText(modal.contentEl)).toContain("No matching books.");
+
+		await findByText(modal.contentEl, "Needs Review").click();
+		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
+	});
+
+	it("does not reset selected decisions while filtering and searching", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Import All").click();
+		await searchBooks(modal, "Deep");
+		await searchBooks(modal, "");
+
+		expect(readText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"))).toContain("Status: Ready to Import");
+	});
+
+	it("keeps review progress global while search is active", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Import All").click();
+		await searchBooks(modal, "Deep");
+
+		const progress = findSectionByHeading(modal.contentEl, "Review Progress");
+		expect(readText(progress)).toContain("Checked: 1 of 2 books");
+		expect(readText(progress)).toContain("Still Need Review: 1 books");
+	});
+
+	it("renders Review Highlights in the book header row", () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		const header = elementByClassAt(modal.contentEl, "kls-book-header", 0);
+
+		expect(readText(header)).toContain("1 of 1 — Atomic Habits");
+		expect(buttonTexts(header)).toEqual(["Review Highlights"]);
+	});
+
+	it("renders each book as a shared card container", () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+
+		expect(elementsByClass(modal.contentEl, "kls-book-card")).toHaveLength(2);
+		expect(elementsByClass(modal.contentEl, "kls-book-section")).toHaveLength(2);
+	});
+
+	it("renders long book titles inside the card header structure", () => {
+		const longTitle = "A".repeat(140);
+		const modal = createModal(createPlugin(), [createBookGroup(longTitle)]);
+
+		modal.onOpen();
+		const card = elementByClassAt(modal.contentEl, "kls-book-card", 0);
+		const header = elementByClassAt(card, "kls-book-header", 0);
+		const title = elementByClassAt(header, "kls-book-title", 0);
+
+		expect(title.text()).toBe(`1 of 1 — ${longTitle}`);
+		expect(buttonTexts(header)).toEqual(["Review Highlights"]);
+		expect(buttonTexts(card)).toEqual([
+			"Review Highlights",
+			"Import All",
+			"Ignore All Highlights",
+			"Skip This Sync",
+		]);
+	});
+
+	it("keeps Review Highlights and per-book action buttons inside the same card", () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		const card = elementByClassAt(modal.contentEl, "kls-book-card", 0);
+		const header = elementByClassAt(card, "kls-book-header", 0);
+		const actions = elementByClassAt(card, "kls-book-actions", 0);
+
+		expect(buttonTexts(header)).toEqual(["Review Highlights"]);
+		expect(buttonTexts(actions)).toEqual(["Import All", "Ignore All Highlights", "Skip This Sync"]);
+		expect(buttonTexts(card)).toEqual([
+			"Review Highlights",
+			"Import All",
+			"Ignore All Highlights",
+			"Skip This Sync",
+		]);
+	});
+
+	it("renders incremental review copy without first-sync-only title text", () => {
+		const modal = createModal(createPlugin(), [createBookGroup()], { title: "Review New Highlights" });
+
+		modal.onOpen();
+
+		expect(elementsByTag(modal.contentEl, "h2").map((element) => element.text())).toContain("Review New Highlights");
+		expect(readText(modal.contentEl)).not.toContain("First Sync Preview");
+	});
+
+	it("splits the Kindle warning into two short paragraphs", () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+
+		expect(paragraphTexts(modal.contentEl)).toEqual(expect.arrayContaining([
+			"Kindle may keep deleted highlights in My Clippings.txt.",
+			"Review before importing to avoid bringing old deleted highlights into Obsidian.",
+		]));
+		expect(readText(modal.contentEl)).not.toContain(
+			"Kindle may keep deleted highlights in My Clippings.txt. Review before importing if you want to avoid bringing old deleted highlights into Obsidian."
+		);
 	});
 });
 
@@ -321,7 +737,7 @@ describe("FirstSyncPreviewModal sticky actions", () => {
 		const stickyActions = elementsByClass(modal.contentEl, "kls-sticky-actions");
 
 		expect(stickyActions).toHaveLength(1);
-		expect(buttonTexts(stickyActions[0])).toEqual(["Finish Sync", "Cancel"]);
+		expect(buttonTexts(stickyActions[0])).toEqual(["Finish Sync", "How choices work", "Cancel"]);
 	});
 
 	it("shows sticky Back To Book List and Cancel actions in per-book review", async () => {
@@ -332,7 +748,7 @@ describe("FirstSyncPreviewModal sticky actions", () => {
 		const stickyActions = elementsByClass(modal.contentEl, "kls-sticky-actions");
 
 		expect(stickyActions).toHaveLength(1);
-		expect(buttonTexts(stickyActions[0])).toEqual(["Back To Book List", "Cancel"]);
+		expect(buttonTexts(stickyActions[0])).toEqual(["Back To Book List", "How choices work", "Cancel"]);
 	});
 
 	it("Cancel closes the modal without completing first sync", async () => {
@@ -512,6 +928,7 @@ describe("FirstSyncPreviewModal review progress", () => {
 			"Books",
 			"Highlight Decisions",
 		]);
+		expect(elementsByClass(progress, "kls-review-progress-group")).toHaveLength(2);
 		expect(progressSummaryItems(progress)).toEqual([
 			"Checked: 0 of 2 books",
 			"Still Need Review: 2 books",
@@ -523,6 +940,31 @@ describe("FirstSyncPreviewModal review progress", () => {
 		expect(readText(progress)).not.toContain("Imported");
 	});
 
+	it("shows compact sticky global progress while the book list renders", () => {
+		const modal = createModal(createPlugin(), [createBookGroup("Atomic Habits"), createBookGroup("Deep Work")]);
+
+		modal.onOpen();
+
+		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
+		expect(readText(compactProgress)).toBe("Checked: 0/2 · Need Review: 2 · Ignore: 0 · Skip: 0");
+		expect(elementsByClass(modal.contentEl, "kls-book-list")).toHaveLength(1);
+	});
+
+	it("keeps compact progress global while search is active", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Import All").click();
+		await searchBooks(modal, "Deep");
+
+		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
+		expect(readText(compactProgress)).toBe("Checked: 1/2 · Need Review: 1 · Ignore: 0 · Skip: 0");
+		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
+	});
+
 	it("updates progress after Import All", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
@@ -530,9 +972,11 @@ describe("FirstSyncPreviewModal review progress", () => {
 		await findByText(modal.contentEl, "Import All").click();
 
 		const progress = findSectionByHeading(modal.contentEl, "Review Progress");
+		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
 		expect(readText(progress)).toContain("Checked: 1 of 1 books");
 		expect(readText(progress)).toContain("Still Need Review: 0 books");
 		expect(readText(progress)).not.toContain("Imported");
+		expect(readText(compactProgress)).toBe("Checked: 1/1 · Need Review: 0 · Ignore: 0 · Skip: 0");
 	});
 
 	it("updates progress after Ignore All Highlights", async () => {
@@ -685,6 +1129,19 @@ describe("FirstSyncPreviewModal per-book review scroll", () => {
 		]);
 		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"))).toHaveLength(0);
 	});
+
+	it("preserves scroll after selecting a per-highlight decision", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 180);
+		setScrollTop(modal.contentEl, 180);
+		await findByText(modal.contentEl, "Skip This Sync").click();
+
+		expect(scrollTop(modal.contentEl)).toBe(180);
+		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(180);
+	});
 });
 
 describe("FirstSyncPreviewModal book list navigation", () => {
@@ -779,16 +1236,22 @@ describe("FirstSyncPreviewModal book list navigation", () => {
 		]);
 
 		modal.onOpen();
+		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 275);
+		setScrollTop(modal.contentEl, 275);
 		await findByText(findSectionByHeading(modal.contentEl, "2 of 2 — Deep Work"), "Skip This Sync").click();
 
-		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "2 of 2 — Deep Work"))).toEqual([
-			{ block: "center" },
-		]);
+		expect(scrollTop(modal.contentEl)).toBe(275);
+		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(275);
+		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "2 of 2 — Deep Work"))).toHaveLength(0);
 	});
 });
 
-function createModal(plugin: ReturnType<typeof createPlugin>, bookGroups: KindleBookGroup[]) {
-	return new FirstSyncPreviewModal(new App() as never, plugin as never, bookGroups);
+function createModal(
+	plugin: ReturnType<typeof createPlugin>,
+	bookGroups: KindleBookGroup[],
+	options: ConstructorParameters<typeof FirstSyncPreviewModal>[3] = {}
+) {
+	return new FirstSyncPreviewModal(new App() as never, plugin as never, bookGroups, options);
 }
 
 function createPlugin() {
@@ -798,14 +1261,16 @@ function createPlugin() {
 	};
 }
 
-function createBookGroup(bookTitle = "Atomic Habits"): KindleBookGroup {
+function createBookGroup(bookTitle = "Atomic Habits", author = "James Clear"): KindleBookGroup {
 	const firstHighlight = createHighlight({
 		bookTitle,
+		author,
 		location: "154",
 		content: "Small habits make a big difference.",
 	});
 	const secondHighlight = createHighlight({
 		bookTitle,
+		author,
 		location: "160",
 		content: "Review this idea later.",
 		type: "Note",
@@ -813,7 +1278,7 @@ function createBookGroup(bookTitle = "Atomic Habits"): KindleBookGroup {
 
 	return {
 		bookTitle,
-		author: "James Clear",
+		author,
 		clippings: [firstHighlight, secondHighlight],
 	};
 }
@@ -836,9 +1301,13 @@ interface TestElement {
 	classes: Set<string>;
 	scrollTop: number;
 	scrollIntoViewCalls: unknown[];
+	value: string;
+	iconName: string;
+	focusCalls: number;
 	text: () => string;
 	findByText: (text: string) => TestElement | null;
 	click: () => Promise<void>;
+	input: (value: string) => Promise<void>;
 }
 
 function readText(element: unknown): string {
@@ -860,6 +1329,20 @@ function buttonTexts(element: unknown): string[] {
 	collectButtonTexts(element as TestElement, texts);
 
 	return texts;
+}
+
+async function searchBooks(modal: { contentEl: unknown }, query: string): Promise<void> {
+	const input = elementsByTag(modal.contentEl, "input")[0];
+
+	if (!input) {
+		throw new Error("Could not find book search input.");
+	}
+
+	await input.input(query);
+}
+
+function bookHeadings(modal: { contentEl: unknown }): string[] {
+	return elementsByClass(modal.contentEl, "kls-book-title").map((element) => element.text());
 }
 
 function buttonsByText(element: unknown, text: string): TestElement[] {
@@ -912,6 +1395,10 @@ function progressSummaryItems(element: unknown): string[] {
 	return elementsByTag(element, "li").map((child) => child.text());
 }
 
+function paragraphTexts(element: unknown): string[] {
+	return elementsByTag(element, "p").map((child) => child.text());
+}
+
 function elementsByClass(element: unknown, className: string): TestElement[] {
 	const matches: TestElement[] = [];
 	collectElementsByClass(element as TestElement, className, matches);
@@ -928,6 +1415,10 @@ function elementByClassAt(element: unknown, className: string, index: number): T
 	}
 
 	return match;
+}
+
+function directChildIndexByClass(element: unknown, className: string): number {
+	return (element as TestElement).children.findIndex((child) => child.classes.has(className));
 }
 
 function collectElementsByTag(element: TestElement, tagName: string, matches: TestElement[]): void {
@@ -975,7 +1466,10 @@ function findSectionByHeading(element: unknown, heading: string): TestElement {
 function findSectionByHeadingText(element: TestElement, heading: string): TestElement | null {
 	if (
 		element.tagName === "div" &&
-		element.children.some((child) => child.tagName === "h3" && child.text() === heading)
+		(
+			element.children.some((child) => child.tagName === "h3" && child.text() === heading) ||
+			(element.classes.has("kls-book-section") && hasHeadingDescendant(element, heading))
+		)
 	) {
 		return element;
 	}
@@ -989,4 +1483,12 @@ function findSectionByHeadingText(element: TestElement, heading: string): TestEl
 	}
 
 	return null;
+}
+
+function hasHeadingDescendant(element: TestElement, heading: string): boolean {
+	if (element.tagName === "h3" && element.text() === heading) {
+		return true;
+	}
+
+	return element.children.some((child) => hasHeadingDescendant(child, heading));
 }

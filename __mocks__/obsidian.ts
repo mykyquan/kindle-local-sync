@@ -1,4 +1,5 @@
 type ClickHandler = () => void | Promise<void>;
+type InputHandler = () => void | Promise<void>;
 
 export class MockElement {
 	tagName: string;
@@ -7,7 +8,14 @@ export class MockElement {
 	classes = new Set<string>();
 	scrollTop = 0;
 	scrollIntoViewCalls: unknown[] = [];
+	type = "";
+	placeholder = "";
+	value = "";
+	iconName = "";
+	focusCalls = 0;
+	attributes = new Map<string, string>();
 	private clickHandler: ClickHandler | null = null;
+	private inputHandler: InputHandler | null = null;
 
 	constructor(tagName = "div", text = "") {
 		this.tagName = tagName;
@@ -34,16 +42,39 @@ export class MockElement {
 		this.classes.add(className);
 	}
 
+	removeClass(className: string): void {
+		this.classes.delete(className);
+	}
+
 	setText(text: string): void {
 		this.textContent = text;
+	}
+
+	setAttribute(name: string, value: string): void {
+		this.attributes.set(name, value);
 	}
 
 	onClick(handler: ClickHandler): void {
 		this.clickHandler = handler;
 	}
 
+	addEventListener(eventName: string, handler: InputHandler): void {
+		if (eventName === "input") {
+			this.inputHandler = handler;
+		}
+	}
+
 	async click(): Promise<void> {
 		await this.clickHandler?.();
+	}
+
+	async input(value: string): Promise<void> {
+		this.value = value;
+		await this.inputHandler?.();
+	}
+
+	focus(): void {
+		this.focusCalls += 1;
 	}
 
 	scrollIntoView(options?: unknown): void {
@@ -134,6 +165,10 @@ export class ButtonComponent {
 		this.buttonEl.onClick(handler);
 		return this;
 	}
+}
+
+export function setIcon(element: MockElement, iconName: string): void {
+	element.iconName = iconName;
 }
 
 export class Plugin {

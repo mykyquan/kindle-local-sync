@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../__mocks__/obsidian";
+import { createClippingId } from "./render/renderMarkdown";
 
 const mocks = vi.hoisted(() => {
 	const highlight = {
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => {
 		readClippingsFile: vi.fn(),
 		parseClippings: vi.fn(),
 		firstSyncPreviewOpen: vi.fn(),
+		firstSyncPreviewOptions: [] as Array<{ title?: string } | undefined>,
 		writeBookNotesToVault: vi.fn(),
 		highlightExistsInNote: vi.fn(),
 	};
@@ -36,6 +38,10 @@ vi.mock("./parser/parseClippings", () => ({
 
 vi.mock("./FirstSyncPreviewModal", () => ({
 	FirstSyncPreviewModal: class {
+		constructor(_app: unknown, _plugin: unknown, _bookGroups: unknown, options?: { title?: string }) {
+			mocks.firstSyncPreviewOptions.push(options);
+		}
+
 		open(): void {
 			mocks.firstSyncPreviewOpen();
 		}
@@ -64,6 +70,7 @@ beforeEach(() => {
 	mocks.readClippingsFile.mockResolvedValue("raw clippings");
 	mocks.parseClippings.mockReturnValue([mocks.highlight]);
 	mocks.firstSyncPreviewOpen.mockClear();
+	mocks.firstSyncPreviewOptions.length = 0;
 	mocks.writeBookNotesToVault.mockResolvedValue({
 		books: 1,
 		filesCreated: 0,
@@ -97,19 +104,21 @@ describe("existing notes without data.json", () => {
 		});
 	});
 
-	it("Continue as existing vault initializes importedHighlights as an empty array", async () => {
+	it("Continue as existing vault records matched existing highlights as trusted imports", async () => {
 		const plugin = createPlugin(createVaultWithExistingNotes());
 		const saveCalls = captureSaveCalls(plugin);
 
 		await plugin.continueExistingNotesWithoutDataSync();
 
 		expect(saveCalls[0]).toMatchObject({
-			importedHighlights: [],
 			ignoredHighlights: [],
 		});
+		expect((saveCalls[0] as { importedHighlights: Array<{ id: string }> }).importedHighlights.map((highlight) => highlight.id)).toEqual([
+			createClippingId(mocks.highlight),
+		]);
 	});
 
-	it("Review As First Sync keeps hasCompletedFirstSync false and opens first sync preview", async () => {
+	it("Review everything keeps hasCompletedFirstSync false and opens full review", async () => {
 		const plugin = createPlugin(createVaultWithExistingNotes());
 		const saveCalls = captureSaveCalls(plugin);
 
@@ -119,6 +128,7 @@ describe("existing notes without data.json", () => {
 			hasCompletedFirstSync: false,
 		});
 		expect(mocks.firstSyncPreviewOpen).toHaveBeenCalledTimes(1);
+		expect(mocks.firstSyncPreviewOptions[0]?.title).toBe("Review Everything Before Syncing");
 	});
 
 	it("Cancel does not save settings or sync", async () => {
@@ -141,14 +151,14 @@ describe("existing notes without data.json", () => {
 });
 
 describe("ExistingNotesWithoutDataModal improved layout", () => {
-	it("uses Title Case button labels in Existing Notes Without Data modal", () => {
+	it("uses concise button labels in Existing Notes Without Data modal", () => {
 		const modal = createModal(createTransitionPlugin());
 
 		modal.onOpen();
 
 		expect(buttonTexts(modal.contentEl)).toEqual([
-			"Continue With Existing Notes",
-			"Review As First Sync",
+			"Continue with existing notes",
+			"Review everything",
 			"Cancel",
 		]);
 	});
@@ -158,7 +168,7 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 
 		modal.onOpen();
 
-		expect(readText(modal.contentEl)).toContain("Continue With Existing Notes");
+		expect(readText(modal.contentEl)).toContain("Continue with existing notes");
 		expect(readText(modal.contentEl)).toContain("Review everything before syncing");
 		expect(readText(modal.contentEl)).toContain("Cancel");
 	});
@@ -169,17 +179,31 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 		modal.onOpen();
 
 		expect(readText(modal.contentEl)).toContain(
-			"Choose this if these notes were already created by Kindle Local Sync."
+			"This vault already has Kindle highlight notes, but Kindle Local Sync has no saved data for this vault."
+		);
+		expect(readText(modal.contentEl)).toContain("Choose how to continue:");
+		expect(readText(modal.contentEl)).toContain(
+			"Use this if these notes were already created by Kindle Local Sync."
 		);
 		expect(readText(modal.contentEl)).toContain(
-			"We'll keep your existing notes and continue syncing from here."
+			"Existing notes stay as-is. New highlights will still require review before import."
 		);
 		expect(readText(modal.contentEl)).toContain(
-			"Choose this if you want to review books and highlights before importing again."
+			"Use this if you want to check all detected books and highlights first."
 		);
+		expect(readText(modal.contentEl)).toContain("Nothing new will be imported until you finish review.");
 		expect(readText(modal.contentEl)).toContain(
-			"Do nothing for now. No settings or notes will be changed."
+			"No settings or notes will be changed."
 		);
+	});
+
+	it("does not show old first-sync-only or confusing wording", () => {
+		const modal = createModal(createTransitionPlugin());
+
+		modal.onOpen();
+
+		expect(readText(modal.contentEl)).not.toContain("Review As First Sync");
+		expect(readText(modal.contentEl)).not.toContain("before importing again");
 	});
 
 	it("visually nests option descriptions under their titles", () => {
@@ -190,34 +214,34 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 		expect(elementsByClass(modal.contentEl, "kls-option-description")).toHaveLength(3);
 	});
 
-	it("shows the updated Continue With Existing Notes explanation", () => {
+	it("shows the updated Continue with existing notes explanation", () => {
 		const modal = createModal(createTransitionPlugin());
 
 		modal.onOpen();
 
 		expect(paragraphTexts(modal.contentEl)).toEqual(expect.arrayContaining([
-			"Choose this if these notes were already created by Kindle Local Sync.",
-			"We'll keep your existing notes and continue syncing from here.",
+			"Use this if these notes were already created by Kindle Local Sync.",
+			"Existing notes stay as-is. New highlights will still require review before import.",
 		]));
 	});
 
-	it("keeps Continue With Existing Notes behavior unchanged", async () => {
+	it("keeps Continue with existing notes behavior unchanged", async () => {
 		const plugin = createTransitionPlugin();
 		const modal = createModal(plugin);
 
 		modal.onOpen();
-		await findButtonByText(modal.contentEl, "Continue With Existing Notes").click();
+		await findButtonByText(modal.contentEl, "Continue with existing notes").click();
 
 		expect(plugin.continueExistingNotesWithoutDataSync).toHaveBeenCalledTimes(1);
 		expect(plugin.reviewExistingNotesWithoutDataAsFirstSync).not.toHaveBeenCalled();
 	});
 
-	it("keeps Review As First Sync behavior unchanged", async () => {
+	it("keeps Review everything behavior unchanged", async () => {
 		const plugin = createTransitionPlugin();
 		const modal = createModal(plugin);
 
 		modal.onOpen();
-		await findButtonByText(modal.contentEl, "Review As First Sync").click();
+		await findButtonByText(modal.contentEl, "Review everything").click();
 
 		expect(plugin.reviewExistingNotesWithoutDataAsFirstSync).toHaveBeenCalledTimes(1);
 		expect(plugin.continueExistingNotesWithoutDataSync).not.toHaveBeenCalled();

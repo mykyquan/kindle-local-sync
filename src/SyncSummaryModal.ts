@@ -1,4 +1,3 @@
-/* eslint-disable obsidianmd/ui/sentence-case */
 import { App, ButtonComponent, Modal } from "obsidian";
 import type KindleLocalSyncPlugin from "./main";
 import { KindleHighlight } from "./parser/parseClippings";
@@ -56,6 +55,9 @@ export class SyncSummaryModal extends Modal {
 		this.contentEl.createEl("p", {
 			text: `${this.suspiciousHighlights.length} possible reappeared highlights need review`,
 		});
+		this.contentEl.createEl("p", {
+			text: "Unreviewed or skipped highlights will appear again next time you sync.",
+		});
 
 		const actions = this.contentEl.createDiv();
 		actions.addClass("kls-button-row");
@@ -103,18 +105,21 @@ export class SyncSummaryModal extends Modal {
 		this.contentEl.empty();
 		this.contentEl.createEl("h2", { text: "Possible reappeared highlights" });
 
-		new ButtonComponent(this.contentEl)
-			.setButtonText("Back To Summary")
+		const backActions = this.contentEl.createDiv();
+		backActions.addClass("kls-button-row");
+		backActions.addClass("kls-summary-actions");
+		this.createActionButton(backActions, "Back To Summary")
 			.onClick(() => this.renderSummary());
 
 		for (const highlight of this.suspiciousHighlights) {
 			const row = this.contentEl.createDiv();
+			row.addClass("kls-highlight-row");
 			row.createEl("p", { text: createHighlightPreview(highlight) });
 
 			const actions = row.createDiv();
+			actions.addClass("kls-button-row");
 
-			new ButtonComponent(actions)
-				.setButtonText("Import Again")
+			this.createActionButton(actions, "Import Again")
 				.onClick(async () => {
 					const sameBookHighlights = this.automaticHighlights.filter((candidate) => isSameBook(candidate, highlight));
 					await this.plugin.importHighlights([...sameBookHighlights, highlight]);
@@ -123,8 +128,7 @@ export class SyncSummaryModal extends Modal {
 					this.renderSuspiciousItems();
 				});
 
-			new ButtonComponent(actions)
-				.setButtonText("Ignore Forever")
+			this.createActionButton(actions, "Ignore Forever")
 				.onClick(async () => {
 					await this.plugin.ignoreHighlights([highlight]);
 					this.removeSuspiciousHighlight(highlight);
@@ -132,8 +136,7 @@ export class SyncSummaryModal extends Modal {
 				})
 				.buttonEl.addClass("mod-warning");
 
-			new ButtonComponent(actions)
-				.setButtonText("Skip This Time")
+			this.createActionButton(actions, "Skip This Time")
 				.onClick(() => {
 					this.removeSuspiciousHighlight(highlight);
 					this.renderSuspiciousItems();
@@ -151,8 +154,10 @@ export class SyncSummaryModal extends Modal {
 
 	private renderIgnoredHighlights(): void {
 		this.contentEl.empty();
-		new ButtonComponent(this.contentEl)
-			.setButtonText("Back To Summary")
+		const backActions = this.contentEl.createDiv();
+		backActions.addClass("kls-button-row");
+		backActions.addClass("kls-summary-actions");
+		this.createActionButton(backActions, "Back To Summary")
 			.onClick(() => {
 				this.saveIgnoredHighlightsScrollPosition();
 				this.renderSummary();
@@ -175,8 +180,9 @@ export class SyncSummaryModal extends Modal {
 				row.createEl("p", { text: highlight.textPreview });
 				row.createEl("p", { text: `Ignored ${new Date(highlight.ignoredAt).toLocaleDateString()}` });
 
-				new ButtonComponent(row)
-					.setButtonText("Remove From Ignore List")
+				const actions = row.createDiv();
+				actions.addClass("kls-button-row");
+				this.createActionButton(actions, "Remove From Ignore List")
 					.onClick(async () => {
 						this.saveIgnoredHighlightsScrollPosition();
 						await this.plugin.unignoreHighlight(highlight.id);
@@ -196,8 +202,10 @@ export class SyncSummaryModal extends Modal {
 			text: "These highlights were skipped only for this sync. They may appear again next time unless ignored.",
 		});
 
-		new ButtonComponent(this.contentEl)
-			.setButtonText("Back To Summary")
+		const backActions = this.contentEl.createDiv();
+		backActions.addClass("kls-button-row");
+		backActions.addClass("kls-summary-actions");
+		this.createActionButton(backActions, "Back To Summary")
 			.onClick(() => {
 				this.saveSkippedBooksScrollPosition();
 				this.renderSummary();
@@ -214,19 +222,23 @@ export class SyncSummaryModal extends Modal {
 			const section = this.contentEl.createDiv();
 
 			this.skippedBookSectionEls.set(bookKey, section);
+			section.addClass("kls-book-section");
+			section.addClass("kls-book-card");
 			section.createEl("h3", { text: title });
 			section.createEl("p", { text: `${highlights.length} highlights skipped this sync` });
 
-			new ButtonComponent(section)
-				.setButtonText("Review Highlights")
+			const actions = section.createDiv();
+			actions.addClass("kls-button-row");
+			actions.addClass("kls-book-actions");
+
+			this.createActionButton(actions, "Review Highlights")
 				.onClick(() => {
 					this.saveSkippedBooksScrollPosition();
 					this.skippedBooksReturnAnchorKey = bookKey;
 					this.renderSkippedBookHighlights(title);
 				});
 
-			new ButtonComponent(section)
-				.setButtonText("Ignore All Highlights")
+			this.createActionButton(actions, "Ignore All Highlights")
 				.onClick(async () => {
 					this.saveSkippedBooksScrollPosition();
 					for (const highlight of highlights) {
@@ -246,8 +258,10 @@ export class SyncSummaryModal extends Modal {
 		this.contentEl.empty();
 		this.contentEl.createEl("h2", { text: bookTitle });
 
-		new ButtonComponent(this.contentEl)
-			.setButtonText("Back To Skipped Books")
+		const backActions = this.contentEl.createDiv();
+		backActions.addClass("kls-button-row");
+		backActions.addClass("kls-summary-actions");
+		this.createActionButton(backActions, "Back To Skipped Books")
 			.onClick(() => {
 				this.saveSkippedBookScrollPosition(bookTitle);
 				this.shouldRestoreSkippedBooksAnchor = true;
@@ -264,14 +278,16 @@ export class SyncSummaryModal extends Modal {
 
 		for (const highlight of highlights) {
 			const row = this.contentEl.createDiv();
+			row.addClass("kls-highlight-row");
 			row.createEl("p", { text: highlight.textPreview });
 
 			if (highlight.location) {
 				row.createEl("p", { text: `Location ${highlight.location}` });
 			}
 
-			new ButtonComponent(row)
-				.setButtonText("Ignore Going Forward")
+			const actions = row.createDiv();
+			actions.addClass("kls-button-row");
+			this.createActionButton(actions, "Ignore Going Forward")
 				.onClick(async () => {
 					this.saveSkippedBookScrollPosition(bookTitle);
 					await this.plugin.ignoreSummaryHighlight(highlight);
