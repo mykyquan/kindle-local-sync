@@ -47,6 +47,30 @@ If your plugin does not need CSS, delete this file.
 	padding-right: 0.25em;
 }
 
+.kls-review-warning-callout {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	margin-top: 0.75em;
+	padding: 0.55em 0.75em;
+	border-left: 3px solid var(--background-modifier-border-hover, var(--background-modifier-border));
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+	overflow-wrap: anywhere;
+}
+
+.kls-review-warning-callout p {
+	margin: 0;
+}
+
+.kls-review-warning-callout p + p {
+	margin-top: 0.25em;
+}
+
 .kls-section,
 .kls-book-section,
 .kls-highlight-row {
@@ -142,7 +166,7 @@ If your plugin does not need CSS, delete this file.
 	gap: 0.55em;
 	width: 100%;
 	min-width: 0;
-	margin-top: 0.75em;
+	margin-top: 0;
 }
 
 .kls-review-sticky-summary {
@@ -156,28 +180,54 @@ If your plugin does not need CSS, delete this file.
 	max-width: 100%;
 	min-width: 0;
 	margin-top: 0.75em;
-	padding: 0.5em 0 0.55em;
+	padding: 0.35em 0 0.6em;
 	background: var(--background-primary);
 	box-shadow: 0 0.45em 0.75em var(--background-primary);
 }
 
-.kls-review-sticky-summary .kls-book-list-controls {
-	margin-top: 0;
+.kls-review-controls-panel {
+	display: grid;
+	gap: 0.55em;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	padding: 0.65em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-primary);
 }
 
 .kls-compact-review-progress {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.35em 0.45em;
 	box-sizing: border-box;
 	max-width: 100%;
 	min-width: 0;
-	padding: 0.35em 0.55em;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--button-radius, var(--radius-s));
-	background: var(--background-secondary);
+	padding: 0.25em 0;
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
 	font-weight: 600;
 	line-height: 1.35;
 	overflow-wrap: anywhere;
+}
+
+.kls-progress-chip {
+	display: inline-flex;
+	align-items: center;
+	max-width: 100%;
+	min-width: 0;
+	padding: 0.2em 0.45em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: var(--background-secondary);
+	overflow-wrap: anywhere;
+}
+
+.kls-progress-separator {
+	color: var(--text-faint);
 }
 
 .kls-book-search-control {
@@ -193,31 +243,6 @@ If your plugin does not need CSS, delete this file.
 	width: 100%;
 	max-width: 100%;
 	min-width: 0;
-	padding-right: 2.5em;
-}
-
-.kls-book-search-button {
-	position: absolute;
-	top: 50%;
-	right: 0.25em;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 2em;
-	height: 2em;
-	min-height: 0;
-	padding: 0;
-	border: 0;
-	border-radius: var(--button-radius, var(--radius-s));
-	background: transparent;
-	color: var(--text-muted);
-	transform: translateY(-50%);
-}
-
-.kls-book-search-button:hover,
-.kls-book-search-button:focus-visible {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
 }
 
 .kls-book-filter-row {
@@ -228,13 +253,32 @@ If your plugin does not need CSS, delete this file.
 	font-weight: 700;
 }
 
+.kls-choice-help-actions {
+	justify-content: flex-start;
+}
+
+.kls-help-button {
+	min-height: 2em;
+	padding: 0.35em 0.65em;
+	background: transparent;
+	color: var(--text-muted);
+	font-weight: 500;
+}
+
+.kls-help-button:hover,
+.kls-help-button:focus-visible {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
 .kls-book-header {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: flex-start;
 	justify-content: space-between;
-	gap: 0.75em;
+	gap: 0.65em 0.85em;
 	min-width: 0;
+	margin-bottom: 0.55em;
 }
 
 .kls-book-title {
@@ -251,7 +295,7 @@ If your plugin does not need CSS, delete this file.
 .kls-book-review-summary {
 	min-width: 0;
 	max-width: 100%;
-	margin-top: 0.45em;
+	margin-top: 0.5em;
 	margin-bottom: 0;
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
@@ -259,8 +303,13 @@ If your plugin does not need CSS, delete this file.
 	overflow-wrap: anywhere;
 }
 
+.kls-book-header + .kls-book-meta,
+.kls-book-header + .kls-book-review-summary {
+	margin-top: 0;
+}
+
 .kls-book-actions {
-	margin: 0.8em 0 0;
+	margin: 0.9em 0 0;
 }
 
 .kls-choice-help-details {
@@ -278,20 +327,17 @@ If your plugin does not need CSS, delete this file.
 }
 
 .kls-choice-help-panel {
-	flex: 0 0 auto;
 	box-sizing: border-box;
 	width: 100%;
 	max-width: 100%;
 	min-width: 0;
-	max-height: 32vh;
 	overflow-x: hidden;
-	overflow-y: auto;
-	margin-top: 0.6em;
+	overflow-y: visible;
+	margin-top: 0;
 	padding: 0.65em 0.75em;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--button-radius, var(--radius-s));
 	background: var(--background-secondary);
-	box-shadow: 0 -0.25em 0.75em var(--background-primary);
 }
 
 .kls-choice-help-panel-closed {
@@ -299,12 +345,77 @@ If your plugin does not need CSS, delete this file.
 }
 
 .kls-choice-help-panel h3 {
-	margin: 0 0 0.35em;
+	margin: 0.65em 0 0.35em;
 	font-size: var(--font-ui-small);
+}
+
+.kls-choice-help-panel h3:first-child {
+	margin-top: 0;
 }
 
 .kls-choice-help-panel .kls-choice-help {
 	margin-bottom: 0;
+}
+
+.kls-ignored-highlight-list {
+	display: grid;
+	gap: 0.75em;
+	min-width: 0;
+	margin-top: 0.75em;
+}
+
+.kls-ignored-detail-card {
+	overflow-x: hidden;
+}
+
+.kls-ignored-detail-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 0.55em 0.85em;
+	min-width: 0;
+	margin-bottom: 0.85em;
+}
+
+.kls-ignored-detail-title {
+	flex: 1 1 14em;
+	min-width: 0;
+	max-width: 100%;
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.kls-ignored-detail-actions {
+	justify-content: flex-end;
+	flex: 0 1 auto;
+	margin-top: 0;
+}
+
+.kls-ignored-detail-card > .kls-book-title {
+	margin-bottom: 0.55em;
+}
+
+.kls-ignored-highlight-item {
+	min-width: 0;
+	max-width: 100%;
+	padding-top: 0.75em;
+	border-top: 1px solid var(--background-modifier-border);
+	overflow-wrap: anywhere;
+}
+
+.kls-ignored-highlight-item:first-child {
+	padding-top: 0;
+	border-top: 0;
+}
+
+.kls-ignored-highlight-text {
+	min-width: 0;
+	max-width: 100%;
+	margin: 0.35em 0 0;
+	line-height: 1.45;
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
 }
 
 .kls-empty-state {

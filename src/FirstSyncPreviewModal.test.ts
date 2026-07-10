@@ -112,9 +112,9 @@ describe("FirstSyncPreviewModal wording and layout", () => {
 		const modal = createModal(createPlugin(), [createBookGroup(), createBookGroup("Deep Work")]);
 
 		modal.onOpen();
-		await findByText(elementsByClass(modal.contentEl, "kls-sticky-actions")[0], "How choices work").click();
+		await findByText(modal.contentEl, "How choices work").click();
 
-		expect(countText(readText(modal.contentEl), "Skip this sync: Skip only this run. They may appear again next time.")).toBe(1);
+		expect(countText(readText(modal.contentEl), "Skip This Sync: skip this run only. Skipped highlights may return next sync.")).toBe(1);
 		expect(readText(modal.contentEl)).not.toContain(
 			"Skipped highlights are only skipped for this sync. They may appear again next time unless ignored."
 		);
@@ -142,27 +142,27 @@ describe("FirstSyncPreviewModal wording and layout", () => {
 });
 
 describe("FirstSyncPreviewModal UI polish", () => {
-	it("opens How choices work from a footer button with a bullet list", async () => {
+	it("opens How choices work near the top controls with count and action help", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 
-		const stickyActions = elementByClassAt(modal.contentEl, "kls-sticky-actions", 0);
-		expect(buttonTexts(stickyActions)).toContain("How choices work");
+		const helpActions = elementByClassAt(modal.contentEl, "kls-choice-help-actions", 0);
+		expect(buttonTexts(helpActions)).toEqual(["How choices work"]);
 		expect(elementsByClass(modal.contentEl, "kls-choice-help")).toHaveLength(0);
 
-		await findByText(stickyActions, "How choices work").click();
+		await findByText(helpActions, "How choices work").click();
 
-		const choicesList = elementByClassAt(modal.contentEl, "kls-choice-help", 0);
-		const items = choicesList.children
-			.filter((element) => element.tagName === "li")
-			.map((element) => element.text());
+		const items = elementsByTag(modal.contentEl, "li").map((element) => element.text());
 
 		expect(items).toEqual([
-			"Review highlights: Choose item by item.",
-			"Import all: Import all current highlights from this book.",
-			"Ignore all highlights: Ignore current highlights from this book in future syncs and remove existing generated blocks when safe.",
-			"Skip this sync: Skip only this run. They may appear again next time.",
+			"Checked / Need Review = books.",
+			"Ignore / Skip = individual highlights.",
+			"Review Highlights: choose item by item for one book.",
+			"Import All: import this book's current highlights.",
+			"Ignore All Highlights: ignore this book's current highlights in future syncs.",
+			"Skip This Sync: skip this run only. Skipped highlights may return next sync.",
+			"Unreviewed highlights are skipped for this sync and may return next time.",
 		]);
 	});
 
@@ -171,10 +171,10 @@ describe("FirstSyncPreviewModal UI polish", () => {
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Import All").click();
-		await findByText(elementsByClass(modal.contentEl, "kls-sticky-actions")[0], "How choices work").click();
+		await findByText(modal.contentEl, "How choices work").click();
 
 		expect(readText(findSectionByHeading(modal.contentEl, "1 of 1 — Atomic Habits"))).toContain("Status: Ready to Import");
-		expect(readText(modal.contentEl)).toContain("Review highlights: Choose item by item.");
+		expect(readText(modal.contentEl)).toContain("Review Highlights: choose item by item for one book.");
 	});
 
 	it("opens help without resetting search text", async () => {
@@ -185,7 +185,7 @@ describe("FirstSyncPreviewModal UI polish", () => {
 
 		modal.onOpen();
 		await searchBooks(modal, "Deep");
-		await findByText(elementsByClass(modal.contentEl, "kls-sticky-actions")[0], "How choices work").click();
+		await findByText(modal.contentEl, "How choices work").click();
 
 		expect(elementsByTag(modal.contentEl, "input")[0]?.value).toBe("Deep");
 		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
@@ -200,50 +200,77 @@ describe("FirstSyncPreviewModal UI polish", () => {
 		modal.onOpen();
 		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 180);
 		setScrollTop(modal.contentEl, 180);
-		await findByText(elementsByClass(modal.contentEl, "kls-sticky-actions")[0], "How choices work").click();
+		await findByText(modal.contentEl, "How choices work").click();
 
 		expect(scrollTop(modal.contentEl)).toBe(180);
 		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(180);
 	});
 
-	it("explains Import All, Ignore All Highlights, and Skip This Sync clearly", async () => {
+	it("explains count meanings, actions, and Finish Sync clearly", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
-		await findByText(elementsByClass(modal.contentEl, "kls-sticky-actions")[0], "How choices work").click();
+		await findByText(modal.contentEl, "How choices work").click();
 
 		const items = elementsByTag(modal.contentEl, "li").map((element) => element.text());
-		expect(items.some((text) => text.startsWith("Review highlights:"))).toBe(true);
-		expect(items.some((text) => text.startsWith("Import all:"))).toBe(true);
-		expect(items.some((text) => text.startsWith("Ignore all highlights:"))).toBe(true);
-		expect(items.some((text) => text.startsWith("Skip this sync:"))).toBe(true);
+		expect(readText(modal.contentEl)).toContain("Counts");
+		expect(readText(modal.contentEl)).toContain("Actions");
+		expect(readText(modal.contentEl)).toContain("Finish Sync");
+		expect(items).toContain("Checked / Need Review = books.");
+		expect(items).toContain("Ignore / Skip = individual highlights.");
+		expect(items.some((text) => text.startsWith("Review Highlights:"))).toBe(true);
+		expect(items.some((text) => text.startsWith("Import All:"))).toBe(true);
+		expect(items.some((text) => text.startsWith("Ignore All Highlights:"))).toBe(true);
+		expect(items.some((text) => text.startsWith("Skip This Sync:"))).toBe(true);
+		expect(items).toContain(
+			"Unreviewed highlights are skipped for this sync and may return next time."
+		);
 		expect(readText(modal.contentEl)).not.toContain("unselected highlights");
 	});
 
-	it("puts sticky search, filters, compact progress, full progress, and book cards in order", () => {
+	it("puts sticky search, filters, help, compact progress, and book cards in order", () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 		const body = elementByClassAt(modal.contentEl, "kls-modal-scroll-body", 0);
 		const stickyIndex = directChildIndexByClass(body, "kls-review-sticky-summary");
-		const progressIndex = directChildIndexByClass(body, "kls-review-progress");
 		const bookListIndex = directChildIndexByClass(body, "kls-book-list");
+		const stickySummary = elementByClassAt(body, "kls-review-sticky-summary", 0);
+		const controlsPanel = elementByClassAt(stickySummary, "kls-review-controls-panel", 0);
+		const controlsIndex = directChildIndexByClass(controlsPanel, "kls-book-list-controls");
+		const helpIndex = directChildIndexByClass(controlsPanel, "kls-choice-help-actions");
+		const compactProgressIndex = directChildIndexByClass(controlsPanel, "kls-compact-review-progress");
 
 		expect(stickyIndex).toBeGreaterThan(-1);
+		expect(elementsByClass(body, "kls-review-controls-panel")).toHaveLength(1);
 		expect(elementsByClass(body, "kls-book-list-controls")).toHaveLength(1);
+		expect(elementsByClass(body, "kls-choice-help-actions")).toHaveLength(1);
 		expect(elementsByClass(body, "kls-compact-review-progress")).toHaveLength(1);
-		expect(progressIndex).toBeGreaterThan(stickyIndex);
-		expect(bookListIndex).toBeGreaterThan(progressIndex);
+		expect(elementsByClass(body, "kls-review-progress")).toHaveLength(0);
+		expect(controlsIndex).toBeLessThan(helpIndex);
+		expect(helpIndex).toBeLessThan(compactProgressIndex);
+		expect(bookListIndex).toBeGreaterThan(stickyIndex);
 		expect(elementsByClass(body, "kls-choice-help-details")).toHaveLength(0);
+	});
+
+	it("styles How choices work as a subtle help control", () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		const helpButton = findByText(elementByClassAt(modal.contentEl, "kls-choice-help-actions", 0), "How choices work");
+
+		expect(helpButton.classes.has("kls-action-button")).toBe(true);
+		expect(helpButton.classes.has("kls-help-button")).toBe(true);
+		expect(helpButton.classes.has("mod-cta")).toBe(false);
 	});
 
 	it("shows the top-level help content only once", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup(), createBookGroup("Deep Work")]);
 
 		modal.onOpen();
-		await findByText(elementsByClass(modal.contentEl, "kls-sticky-actions")[0], "How choices work").click();
+		await findByText(modal.contentEl, "How choices work").click();
 
-		expect(countText(readText(modal.contentEl), "Skip this sync: Skip only this run. They may appear again next time.")).toBe(1);
+		expect(countText(readText(modal.contentEl), "Skip This Sync: skip this run only. Skipped highlights may return next sync.")).toBe(1);
 	});
 
 	it("does not repeat the skip explanation inside per-book review", async () => {
@@ -253,7 +280,7 @@ describe("FirstSyncPreviewModal UI polish", () => {
 		await findByText(modal.contentEl, "Review Highlights").click();
 
 		expect(readText(modal.contentEl)).not.toContain("Skipped highlights are only skipped for this sync.");
-		expect(buttonTexts(elementsByClass(modal.contentEl, "kls-sticky-actions")[0])).toContain("How choices work");
+		expect(buttonTexts(elementByClassAt(modal.contentEl, "kls-choice-help-actions", 0))).toContain("How choices work");
 	});
 
 	it("orders per-highlight buttons as Import, Skip This Sync, Ignore", async () => {
@@ -352,26 +379,19 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
 	});
 
-	it("renders a usable search icon button beside the book search input", async () => {
+	it("renders the search input without a search icon button", () => {
 		const modal = createModal(createPlugin(), [
 			createBookGroup("Atomic Habits"),
 			createBookGroup("Deep Work"),
 		]);
 
 		modal.onOpen();
-		const input = elementsByTag(modal.contentEl, "input")[0];
-		const searchButton = elementByClassAt(modal.contentEl, "kls-book-search-button", 0);
+		const inputs = elementsByTag(modal.contentEl, "input");
 
-		if (!input) {
-			throw new Error("Could not find book search input.");
-		}
-
-		expect(searchButton.tagName).toBe("button");
-		expect(searchButton.iconName).toBe("search");
-
-		await searchButton.click();
-
-		expect(input.focusCalls).toBe(1);
+		expect(inputs).toHaveLength(1);
+		expect(inputs[0]?.type).toBe("search");
+		expect(inputs[0]?.placeholder).toBe("Search books...");
+		expect(elementsByClass(modal.contentEl, "kls-book-search-button")).toHaveLength(0);
 	});
 
 	it("renders search and filter controls inside the book list controls", () => {
@@ -386,11 +406,11 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		const filters = elementByClassAt(controls, "kls-book-filter-row", 0);
 
 		expect(elementsByTag(searchControl, "input")).toHaveLength(1);
-		expect(elementByClassAt(searchControl, "kls-book-search-button", 0).iconName).toBe("search");
+		expect(elementsByClass(searchControl, "kls-book-search-button")).toHaveLength(0);
 		expect(buttonTexts(filters)).toEqual(["All", "Needs Review", "Checked"]);
 	});
 
-	it("keeps search text and visible filtering when the search icon is clicked", async () => {
+	it("keeps search text and visible filtering while typing", async () => {
 		const modal = createModal(createPlugin(), [
 			createBookGroup("Atomic Habits"),
 			createBookGroup("Deep Work"),
@@ -406,7 +426,6 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		await input.input("Deep");
 		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 160);
 		setScrollTop(modal.contentEl, 160);
-		await elementByClassAt(modal.contentEl, "kls-book-search-button", 0).click();
 
 		expect(input.value).toBe("Deep");
 		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
@@ -414,7 +433,7 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(160);
 	});
 
-	it("does not reset selected decisions when the search icon is clicked", async () => {
+	it("does not reset selected decisions when search text changes", async () => {
 		const modal = createModal(createPlugin(), [
 			createBookGroup("Atomic Habits"),
 			createBookGroup("Deep Work"),
@@ -423,7 +442,6 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		modal.onOpen();
 		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Import All").click();
 		await searchBooks(modal, "Deep");
-		await elementByClassAt(modal.contentEl, "kls-book-search-button", 0).click();
 		await searchBooks(modal, "");
 
 		expect(readText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"))).toContain("Status: Ready to Import");
@@ -555,9 +573,10 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Import All").click();
 		await searchBooks(modal, "Deep");
 
-		const progress = findSectionByHeading(modal.contentEl, "Review Progress");
-		expect(readText(progress)).toContain("Checked: 1 of 2 books");
-		expect(readText(progress)).toContain("Still Need Review: 1 books");
+		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
+		expect(readText(compactProgress)).toBe(
+			"Checked: 1/2 books · Need Review: 1 books · Ignore: 0 highlights · Skip: 0 highlights"
+		);
 	});
 
 	it("renders Review Highlights in the book header row", () => {
@@ -628,15 +647,16 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		expect(readText(modal.contentEl)).not.toContain("First Sync Preview");
 	});
 
-	it("splits the Kindle warning into two short paragraphs", () => {
+	it("renders the Kindle warning as a compact callout", () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
+		const callout = elementByClassAt(modal.contentEl, "kls-review-warning-callout", 0);
 
-		expect(paragraphTexts(modal.contentEl)).toEqual(expect.arrayContaining([
+		expect(paragraphTexts(callout)).toEqual([
 			"Kindle may keep deleted highlights in My Clippings.txt.",
 			"Review before importing to avoid bringing old deleted highlights into Obsidian.",
-		]));
+		]);
 		expect(readText(modal.contentEl)).not.toContain(
 			"Kindle may keep deleted highlights in My Clippings.txt. Review before importing if you want to avoid bringing old deleted highlights into Obsidian."
 		);
@@ -737,7 +757,7 @@ describe("FirstSyncPreviewModal sticky actions", () => {
 		const stickyActions = elementsByClass(modal.contentEl, "kls-sticky-actions");
 
 		expect(stickyActions).toHaveLength(1);
-		expect(buttonTexts(stickyActions[0])).toEqual(["Finish Sync", "How choices work", "Cancel"]);
+		expect(buttonTexts(stickyActions[0])).toEqual(["Finish Sync", "Cancel"]);
 	});
 
 	it("shows sticky Back To Book List and Cancel actions in per-book review", async () => {
@@ -748,7 +768,7 @@ describe("FirstSyncPreviewModal sticky actions", () => {
 		const stickyActions = elementsByClass(modal.contentEl, "kls-sticky-actions");
 
 		expect(stickyActions).toHaveLength(1);
-		expect(buttonTexts(stickyActions[0])).toEqual(["Back To Book List", "How choices work", "Cancel"]);
+		expect(buttonTexts(stickyActions[0])).toEqual(["Back To Book List", "Cancel"]);
 	});
 
 	it("Cancel closes the modal without completing first sync", async () => {
@@ -917,27 +937,14 @@ describe("FirstSyncPreviewModal book status", () => {
 });
 
 describe("FirstSyncPreviewModal review progress", () => {
-	it("shows review progress summary in the book list", () => {
+	it("removes the full review progress section from the book list", () => {
 		const modal = createModal(createPlugin(), [createBookGroup("Atomic Habits"), createBookGroup("Deep Work")]);
 
 		modal.onOpen();
-		const progress = findSectionByHeading(modal.contentEl, "Review Progress");
 
-		expect(readText(progress)).toContain("Review Progress");
-		expect(elementsByTag(progress, "h4").map((element) => element.text())).toEqual([
-			"Books",
-			"Highlight Decisions",
-		]);
-		expect(elementsByClass(progress, "kls-review-progress-group")).toHaveLength(2);
-		expect(progressSummaryItems(progress)).toEqual([
-			"Checked: 0 of 2 books",
-			"Still Need Review: 2 books",
-			"Marked to Ignore: 0 highlights",
-			"Skipped This Sync: 0 highlights",
-		]);
-		expect(readText(progress)).not.toContain("To Import");
-		expect(readText(progress)).not.toContain("Partially Reviewed");
-		expect(readText(progress)).not.toContain("Imported");
+		expect(readText(modal.contentEl)).not.toContain("Review Progress");
+		expect(elementsByClass(modal.contentEl, "kls-review-progress")).toHaveLength(0);
+		expect(elementsByClass(modal.contentEl, "kls-review-progress-group")).toHaveLength(0);
 	});
 
 	it("shows compact sticky global progress while the book list renders", () => {
@@ -946,7 +953,15 @@ describe("FirstSyncPreviewModal review progress", () => {
 		modal.onOpen();
 
 		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
-		expect(readText(compactProgress)).toBe("Checked: 0/2 · Need Review: 2 · Ignore: 0 · Skip: 0");
+		expect(readText(compactProgress)).toBe(
+			"Checked: 0/2 books · Need Review: 2 books · Ignore: 0 highlights · Skip: 0 highlights"
+		);
+		expect(elementsByClass(compactProgress, "kls-progress-chip").map((chip) => chip.text())).toEqual([
+			"Checked: 0/2 books",
+			"Need Review: 2 books",
+			"Ignore: 0 highlights",
+			"Skip: 0 highlights",
+		]);
 		expect(elementsByClass(modal.contentEl, "kls-book-list")).toHaveLength(1);
 	});
 
@@ -961,7 +976,9 @@ describe("FirstSyncPreviewModal review progress", () => {
 		await searchBooks(modal, "Deep");
 
 		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
-		expect(readText(compactProgress)).toBe("Checked: 1/2 · Need Review: 1 · Ignore: 0 · Skip: 0");
+		expect(readText(compactProgress)).toBe(
+			"Checked: 1/2 books · Need Review: 1 books · Ignore: 0 highlights · Skip: 0 highlights"
+		);
 		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
 	});
 
@@ -971,12 +988,11 @@ describe("FirstSyncPreviewModal review progress", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Import All").click();
 
-		const progress = findSectionByHeading(modal.contentEl, "Review Progress");
 		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
-		expect(readText(progress)).toContain("Checked: 1 of 1 books");
-		expect(readText(progress)).toContain("Still Need Review: 0 books");
-		expect(readText(progress)).not.toContain("Imported");
-		expect(readText(compactProgress)).toBe("Checked: 1/1 · Need Review: 0 · Ignore: 0 · Skip: 0");
+		expect(readText(compactProgress)).toBe(
+			"Checked: 1/1 books · Need Review: 0 books · Ignore: 0 highlights · Skip: 0 highlights"
+		);
+		expect(readText(modal.contentEl)).not.toContain("Imported");
 	});
 
 	it("updates progress after Ignore All Highlights", async () => {
@@ -985,9 +1001,10 @@ describe("FirstSyncPreviewModal review progress", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Ignore All Highlights").click();
 
-		const progress = findSectionByHeading(modal.contentEl, "Review Progress");
-		expect(readText(progress)).toContain("Checked: 1 of 1 books");
-		expect(readText(progress)).toContain("Marked to Ignore: 2 highlights");
+		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
+		expect(readText(compactProgress)).toBe(
+			"Checked: 1/1 books · Need Review: 0 books · Ignore: 2 highlights · Skip: 0 highlights"
+		);
 	});
 
 	it("updates progress after Skip This Sync", async () => {
@@ -996,9 +1013,10 @@ describe("FirstSyncPreviewModal review progress", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Skip This Sync").click();
 
-		const progress = findSectionByHeading(modal.contentEl, "Review Progress");
-		expect(readText(progress)).toContain("Checked: 1 of 1 books");
-		expect(readText(progress)).toContain("Skipped This Sync: 2 highlights");
+		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
+		expect(readText(compactProgress)).toBe(
+			"Checked: 1/1 books · Need Review: 0 books · Ignore: 0 highlights · Skip: 2 highlights"
+		);
 	});
 
 	it("updates progress after item-by-item review", async () => {
@@ -1009,9 +1027,10 @@ describe("FirstSyncPreviewModal review progress", () => {
 		await findByText(modal.contentEl, "Import").click();
 		await findByText(modal.contentEl, "Back To Book List").click();
 
-		const progress = findSectionByHeading(modal.contentEl, "Review Progress");
-		expect(readText(progress)).toContain("Checked: 0 of 1 books");
-		expect(readText(progress)).toContain("Still Need Review: 1 books");
+		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
+		expect(readText(compactProgress)).toBe(
+			"Checked: 0/1 books · Need Review: 1 books · Ignore: 0 highlights · Skip: 0 highlights"
+		);
 	});
 
 	it("counts partially reviewed books as not reviewed", async () => {
@@ -1022,10 +1041,32 @@ describe("FirstSyncPreviewModal review progress", () => {
 		await findByText(modal.contentEl, "Import").click();
 		await findByText(modal.contentEl, "Back To Book List").click();
 
-		const progress = findSectionByHeading(modal.contentEl, "Review Progress");
-		expect(readText(progress)).toContain("Checked: 0 of 2 books");
-		expect(readText(progress)).toContain("Still Need Review: 2 books");
-		expect(readText(progress)).not.toContain("Partially Reviewed");
+		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
+		expect(readText(compactProgress)).toBe(
+			"Checked: 0/2 books · Need Review: 2 books · Ignore: 0 highlights · Skip: 0 highlights"
+		);
+		expect(readText(modal.contentEl)).not.toContain("Partially Reviewed");
+	});
+
+	it("uses singular copy for one-highlight review summaries and progress", async () => {
+		const modal = createModal(createPlugin(), [createSingleHighlightBookGroup()]);
+
+		modal.onOpen();
+
+		expect(readText(elementByClassAt(modal.contentEl, "kls-book-review-summary", 0))).toContain(
+			"1 highlight needs review"
+		);
+
+		await findByText(modal.contentEl, "Skip This Sync").click();
+
+		expect(readText(elementByClassAt(modal.contentEl, "kls-book-review-summary", 0))).toContain(
+			"1 skipped this sync"
+		);
+		expect(readText(elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0))).toContain(
+			"Skip: 1 highlight"
+		);
+		expect(readText(modal.contentEl)).not.toContain("1 highlight need review");
+		expect(readText(modal.contentEl)).not.toContain("1 highlights");
 	});
 });
 
@@ -1064,7 +1105,8 @@ describe("FirstSyncPreviewModal finish confirmation", () => {
 		await findByText(modal.contentEl, "Go Back").click();
 
 		expect(readText(modal.contentEl)).toContain("First Sync Preview");
-		expect(readText(modal.contentEl)).toContain("Review Progress");
+		expect(elementsByClass(modal.contentEl, "kls-compact-review-progress")).toHaveLength(1);
+		expect(readText(modal.contentEl)).not.toContain("Review Progress");
 		expect(plugin.completeFirstSync).not.toHaveBeenCalled();
 	});
 
@@ -1283,6 +1325,21 @@ function createBookGroup(bookTitle = "Atomic Habits", author = "James Clear"): K
 	};
 }
 
+function createSingleHighlightBookGroup(bookTitle = "Atomic Habits", author = "James Clear"): KindleBookGroup {
+	return {
+		bookTitle,
+		author,
+		clippings: [
+			createHighlight({
+				bookTitle,
+				author,
+				location: "154",
+				content: "Small habits make a big difference.",
+			}),
+		],
+	};
+}
+
 function createHighlight(overrides: Partial<KindleHighlight> = {}): KindleHighlight {
 	return {
 		bookTitle: "Atomic Habits",
@@ -1301,6 +1358,8 @@ interface TestElement {
 	classes: Set<string>;
 	scrollTop: number;
 	scrollIntoViewCalls: unknown[];
+	type: string;
+	placeholder: string;
 	value: string;
 	iconName: string;
 	focusCalls: number;
@@ -1389,10 +1448,6 @@ function elementsByTag(element: unknown, tagName: string): TestElement[] {
 	collectElementsByTag(element as TestElement, tagName, matches);
 
 	return matches;
-}
-
-function progressSummaryItems(element: unknown): string[] {
-	return elementsByTag(element, "li").map((child) => child.text());
 }
 
 function paragraphTexts(element: unknown): string[] {

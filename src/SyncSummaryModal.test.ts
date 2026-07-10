@@ -72,21 +72,22 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 
 		await findByText(modal.contentEl, "View Ignored Highlights").click();
 		expect(buttonTexts(modal.contentEl)).toEqual(expect.arrayContaining([
-			"Back To Summary",
-			"Remove From Ignore List",
+			"Back to Summary",
+			"Review Highlights",
+			"Remove All From Ignore List",
 		]));
 
-		await findByText(modal.contentEl, "Back To Summary").click();
+		await findByText(modal.contentEl, "Back to Summary").click();
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
 		expect(buttonTexts(modal.contentEl)).toEqual(expect.arrayContaining([
-			"Back To Summary",
+			"Back to Summary",
 			"Review Highlights",
 			"Ignore All Highlights",
 		]));
 
 		await findByText(modal.contentEl, "Review Highlights").click();
 		expect(buttonTexts(modal.contentEl)).toEqual(expect.arrayContaining([
-			"Back To Skipped Books",
+			"Back to Skipped Books",
 			"Ignore Going Forward",
 		]));
 	});
@@ -103,10 +104,14 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 		expect(readText(modal.contentEl)).toContain("View Ignored Highlights");
 	});
 
-	it("renders ignored highlights view when clicked", async () => {
+	it("renders ignored highlights grouped by book when clicked", async () => {
 		const modal = createModal({
 			plugin: createPlugin({
-				ignoredHighlights: [createIgnoredHighlight()],
+				ignoredHighlights: [
+					createIgnoredHighlight(),
+					createIgnoredHighlight({ id: "kls-ignored-two", textPreview: "Second ignored highlight." }),
+					createIgnoredHighlight({ id: "kls-ignored-three", title: "Deep Work", textPreview: "Deep focus matters." }),
+				],
 			}),
 			classification: createClassification({
 				ignoredHighlights: [createHighlight()],
@@ -116,11 +121,17 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "View Ignored Highlights").click();
 
-		expect(readText(modal.contentEl)).toContain("Ignored highlights");
-		expect(readText(modal.contentEl)).toContain("Small habits make a big difference.");
+		expect(readText(modal.contentEl)).toContain("Ignored Highlights");
+		expect(readText(modal.contentEl)).toContain("Atomic Habits");
+		expect(readText(modal.contentEl)).toContain("2 ignored highlights");
+		expect(readText(modal.contentEl)).toContain("Deep Work");
+		expect(readText(modal.contentEl)).toContain("1 ignored highlight");
+		expect(readText(modal.contentEl)).not.toContain("Small habits make a big difference.");
+		expect(readText(modal.contentEl)).not.toContain("Second ignored highlight.");
+		expect(readText(modal.contentEl)).not.toContain("Deep focus matters.");
 	});
 
-	it("shows Back To Summary in ignored highlights view", async () => {
+	it("shows Back to Summary in ignored highlights view", async () => {
 		const modal = createModal({
 			plugin: createPlugin({
 				ignoredHighlights: [createIgnoredHighlight()],
@@ -133,10 +144,10 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "View Ignored Highlights").click();
 
-		expect(readText(modal.contentEl)).toContain("Back To Summary");
+		expect(readText(modal.contentEl)).toContain("Back to Summary");
 	});
 
-	it("returns to summary when Back To Summary is clicked", async () => {
+	it("returns to summary when Back to Summary is clicked", async () => {
 		const modal = createModal({
 			plugin: createPlugin({
 				ignoredHighlights: [createIgnoredHighlight()],
@@ -148,9 +159,136 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "View Ignored Highlights").click();
-		await findByText(modal.contentEl, "Back To Summary").click();
+		await findByText(modal.contentEl, "Back to Summary").click();
 
 		expect(readText(modal.contentEl)).toContain("Sync complete");
+	});
+
+	it("uses shared book card structure in ignored highlights view", async () => {
+		const modal = createModal({
+			plugin: createPlugin({
+				ignoredHighlights: [createIgnoredHighlight()],
+			}),
+			classification: createClassification({
+				ignoredHighlights: [createHighlight()],
+			}),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "View Ignored Highlights").click();
+
+		const card = elementByClass(modal.contentEl, "kls-book-card");
+		const header = elementByClass(card, "kls-book-header");
+
+		expect(elementsByClass(modal.contentEl, "kls-book-list")).toHaveLength(1);
+		expect(card.classes.has("kls-book-section")).toBe(true);
+		expect(elementByClass(header, "kls-book-title").text()).toBe("Atomic Habits");
+		expect(elementByClass(card, "kls-book-review-summary").text()).toBe("1 ignored highlight");
+		expect(elementsByClass(card, "kls-ignored-highlight-text")).toHaveLength(0);
+		expect(elementsByClass(modal.contentEl, "kls-ignored-highlight-item")).toHaveLength(0);
+		expect(elementsByClass(header, "kls-action-button").map((button) => button.text())).toEqual([
+			"Review Highlights",
+		]);
+		const actions = elementByClass(card, "kls-book-actions");
+		expect(actions.classes.has("kls-button-row")).toBe(true);
+		expect(elementsByClass(actions, "kls-action-button").map((button) => button.text())).toEqual([
+			"Remove All From Ignore List",
+		]);
+		expect(findByText(actions, "Remove All From Ignore List").classes.has("mod-cta")).toBe(false);
+		expect(findByText(actions, "Remove All From Ignore List").classes.has("mod-warning")).toBe(false);
+	});
+
+	it("removes all ignored highlights for a book from the ignored highlights summary", async () => {
+		const plugin = createPlugin({
+			ignoredHighlights: [
+				createIgnoredHighlight({ id: "one", title: "Atomic Habits" }),
+				createIgnoredHighlight({ id: "two", title: "Atomic Habits", textPreview: "Second ignored highlight." }),
+				createIgnoredHighlight({ id: "three", title: "Deep Work" }),
+			],
+		});
+		const modal = createModal({
+			plugin,
+			classification: createClassification({
+				ignoredHighlights: [createHighlight()],
+			}),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "View Ignored Highlights").click();
+		await findByText(bookCardByTitle(modal.contentEl, "Atomic Habits"), "Remove All From Ignore List").click();
+
+		expect(plugin.unignoreHighlight).toHaveBeenCalledWith("one");
+		expect(plugin.unignoreHighlight).toHaveBeenCalledWith("two");
+		expect(plugin.unignoreHighlight).not.toHaveBeenCalledWith("three");
+		expect(readText(modal.contentEl)).not.toContain("Atomic Habits");
+		expect(readText(modal.contentEl)).toContain("Deep Work");
+	});
+
+	it("shows the ignored empty state after removing all ignored highlights from the last book", async () => {
+		const plugin = createPlugin({
+			ignoredHighlights: [createIgnoredHighlight()],
+		});
+		const modal = createModal({
+			plugin,
+			classification: createClassification({
+				ignoredHighlights: [createHighlight()],
+			}),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "View Ignored Highlights").click();
+		await findByText(modal.contentEl, "Remove All From Ignore List").click();
+
+		expect(plugin.unignoreHighlight).toHaveBeenCalledWith("kls-ignored");
+		expect(readText(modal.contentEl)).toContain(
+			"No ignored highlights. Highlights you ignore during sync will appear here."
+		);
+	});
+
+	it("opens ignored highlight detail view from a book card", async () => {
+		const modal = createModal({
+			plugin: createPlugin({
+				ignoredHighlights: [createIgnoredHighlight()],
+			}),
+			classification: createClassification({
+				ignoredHighlights: [createHighlight()],
+			}),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "View Ignored Highlights").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+
+		expect(readText(modal.contentEl)).toContain("Ignored Highlights");
+		expect(readText(modal.contentEl)).toContain("Back to Ignored Highlights");
+		const detailCard = elementByClass(modal.contentEl, "kls-ignored-detail-card");
+		expect(elementByClass(detailCard, "kls-book-title").text()).toBe("Atomic Habits");
+		expect(elementByClass(detailCard, "kls-book-review-summary").text()).toBe("1 ignored highlight");
+		expect(elementByClass(detailCard, "kls-book-meta").text()).toBe("Ignored 7/9/2026");
+		expect(elementByClass(detailCard, "kls-ignored-highlight-text").text()).toBe("Small habits make a big difference.");
+		expect(buttonTexts(modal.contentEl)).toContain("Remove From Ignore List");
+	});
+
+	it("keeps the ignored detail book title inside the detail card", async () => {
+		const longTitle = "A Very Long Atomic Habits Title That Should Wrap Cleanly In The Detail Card";
+		const modal = createModal({
+			plugin: createPlugin({
+				ignoredHighlights: [createIgnoredHighlight({ title: longTitle })],
+			}),
+			classification: createClassification({
+				ignoredHighlights: [createHighlight()],
+			}),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "View Ignored Highlights").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+
+		const detailHeader = elementByClass(modal.contentEl, "kls-ignored-detail-header");
+		const detailCard = elementByClass(modal.contentEl, "kls-ignored-detail-card");
+
+		expect(elementsByClass(detailHeader, "kls-book-title")).toHaveLength(0);
+		expect(elementByClass(detailCard, "kls-book-title").text()).toBe(longTitle);
 	});
 
 	it("removes an ignored highlight when Remove From Ignore List is clicked", async () => {
@@ -166,10 +304,32 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "View Ignored Highlights").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Remove From Ignore List").click();
 
 		expect(plugin.unignoreHighlight).toHaveBeenCalledWith("kls-ignored");
-		expect(readText(modal.contentEl)).toContain("No ignored highlights");
+		expect(readText(modal.contentEl)).toContain("No ignored highlights left in this book.");
+	});
+
+	it("returns from ignored detail view to ignored summary view", async () => {
+		const modal = createModal({
+			plugin: createPlugin({
+				ignoredHighlights: [createIgnoredHighlight()],
+			}),
+			classification: createClassification({
+				ignoredHighlights: [createHighlight()],
+			}),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "View Ignored Highlights").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		await findByText(modal.contentEl, "Back to Ignored Highlights").click();
+
+		expect(readText(modal.contentEl)).toContain("Ignored Highlights");
+		expect(readText(modal.contentEl)).toContain("1 ignored highlight");
+		expect(readText(modal.contentEl)).not.toContain("Small habits make a big difference.");
+		expect(buttonTexts(modal.contentEl)).toContain("Review Highlights");
 	});
 });
 
@@ -201,7 +361,7 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		expect(readText(modal.contentEl)).toContain("Deep Work");
 	});
 
-	it("uses shared button classes in skipped books review rows", async () => {
+	it("uses the shared book card structure in skipped books review rows", async () => {
 		const modal = createModal({
 			skippedThisSyncHighlights: [createSummaryItem()],
 		});
@@ -210,16 +370,24 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
 
 		const card = elementByClass(modal.contentEl, "kls-book-card");
+		const header = elementByClass(card, "kls-book-header");
+		const title = elementByClass(header, "kls-book-title");
 		const actions = elementByClass(card, "kls-book-actions");
 
+		expect(elementsByClass(modal.contentEl, "kls-book-list")).toHaveLength(1);
+		expect(card.classes.has("kls-book-section")).toBe(true);
+		expect(title.text()).toBe("Atomic Habits");
+		expect(elementByClass(card, "kls-book-review-summary").text()).toBe("1 highlight skipped this sync");
+		expect(elementsByClass(header, "kls-action-button").map((button) => button.text())).toEqual([
+			"Review Highlights",
+		]);
 		expect(actions.classes.has("kls-button-row")).toBe(true);
 		expect(elementsByClass(actions, "kls-action-button").map((button) => button.text())).toEqual([
-			"Review Highlights",
 			"Ignore All Highlights",
 		]);
 	});
 
-	it("shows Back To Summary in skipped books view", async () => {
+	it("uses shared button row styling in skipped books review actions", async () => {
 		const modal = createModal({
 			skippedThisSyncHighlights: [createSummaryItem()],
 		});
@@ -227,17 +395,35 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
 
-		expect(readText(modal.contentEl)).toContain("Back To Summary");
+		const card = elementByClass(modal.contentEl, "kls-book-card");
+		const header = elementByClass(card, "kls-book-header");
+		const actions = elementByClass(card, "kls-book-actions");
+
+		expect(header.classes.has("kls-button-row")).toBe(false);
+		expect(actions.classes.has("kls-button-row")).toBe(true);
+		expect(findByText(header, "Review Highlights").classes.has("kls-action-button")).toBe(true);
+		expect(findByText(actions, "Ignore All Highlights").classes.has("kls-action-button")).toBe(true);
 	});
 
-	it("returns to summary when Back To Summary is clicked", async () => {
+	it("shows Back to Summary in skipped books view", async () => {
 		const modal = createModal({
 			skippedThisSyncHighlights: [createSummaryItem()],
 		});
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
-		await findByText(modal.contentEl, "Back To Summary").click();
+
+		expect(readText(modal.contentEl)).toContain("Back to Summary");
+	});
+
+	it("returns to summary when Back to Summary is clicked", async () => {
+		const modal = createModal({
+			skippedThisSyncHighlights: [createSummaryItem()],
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Skipped This Sync").click();
+		await findByText(modal.contentEl, "Back to Summary").click();
 
 		expect(readText(modal.contentEl)).toContain("Sync complete");
 	});
@@ -272,7 +458,7 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		]);
 	});
 
-	it("shows Back To Skipped Books in per-book review", async () => {
+	it("shows Back to Skipped Books in per-book review", async () => {
 		const modal = createModal({
 			skippedThisSyncHighlights: [createSummaryItem()],
 		});
@@ -281,10 +467,10 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
 		await findByText(modal.contentEl, "Review Highlights").click();
 
-		expect(readText(modal.contentEl)).toContain("Back To Skipped Books");
+		expect(readText(modal.contentEl)).toContain("Back to Skipped Books");
 	});
 
-	it("returns to skipped books when Back To Skipped Books is clicked", async () => {
+	it("returns to skipped books when Back to Skipped Books is clicked", async () => {
 		const modal = createModal({
 			skippedThisSyncHighlights: [createSummaryItem()],
 		});
@@ -292,10 +478,10 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
 		await findByText(modal.contentEl, "Review Highlights").click();
-		await findByText(modal.contentEl, "Back To Skipped Books").click();
+		await findByText(modal.contentEl, "Back to Skipped Books").click();
 
-		expect(readText(modal.contentEl)).toContain("Skipped this sync");
-		expect(readText(modal.contentEl)).toContain("1 highlights skipped this sync");
+		expect(readText(modal.contentEl)).toContain("Skipped This Sync");
+		expect(readText(modal.contentEl)).toContain("1 highlight skipped this sync");
 	});
 
 	it("adds a skipped highlight to ignoredHighlights when Ignore Going Forward is clicked", async () => {
@@ -361,6 +547,19 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 });
 
 describe("SyncSummaryModal suspicious item button styling", () => {
+	it("shows Back to Summary in suspicious item review", async () => {
+		const modal = createModal({
+			classification: createClassification({
+				possibleReappearedHighlights: [createHighlight()],
+			}),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Suspicious Items").click();
+
+		expect(buttonTexts(modal.contentEl)).toContain("Back to Summary");
+	});
+
 	it("uses shared button classes in suspicious item review rows", async () => {
 		const modal = createModal({
 			classification: createClassification({
@@ -397,7 +596,7 @@ describe("SyncSummaryModal scroll restoration", () => {
 		setScrollTop(modal.contentEl, 420);
 		await findByText(modal.contentEl, "View Ignored Highlights").click();
 		setScrollTop(modal.contentEl, 75);
-		await findByText(modal.contentEl, "Back To Summary").click();
+		await findByText(modal.contentEl, "Back to Summary").click();
 
 		expect(readText(modal.contentEl)).toContain("Sync complete");
 		expect(scrollTop(modal.contentEl)).toBe(420);
@@ -412,7 +611,7 @@ describe("SyncSummaryModal scroll restoration", () => {
 		setScrollTop(modal.contentEl, 360);
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
 		setScrollTop(modal.contentEl, 90);
-		await findByText(modal.contentEl, "Back To Summary").click();
+		await findByText(modal.contentEl, "Back to Summary").click();
 
 		expect(readText(modal.contentEl)).toContain("Sync complete");
 		expect(scrollTop(modal.contentEl)).toBe(360);
@@ -431,9 +630,9 @@ describe("SyncSummaryModal scroll restoration", () => {
 		setScrollTop(modal.contentEl, 280);
 		await findByText(modal.contentEl, "Review Highlights").click();
 		setScrollTop(modal.contentEl, 45);
-		await findByText(modal.contentEl, "Back To Skipped Books").click();
+		await findByText(modal.contentEl, "Back to Skipped Books").click();
 
-		expect(readText(modal.contentEl)).toContain("Skipped this sync");
+		expect(readText(modal.contentEl)).toContain("Skipped This Sync");
 		expect(readText(modal.contentEl)).toContain("Atomic Habits");
 	});
 });
@@ -450,15 +649,15 @@ describe("SyncSummaryModal skipped books anchor restoration", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
 		await findByText(findSectionByHeading(modal.contentEl, "Deep Work"), "Review Highlights").click();
-		await findByText(modal.contentEl, "Back To Skipped Books").click();
+		await findByText(modal.contentEl, "Back to Skipped Books").click();
 
-		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "Deep Work"))).toEqual([
+		expect(scrollIntoViewCalls(bookCardByTitle(modal.contentEl, "Deep Work"))).toEqual([
 			{ block: "center" },
 		]);
-		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "Atomic Habits"))).toHaveLength(0);
+		expect(scrollIntoViewCalls(bookCardByTitle(modal.contentEl, "Atomic Habits"))).toHaveLength(0);
 	});
 
-	it("scrolls the clicked book back into view when Back To Skipped Books is clicked", async () => {
+	it("scrolls the clicked book back into view when Back to Skipped Books is clicked", async () => {
 		const modal = createModal({
 			skippedThisSyncHighlights: [
 				createSummaryItem({ id: "one", title: "Atomic Habits" }),
@@ -471,11 +670,11 @@ describe("SyncSummaryModal skipped books anchor restoration", () => {
 		setScrollTop(modal.contentEl, 280);
 		await findByText(findSectionByHeading(modal.contentEl, "Deep Work"), "Review Highlights").click();
 		setScrollTop(modal.contentEl, 10);
-		await findByText(modal.contentEl, "Back To Skipped Books").click();
+		await findByText(modal.contentEl, "Back to Skipped Books").click();
 
-		const deepWorkSection = findSectionByHeading(modal.contentEl, "Deep Work");
+		const deepWorkSection = bookCardByTitle(modal.contentEl, "Deep Work");
 
-		expect(readText(modal.contentEl)).toContain("Skipped this sync");
+		expect(readText(modal.contentEl)).toContain("Skipped This Sync");
 		expect(scrollIntoViewCalls(deepWorkSection)).toEqual([{ block: "center" }]);
 	});
 
@@ -492,10 +691,32 @@ describe("SyncSummaryModal skipped books anchor restoration", () => {
 		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Ignore Going Forward").click();
 		setScrollTop(modal.contentEl, 10);
-		await findByText(modal.contentEl, "Back To Skipped Books").click();
+		await findByText(modal.contentEl, "Back to Skipped Books").click();
 
 		expect(readText(modal.contentEl)).toContain("No skipped highlights left to review.");
 		expect(scrollTop(modal.contentEl)).toBe(280);
+	});
+
+	it("uses Title Case for Ignored Highlights and Skipped This Sync view titles", async () => {
+		const modal = createModal({
+			plugin: createPlugin({
+				ignoredHighlights: [createIgnoredHighlight()],
+			}),
+			classification: createClassification({
+				ignoredHighlights: [createHighlight()],
+			}),
+			skippedThisSyncHighlights: [createSummaryItem()],
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "View Ignored Highlights").click();
+		expect(readText(modal.contentEl)).toContain("Ignored Highlights");
+		expect(readText(modal.contentEl)).not.toContain("Ignored highlights");
+
+		await findByText(modal.contentEl, "Back to Summary").click();
+		await findByText(modal.contentEl, "Review Skipped This Sync").click();
+		expect(readText(modal.contentEl)).toContain("Skipped This Sync");
+		expect(readText(modal.contentEl)).not.toContain("Skipped this sync");
 	});
 });
 
@@ -559,12 +780,13 @@ function createHighlight(overrides: Partial<KindleHighlight> = {}): KindleHighli
 	};
 }
 
-function createIgnoredHighlight(): IgnoredHighlight {
+function createIgnoredHighlight(overrides: Partial<IgnoredHighlight> = {}): IgnoredHighlight {
 	return {
 		id: "kls-ignored",
 		title: "Atomic Habits",
 		textPreview: "Small habits make a big difference.",
-		ignoredAt: "2026-07-09T00:00:00.000Z",
+		ignoredAt: "2026-07-09T12:00:00.000Z",
+		...overrides,
 	};
 }
 
@@ -622,6 +844,17 @@ function elementByClass(element: unknown, className: string): TestElement {
 
 	if (!match) {
 		throw new Error(`Could not find class: ${className}`);
+	}
+
+	return match;
+}
+
+function bookCardByTitle(element: unknown, title: string): TestElement {
+	const match = elementsByClass(element, "kls-book-card")
+		.find((card) => elementByClass(card, "kls-book-title").text() === title);
+
+	if (!match) {
+		throw new Error(`Could not find book card: ${title}`);
 	}
 
 	return match;
