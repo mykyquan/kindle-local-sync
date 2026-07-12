@@ -54,7 +54,7 @@ export class SyncSummaryModal extends Modal {
 			text: `${this.classification.duplicateHighlights.length} duplicates skipped`,
 		});
 		this.contentEl.createEl("p", {
-			text: `${this.suspiciousHighlights.length} possible reappeared highlights need review`,
+			text: `Missing managed highlights to review: ${this.suspiciousHighlights.length}`,
 		});
 		this.contentEl.createEl("p", {
 			text: "Unreviewed or skipped highlights will appear again next time you sync.",
@@ -65,7 +65,7 @@ export class SyncSummaryModal extends Modal {
 		actions.addClass("kls-summary-actions");
 
 		if (this.suspiciousHighlights.length > 0) {
-			this.createActionButton(actions, "Review Suspicious Items")
+			this.createActionButton(actions, "Review Missing Managed Highlights")
 				.onClick(() => {
 					this.saveSummaryScrollPosition();
 					this.renderSuspiciousItems();
@@ -104,7 +104,13 @@ export class SyncSummaryModal extends Modal {
 
 	private renderSuspiciousItems(): void {
 		this.contentEl.empty();
-		this.contentEl.createEl("h2", { text: "Possible reappeared highlights" });
+		this.contentEl.createEl("h2", { text: "Missing managed highlights" });
+		this.contentEl.createEl("p", {
+			text: "These highlights were previously imported, but their generated marker was not found in your notes. Review them before importing again, ignoring, or skipping.",
+		});
+		this.contentEl.createEl("p", {
+			text: "This can happen if a generated note or sync block was deleted, moved, or edited.",
+		});
 
 		const backActions = this.contentEl.createDiv();
 		backActions.addClass("kls-button-row");
@@ -145,7 +151,7 @@ export class SyncSummaryModal extends Modal {
 		}
 
 		if (this.suspiciousHighlights.length === 0) {
-			this.contentEl.createEl("p", { text: "No suspicious highlights left to review." });
+			this.contentEl.createEl("p", { text: "No missing managed highlights left to review." });
 		}
 	}
 
@@ -334,19 +340,35 @@ export class SyncSummaryModal extends Modal {
 			actions.addClass("kls-book-actions");
 
 			this.createActionButton(actions, "Ignore All Highlights")
-				.onClick(async () => {
+				.onClick(() => {
 					this.saveSkippedBooksScrollPosition();
-					for (const highlight of highlights) {
-						await this.plugin.ignoreSummaryHighlight(highlight);
-					}
-
-					const ignoredIds = new Set(highlights.map((highlight) => highlight.id));
-					this.skippedThisSyncHighlights = this.skippedThisSyncHighlights.filter((highlight) => !ignoredIds.has(highlight.id));
-					this.renderSkippedBooks();
+					this.renderIgnoreAllSkippedHighlightsConfirmation(highlights);
 				});
 		}
 
 		this.restoreSkippedBooksPosition();
+	}
+
+	private renderIgnoreAllSkippedHighlightsConfirmation(highlights: SyncSummaryHighlightItem[]): void {
+		this.contentEl.empty();
+		this.contentEl.createEl("h2", { text: "Ignore all skipped highlights from this book?" });
+		this.contentEl.createEl("p", {
+			text: "These highlights will be ignored in future syncs. You can restore them later from the ignored highlights view.",
+		});
+
+		const actions = this.contentEl.createDiv();
+		actions.addClass("kls-button-row");
+		actions.addClass("kls-summary-actions");
+
+		this.createActionButton(actions, "Cancel")
+			.onClick(() => this.renderSkippedBooks());
+
+		this.createActionButton(actions, "Ignore All Highlights")
+			.onClick(async () => {
+				await this.ignoreSkippedHighlights(highlights);
+				this.renderSkippedBooks();
+			})
+			.buttonEl.addClass("mod-warning");
 	}
 
 	private renderSkippedBookHighlights(bookTitle: string): void {
@@ -392,6 +414,15 @@ export class SyncSummaryModal extends Modal {
 		}
 
 		this.restoreScrollPosition(this.skippedBookScrollTopByTitle.get(bookTitle) ?? 0);
+	}
+
+	private async ignoreSkippedHighlights(highlights: SyncSummaryHighlightItem[]): Promise<void> {
+		for (const highlight of highlights) {
+			await this.plugin.ignoreSummaryHighlight(highlight);
+		}
+
+		const ignoredIds = new Set(highlights.map((highlight) => highlight.id));
+		this.skippedThisSyncHighlights = this.skippedThisSyncHighlights.filter((highlight) => !ignoredIds.has(highlight.id));
 	}
 
 	private async unignoreHighlights(highlights: IgnoredHighlight[]): Promise<void> {

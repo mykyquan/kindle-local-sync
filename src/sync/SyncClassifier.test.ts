@@ -31,7 +31,7 @@ describe("classifyHighlightsForSync", () => {
 		expect(classification.newHighlights).toEqual([highlight]);
 	});
 
-	it("classifies previously imported missing-from-note highlights as suspicious", async () => {
+	it("classifies previously imported missing-from-note highlights for recovery review", async () => {
 		const highlight = createHighlight();
 		const classification = await classifyHighlightsForSync([highlight], {
 			ignoredHighlights: [],

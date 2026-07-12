@@ -116,6 +116,7 @@ describe("ignored highlight cleanup triggers", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
 		await findByText(modal.contentEl, "Ignore All Highlights").click();
+		await findByText(modal.contentEl, "Ignore All Highlights").click();
 
 		expect(mocks.removeIgnoredHighlightBlocksFromExistingNotes).toHaveBeenCalledWith(
 			plugin.app.vault,
@@ -139,7 +140,7 @@ describe("ignored highlight cleanup triggers", () => {
 		});
 
 		modal.onOpen();
-		await findByText(modal.contentEl, "Review Suspicious Items").click();
+		await findByText(modal.contentEl, "Review Missing Managed Highlights").click();
 		await findByText(modal.contentEl, "Ignore Forever").click();
 
 		expect(mocks.removeIgnoredHighlightBlocksFromExistingNotes).toHaveBeenCalledWith(

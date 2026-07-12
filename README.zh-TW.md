@@ -62,6 +62,10 @@ Settings → Community plugins → Browse → 搜尋 "Kindle Local Sync" → Ins
 
 這些 marker 之外的內容會被保留。
 
+新的或尚未確認的標註只有在你核准後，才會被加入 Obsidian 筆記。你先前已核准的標註可能會在同步時重新整理，讓筆記與 Kindle 資料保持一致。
+
+請把個人筆記放在 Kindle Local Sync 區塊之外，因為該區塊由外掛管理，並可能在同步時被取代。
+
 ## 隱私
 
 Kindle Local Sync 從設計上就是僅本機。

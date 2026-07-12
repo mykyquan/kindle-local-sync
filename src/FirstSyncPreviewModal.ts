@@ -110,6 +110,9 @@ export class FirstSyncPreviewModal extends Modal {
 		warningEl.createEl("p", {
 			text: "Review before importing to avoid bringing old deleted highlights into Obsidian.",
 		});
+		warningEl.createEl("p", {
+			text: "New or unreviewed highlights are added to Obsidian notes only after you approve them. Highlights you already approved may be refreshed during sync to keep your notes up to date.",
+		});
 	}
 
 	private renderVisibleBookCards(): void {

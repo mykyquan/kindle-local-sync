@@ -156,6 +156,39 @@ describe("replaceOrAppendSyncRegion", () => {
 		);
 	});
 
+	it("preserves adjacent user content outside markers and replaces content inside managed markers", () => {
+		const oldGeneratedHighlight = renderClippingMarkdown(atomicHighlight);
+		const newRegion = renderSyncRegion({
+			bookTitle: "Atomic Habits",
+			author: "James Clear",
+			clippings: [atomicNote],
+		});
+		const existingMarkdown = [
+			"# Atomic Habits",
+			"",
+			`User note immediately above marker.${SYNC_START_MARKER}`,
+			"",
+			oldGeneratedHighlight,
+			"Manual note directly after the generated highlight block.",
+			"",
+			"Manual note inside the managed region.",
+			`${SYNC_END_MARKER}User note immediately below marker.`,
+		].join("\n");
+		const updatedMarkdown = replaceOrAppendSyncRegion(existingMarkdown, newRegion);
+
+		expect(updatedMarkdown).toContain("User note immediately above marker.");
+		expect(updatedMarkdown).toContain("User note immediately below marker.");
+		expect(updatedMarkdown).not.toContain("Manual note inside the managed region.");
+		expect(updatedMarkdown).not.toContain("Manual note directly after the generated highlight block.");
+		expect(updatedMarkdown).toBe(
+			[
+				"# Atomic Habits",
+				"",
+				`User note immediately above marker.${newRegion}User note immediately below marker.`,
+			].join("\n")
+		);
+	});
+
 	it("appends a generated sync region when markers do not exist", () => {
 		const newRegion = renderSyncRegion({
 			bookTitle: "Atomic Habits",

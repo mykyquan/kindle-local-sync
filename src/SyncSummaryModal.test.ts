@@ -64,7 +64,7 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 
 		modal.onOpen();
 		expect(buttonTexts(modal.contentEl)).toEqual(expect.arrayContaining([
-			"Review Suspicious Items",
+			"Review Missing Managed Highlights",
 			"View Ignored Highlights",
 			"Review Skipped This Sync",
 			"Close",
@@ -514,7 +514,7 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		expect(readText(modal.contentEl)).toContain("No skipped highlights left in this book.");
 	});
 
-	it("adds all skipped highlights from a book to ignoredHighlights when Ignore All Highlights is clicked", async () => {
+	it("opens confirmation before ignoring all skipped highlights from a book", async () => {
 		const plugin = createPlugin();
 		const highlights = [
 			createSummaryItem({ id: "one" }),
@@ -529,6 +529,51 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
 		await findByText(modal.contentEl, "Ignore All Highlights").click();
 
+		expect(readText(modal.contentEl)).toContain("Ignore all skipped highlights from this book?");
+		expect(readText(modal.contentEl)).toContain(
+			"These highlights will be ignored in future syncs. You can restore them later from the ignored highlights view."
+		);
+		expect(buttonTexts(modal.contentEl)).toEqual(["Cancel", "Ignore All Highlights"]);
+		expect(plugin.ignoreSummaryHighlight).not.toHaveBeenCalled();
+	});
+
+	it("leaves skipped highlights unchanged when Ignore All Highlights confirmation is canceled", async () => {
+		const plugin = createPlugin();
+		const highlights = [
+			createSummaryItem({ id: "one" }),
+			createSummaryItem({ id: "two", textPreview: "Second highlight." }),
+		];
+		const modal = createModal({
+			plugin,
+			skippedThisSyncHighlights: highlights,
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Skipped This Sync").click();
+		await findByText(modal.contentEl, "Ignore All Highlights").click();
+		await findByText(modal.contentEl, "Cancel").click();
+
+		expect(plugin.ignoreSummaryHighlight).not.toHaveBeenCalled();
+		expect(readText(modal.contentEl)).toContain("Skipped This Sync");
+		expect(readText(modal.contentEl)).toContain("2 highlights skipped this sync");
+	});
+
+	it("adds all skipped highlights from a book to ignoredHighlights after confirmation", async () => {
+		const plugin = createPlugin();
+		const highlights = [
+			createSummaryItem({ id: "one" }),
+			createSummaryItem({ id: "two", textPreview: "Second highlight." }),
+		];
+		const modal = createModal({
+			plugin,
+			skippedThisSyncHighlights: highlights,
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Skipped This Sync").click();
+		await findByText(modal.contentEl, "Ignore All Highlights").click();
+		await findByText(modal.contentEl, "Ignore All Highlights").click();
+
 		expect(plugin.ignoreSummaryHighlight).toHaveBeenCalledWith(highlights[0]);
 		expect(plugin.ignoreSummaryHighlight).toHaveBeenCalledWith(highlights[1]);
 	});
@@ -541,13 +586,14 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
 		await findByText(modal.contentEl, "Ignore All Highlights").click();
+		await findByText(modal.contentEl, "Ignore All Highlights").click();
 
 		expect(readText(modal.contentEl)).toContain("No skipped highlights left to review.");
 	});
 });
 
-describe("SyncSummaryModal suspicious item button styling", () => {
-	it("shows Back to Summary in suspicious item review", async () => {
+describe("SyncSummaryModal missing managed highlight review", () => {
+	it("explains why previously imported highlights need recovery review", async () => {
 		const modal = createModal({
 			classification: createClassification({
 				possibleReappearedHighlights: [createHighlight()],
@@ -555,12 +601,20 @@ describe("SyncSummaryModal suspicious item button styling", () => {
 		});
 
 		modal.onOpen();
-		await findByText(modal.contentEl, "Review Suspicious Items").click();
+		expect(readText(modal.contentEl)).toContain("Missing managed highlights to review: 1");
+		await findByText(modal.contentEl, "Review Missing Managed Highlights").click();
 
+		expect(readText(modal.contentEl)).toContain("Missing managed highlights");
+		expect(readText(modal.contentEl)).toContain(
+			"These highlights were previously imported, but their generated marker was not found in your notes. Review them before importing again, ignoring, or skipping."
+		);
+		expect(readText(modal.contentEl)).toContain(
+			"This can happen if a generated note or sync block was deleted, moved, or edited."
+		);
 		expect(buttonTexts(modal.contentEl)).toContain("Back to Summary");
 	});
 
-	it("uses shared button classes in suspicious item review rows", async () => {
+	it("uses shared button classes in missing managed highlight review rows", async () => {
 		const modal = createModal({
 			classification: createClassification({
 				possibleReappearedHighlights: [createHighlight()],
@@ -568,7 +622,7 @@ describe("SyncSummaryModal suspicious item button styling", () => {
 		});
 
 		modal.onOpen();
-		await findByText(modal.contentEl, "Review Suspicious Items").click();
+		await findByText(modal.contentEl, "Review Missing Managed Highlights").click();
 
 		const row = elementByClass(modal.contentEl, "kls-highlight-row");
 		const buttonRow = elementByClass(row, "kls-button-row");

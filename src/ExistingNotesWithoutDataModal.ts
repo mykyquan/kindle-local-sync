@@ -12,48 +12,30 @@ export class ExistingNotesWithoutDataModal extends Modal {
 
 	onOpen(): void {
 		this.contentEl.empty();
-		this.contentEl.createEl("h2", { text: "Existing Kindle highlight notes found" });
+		this.contentEl.createEl("h2", { text: "Existing Kindle notes found" });
 		this.contentEl.createEl("p", {
-			text: "This vault already has Kindle highlight notes, but Kindle Local Sync has no saved data for this vault.",
-		});
-		this.contentEl.createEl("p", {
-			text: "Choose how to continue:",
+			text: "This vault already has Kindle notes. Kindle Local Sync can reconnect to them and continue from there.",
 		});
 
 		const continueOption = this.createOptionSection(
-			"Continue with existing notes",
+			"Reconnect existing notes",
 			[
-				"Use this if these notes were already created by Kindle Local Sync.",
-				"Existing notes stay as-is. New highlights will still require review before import.",
+				"We'll keep your existing notes, recognize the highlights we can match, and only ask you to review anything new or missing from those notes.",
+				"Your existing notes will not be deleted. If a highlight is still in your Kindle file but no longer in your notes, you can review it and ignore it so it does not come back.",
 			]
 		);
 
 		new ButtonComponent(continueOption)
-			.setButtonText("Continue with existing notes")
+			.setButtonText("Reconnect existing notes")
 			.setCta()
 			.onClick(async () => {
 				this.close();
 				await this.plugin.continueExistingNotesWithoutDataSync();
 			});
 
-		const reviewOption = this.createOptionSection(
-			"Review everything before syncing",
-			[
-				"Use this if you want to check all detected books and highlights first.",
-				"Nothing new will be imported until you finish review.",
-			]
-		);
-
-		new ButtonComponent(reviewOption)
-			.setButtonText("Review everything")
-			.onClick(async () => {
-				this.close();
-				await this.plugin.reviewExistingNotesWithoutDataAsFirstSync();
-			});
-
 		const cancelOption = this.createOptionSection(
 			"Cancel",
-			"No settings or notes will be changed."
+			"Close without changing your notes or sync settings."
 		);
 
 		new ButtonComponent(cancelOption)

@@ -240,7 +240,7 @@ describe("sync review gate", () => {
 });
 
 describe("existing notes without data review choices", () => {
-	it("Continue with existing notes does not force review when current clippings match existing managed notes", async () => {
+	it("Reconnect existing notes does not force review when current clippings match existing managed notes", async () => {
 		const existingHighlight = createHighlight();
 		const plugin = await createPlugin(null);
 		mocks.parseClippings.mockReturnValue([existingHighlight]);
@@ -255,7 +255,7 @@ describe("existing notes without data review choices", () => {
 		]);
 	});
 
-	it("Continue with existing notes reviews only unmatched highlights", async () => {
+	it("Reconnect existing notes reviews only unmatched highlights", async () => {
 		const existingHighlight = createHighlight();
 		const newHighlight = createHighlight({
 			location: "160",
@@ -276,7 +276,7 @@ describe("existing notes without data review choices", () => {
 		expect(mocks.writeBookNotesToVault).not.toHaveBeenCalled();
 	});
 
-	it("Review everything forces full review of detected highlights even when notes can be matched", async () => {
+	it("internal review-all method forces full review even when notes can be matched", async () => {
 		const existingHighlight = createHighlight();
 		const newHighlight = createHighlight({
 			location: "160",
@@ -290,7 +290,7 @@ describe("existing notes without data review choices", () => {
 		await plugin.reviewExistingNotesWithoutDataAsFirstSync();
 
 		expect(mocks.firstSyncPreviewInstances).toHaveLength(1);
-		expect(mocks.firstSyncPreviewInstances[0]?.options?.title).toBe("Review Everything Before Syncing");
+		expect(mocks.firstSyncPreviewInstances[0]?.options?.title).toBe("Review All Detected Highlights");
 		expect(reviewedHighlightIds()).toEqual([
 			createClippingId(existingHighlight),
 			createClippingId(newHighlight),

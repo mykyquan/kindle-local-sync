@@ -118,7 +118,7 @@ describe("existing notes without data.json", () => {
 		]);
 	});
 
-	it("Review everything keeps hasCompletedFirstSync false and opens full review", async () => {
+	it("internal review-all method keeps hasCompletedFirstSync false and opens full review", async () => {
 		const plugin = createPlugin(createVaultWithExistingNotes());
 		const saveCalls = captureSaveCalls(plugin);
 
@@ -128,7 +128,7 @@ describe("existing notes without data.json", () => {
 			hasCompletedFirstSync: false,
 		});
 		expect(mocks.firstSyncPreviewOpen).toHaveBeenCalledTimes(1);
-		expect(mocks.firstSyncPreviewOptions[0]?.title).toBe("Review Everything Before Syncing");
+		expect(mocks.firstSyncPreviewOptions[0]?.title).toBe("Review All Detected Highlights");
 	});
 
 	it("Cancel does not save settings or sync", async () => {
@@ -157,8 +157,7 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 		modal.onOpen();
 
 		expect(buttonTexts(modal.contentEl)).toEqual([
-			"Continue with existing notes",
-			"Review everything",
+			"Reconnect existing notes",
 			"Cancel",
 		]);
 	});
@@ -168,8 +167,7 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 
 		modal.onOpen();
 
-		expect(readText(modal.contentEl)).toContain("Continue with existing notes");
-		expect(readText(modal.contentEl)).toContain("Review everything before syncing");
+		expect(readText(modal.contentEl)).toContain("Reconnect existing notes");
 		expect(readText(modal.contentEl)).toContain("Cancel");
 	});
 
@@ -179,21 +177,16 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 		modal.onOpen();
 
 		expect(readText(modal.contentEl)).toContain(
-			"This vault already has Kindle highlight notes, but Kindle Local Sync has no saved data for this vault."
-		);
-		expect(readText(modal.contentEl)).toContain("Choose how to continue:");
-		expect(readText(modal.contentEl)).toContain(
-			"Use this if these notes were already created by Kindle Local Sync."
+			"This vault already has Kindle notes. Kindle Local Sync can reconnect to them and continue from there."
 		);
 		expect(readText(modal.contentEl)).toContain(
-			"Existing notes stay as-is. New highlights will still require review before import."
+			"We'll keep your existing notes, recognize the highlights we can match, and only ask you to review anything new or missing from those notes."
 		);
 		expect(readText(modal.contentEl)).toContain(
-			"Use this if you want to check all detected books and highlights first."
+			"Your existing notes will not be deleted. If a highlight is still in your Kindle file but no longer in your notes, you can review it and ignore it so it does not come back."
 		);
-		expect(readText(modal.contentEl)).toContain("Nothing new will be imported until you finish review.");
 		expect(readText(modal.contentEl)).toContain(
-			"No settings or notes will be changed."
+			"Close without changing your notes or sync settings."
 		);
 	});
 
@@ -204,6 +197,11 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 
 		expect(readText(modal.contentEl)).not.toContain("Review As First Sync");
 		expect(readText(modal.contentEl)).not.toContain("before importing again");
+		expect(readText(modal.contentEl)).not.toContain("managed markers");
+		expect(readText(modal.contentEl)).not.toContain("saved data");
+		expect(readText(modal.contentEl)).not.toContain("Review everything before syncing");
+		expect(readText(modal.contentEl)).not.toContain("Review everything");
+		expect(readText(modal.contentEl)).not.toContain("Review all detected highlights");
 	});
 
 	it("visually nests option descriptions under their titles", () => {
@@ -211,40 +209,29 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 
 		modal.onOpen();
 
-		expect(elementsByClass(modal.contentEl, "kls-option-description")).toHaveLength(3);
+		expect(elementsByClass(modal.contentEl, "kls-option-description")).toHaveLength(2);
 	});
 
-	it("shows the updated Continue with existing notes explanation", () => {
+	it("shows the Reconnect existing notes explanation", () => {
 		const modal = createModal(createTransitionPlugin());
 
 		modal.onOpen();
 
 		expect(paragraphTexts(modal.contentEl)).toEqual(expect.arrayContaining([
-			"Use this if these notes were already created by Kindle Local Sync.",
-			"Existing notes stay as-is. New highlights will still require review before import.",
+			"We'll keep your existing notes, recognize the highlights we can match, and only ask you to review anything new or missing from those notes.",
+			"Your existing notes will not be deleted. If a highlight is still in your Kindle file but no longer in your notes, you can review it and ignore it so it does not come back.",
 		]));
 	});
 
-	it("keeps Continue with existing notes behavior unchanged", async () => {
+	it("keeps Reconnect existing notes behavior unchanged", async () => {
 		const plugin = createTransitionPlugin();
 		const modal = createModal(plugin);
 
 		modal.onOpen();
-		await findButtonByText(modal.contentEl, "Continue with existing notes").click();
+		await findButtonByText(modal.contentEl, "Reconnect existing notes").click();
 
 		expect(plugin.continueExistingNotesWithoutDataSync).toHaveBeenCalledTimes(1);
 		expect(plugin.reviewExistingNotesWithoutDataAsFirstSync).not.toHaveBeenCalled();
-	});
-
-	it("keeps Review everything behavior unchanged", async () => {
-		const plugin = createTransitionPlugin();
-		const modal = createModal(plugin);
-
-		modal.onOpen();
-		await findButtonByText(modal.contentEl, "Review everything").click();
-
-		expect(plugin.reviewExistingNotesWithoutDataAsFirstSync).toHaveBeenCalledTimes(1);
-		expect(plugin.continueExistingNotesWithoutDataSync).not.toHaveBeenCalled();
 	});
 
 	it("keeps Cancel behavior unchanged", async () => {

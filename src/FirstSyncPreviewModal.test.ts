@@ -656,6 +656,7 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		expect(paragraphTexts(callout)).toEqual([
 			"Kindle may keep deleted highlights in My Clippings.txt.",
 			"Review before importing to avoid bringing old deleted highlights into Obsidian.",
+			"New or unreviewed highlights are added to Obsidian notes only after you approve them. Highlights you already approved may be refreshed during sync to keep your notes up to date.",
 		]);
 		expect(readText(modal.contentEl)).not.toContain(
 			"Kindle may keep deleted highlights in My Clippings.txt. Review before importing if you want to avoid bringing old deleted highlights into Obsidian."

@@ -62,6 +62,10 @@ Plugin chỉ quản lý nội dung nằm giữa các marker này:
 
 Nội dung bên ngoài các marker này được giữ nguyên.
 
+Highlight mới hoặc chưa được xem lại chỉ được thêm vào ghi chú Obsidian sau khi bạn phê duyệt. Những highlight bạn đã phê duyệt có thể được cập nhật lại trong quá trình đồng bộ để ghi chú luôn khớp với dữ liệu Kindle.
+
+Hãy giữ ghi chú cá nhân bên ngoài phần Kindle Local Sync, vì phần đó do plugin quản lý và có thể được thay thế trong quá trình đồng bộ.
+
 ## Quyền riêng tư
 
 Kindle Local Sync được thiết kế để hoạt động local-only.

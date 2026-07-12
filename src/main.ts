@@ -179,7 +179,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		this.hasSavedPluginData = true;
 		await this.saveSettings();
 		new FirstSyncPreviewModal(this.app, this, groupHighlightsByBook(highlights), {
-			title: "Review Everything Before Syncing",
+			title: "Review All Detected Highlights",
 		}).open();
 	}
 

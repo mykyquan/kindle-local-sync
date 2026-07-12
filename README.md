@@ -62,6 +62,10 @@ The plugin only manages content between these markers:
 
 Content outside those markers is preserved.
 
+New or unreviewed highlights are added to Obsidian notes only after you approve them. Highlights you already approved may be refreshed during sync to keep your notes up to date.
+
+Keep personal notes outside the Kindle Local Sync section, because that section is managed by the plugin and may be replaced during sync.
+
 ## Privacy
 
 Kindle Local Sync is local-only by design.
