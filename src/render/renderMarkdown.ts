@@ -1,4 +1,7 @@
 import { KindleHighlight } from "../parser/parseClippings";
+import { createBookIdentityKey, createClippingId } from "../sync/HighlightIdentity";
+
+export { createClippingId } from "../sync/HighlightIdentity";
 
 export const SYNC_START_MARKER = "<!-- kindle-local-sync:start -->";
 export const SYNC_END_MARKER = "<!-- kindle-local-sync:end -->";
@@ -18,7 +21,7 @@ export function groupHighlightsByBook(highlights: KindleHighlight[]): KindleBook
 	const groups = new Map<string, KindleBookGroup>();
 
 	for (const highlight of highlights) {
-		const key = `${highlight.bookTitle}\u0000${highlight.author}`;
+		const key = createBookIdentityKey(highlight.bookTitle, highlight.author);
 		const existingGroup = groups.get(key);
 
 		if (existingGroup) {
@@ -57,21 +60,6 @@ export function dedupeClippings(clippings: KindleHighlight[]): DedupedClippings 
 		clippings: uniqueClippings,
 		duplicatesSkipped,
 	};
-}
-
-export function createClippingId(clipping: KindleHighlight): string {
-	const stableInput = [
-		clipping.bookTitle,
-		clipping.author,
-		clipping.type,
-		clipping.location,
-		clipping.dateAdded,
-		clipping.content,
-	]
-		.map(normalizeHashField)
-		.join("\u001f");
-
-	return `kls-${fnv1aHash(stableInput)}`;
 }
 
 export function renderBookMarkdown(group: KindleBookGroup): string {
@@ -165,21 +153,6 @@ function joinBlocks(blocks: string[]): string[] {
 
 		return [block, "", ""];
 	});
-}
-
-function normalizeHashField(value: string): string {
-	return value.trim().replace(/\r\n/g, "\n");
-}
-
-function fnv1aHash(value: string): string {
-	let hash = 0x811c9dc5;
-
-	for (let index = 0; index < value.length; index++) {
-		hash ^= value.charCodeAt(index);
-		hash = Math.imul(hash, 0x01000193);
-	}
-
-	return (hash >>> 0).toString(36);
 }
 
 function escapeFrontmatterValue(value: string): string {

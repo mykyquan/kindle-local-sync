@@ -48,9 +48,14 @@ vi.mock("./FirstSyncPreviewModal", () => ({
 	},
 }));
 
-vi.mock("./sync/VaultWriter", () => ({
-	writeBookNotesToVault: mocks.writeBookNotesToVault,
-}));
+vi.mock("./sync/VaultWriter", async () => {
+	const actual = await vi.importActual<typeof import("./sync/VaultWriter")>("./sync/VaultWriter");
+
+	return {
+		...actual,
+		writeBookNotesToVault: mocks.writeBookNotesToVault,
+	};
+});
 
 vi.mock("./sync/VaultHighlightLookup", () => ({
 	createVaultHighlightLookup: () => mocks.highlightExistsInNote,
@@ -76,8 +81,16 @@ beforeEach(() => {
 		filesCreated: 0,
 		filesUpdated: 1,
 		filesUnchanged: 0,
+		filesProtected: 0,
 		highlightsRendered: 1,
 		duplicatesSkipped: 0,
+		bookOutcomes: [{
+			bookTitle: mocks.highlight.bookTitle,
+			author: mocks.highlight.author,
+			notePath: "Kindle Highlights/Atomic Habits - James Clear.md",
+			highlightIds: [createClippingId(mocks.highlight)],
+			status: "updated",
+		}],
 	});
 	mocks.highlightExistsInNote.mockResolvedValue(true);
 });

@@ -1,6 +1,11 @@
 import { KindleHighlight } from "../parser/parseClippings";
 import { createClippingId } from "../render/renderMarkdown";
 import { IgnoredHighlight, ImportedHighlightRecord } from "../settings";
+import {
+	createKindleHighlightIdentityKey,
+	createStoredHighlightIdentityKeySet,
+	CurrentClippingIdentityIndex,
+} from "./HighlightIdentity";
 
 export interface SyncClassification {
 	newHighlights: KindleHighlight[];
@@ -12,6 +17,7 @@ export interface SyncClassification {
 export interface SyncClassificationOptions {
 	ignoredHighlights: IgnoredHighlight[];
 	importedHighlights: ImportedHighlightRecord[];
+	identityIndex: CurrentClippingIdentityIndex;
 	highlightExistsInNote: (id: string, highlight: KindleHighlight) => Promise<boolean> | boolean;
 }
 
@@ -19,9 +25,9 @@ export async function classifyHighlightsForSync(
 	highlights: KindleHighlight[],
 	options: SyncClassificationOptions
 ): Promise<SyncClassification> {
-	const ignoredIds = new Set(options.ignoredHighlights.map((highlight) => highlight.id));
-	const importedIds = new Set(options.importedHighlights.map((highlight) => highlight.id));
-	const seenIds = new Set<string>();
+	const ignoredIdentities = createStoredHighlightIdentityKeySet(options.ignoredHighlights, options.identityIndex);
+	const importedIdentities = createStoredHighlightIdentityKeySet(options.importedHighlights, options.identityIndex);
+	const seenIdentities = new Set<string>();
 	const classification: SyncClassification = {
 		newHighlights: [],
 		duplicateHighlights: [],
@@ -30,27 +36,27 @@ export async function classifyHighlightsForSync(
 	};
 
 	for (const highlight of highlights) {
-		const id = createClippingId(highlight);
+		const identity = createKindleHighlightIdentityKey(highlight);
 
-		if (seenIds.has(id)) {
+		if (seenIdentities.has(identity)) {
 			classification.duplicateHighlights.push(highlight);
 			continue;
 		}
 
-		seenIds.add(id);
+		seenIdentities.add(identity);
 
-		if (ignoredIds.has(id)) {
+		if (ignoredIdentities.has(identity)) {
 			classification.ignoredHighlights.push(highlight);
 			continue;
 		}
 
-		if (!importedIds.has(id)) {
+		if (!importedIdentities.has(identity)) {
 			classification.newHighlights.push(highlight);
 			continue;
 		}
 
 		try {
-			if (await options.highlightExistsInNote(id, highlight)) {
+			if (await options.highlightExistsInNote(createClippingId(highlight), highlight)) {
 				classification.duplicateHighlights.push(highlight);
 			} else {
 				classification.possibleReappearedHighlights.push(highlight);

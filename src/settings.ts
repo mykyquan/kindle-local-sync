@@ -1,6 +1,8 @@
 export interface IgnoredHighlight {
 	id: string;
 	title: string;
+	/** Absent only on records saved by plugin versions that predate composite identity. */
+	author?: string;
 	textPreview: string;
 	ignoredAt: string;
 	lang?: string;
@@ -9,6 +11,8 @@ export interface IgnoredHighlight {
 export interface ImportedHighlightRecord {
 	id: string;
 	title: string;
+	/** Absent only on records saved by plugin versions that predate composite identity. */
+	author?: string;
 	textPreview: string;
 	importedAt: string;
 }

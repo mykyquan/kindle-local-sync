@@ -427,6 +427,34 @@ If your plugin does not need CSS, delete this file.
 	margin-top: 1em;
 }
 
+.kls-outcome-panel {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	margin-top: 1em;
+	padding: 0.85em 1em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-secondary);
+	overflow-wrap: anywhere;
+}
+
+.kls-outcome-panel h3,
+.kls-outcome-panel p {
+	margin-top: 0;
+}
+
+.kls-outcome-panel p:last-child {
+	margin-bottom: 0;
+}
+
+.kls-inline-status {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+}
+
 .kls-action-button {
 	display: inline-flex;
 	flex: 0 1 auto;

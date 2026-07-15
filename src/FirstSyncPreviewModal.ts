@@ -2,8 +2,14 @@
 import { App, ButtonComponent, Modal, Notice } from "obsidian";
 import type KindleLocalSyncPlugin from "./main";
 import { KindleHighlight } from "./parser/parseClippings";
-import { createClippingId, KindleBookGroup } from "./render/renderMarkdown";
+import { KindleBookGroup } from "./render/renderMarkdown";
 import { createSyncSummaryHighlightItem, SyncSummaryHighlightItem } from "./SyncSummaryTypes";
+import {
+	createBookIdentityKey,
+	createKindleHighlightIdentityKey,
+	CurrentClippingIdentityIndex,
+} from "./sync/HighlightIdentity";
+import { IgnoredHighlightCleanupSummary } from "./sync/IgnoredHighlightCleanup";
 
 type FirstSyncChoice = "import" | "ignore" | "skip";
 type BookStatusTone = "ready-to-import" | "ignored" | "skipped-this-sync" | "mixed-decisions" | "needs-review";
@@ -15,10 +21,16 @@ export interface FirstSyncReviewCompletion {
 	skippedThisSyncHighlights: SyncSummaryHighlightItem[];
 }
 
+export interface SyncCompletionResult {
+	importedCount: number;
+	ignoreCleanupResult: IgnoredHighlightCleanupSummary;
+	protectedSelectedHighlightCount: number;
+}
+
 export interface FirstSyncPreviewModalOptions {
 	title?: string;
-	completionNotice?: (importedCount: number) => string;
-	onComplete?: (completion: FirstSyncReviewCompletion) => Promise<void>;
+	completionNotice?: (importedCount: number, protectedSelectedHighlightCount: number) => string;
+	onComplete?: (completion: FirstSyncReviewCompletion) => Promise<SyncCompletionResult>;
 }
 
 interface ReviewProgress {
@@ -48,6 +60,7 @@ export class FirstSyncPreviewModal extends Modal {
 	private readonly plugin: KindleLocalSyncPlugin;
 	private readonly bookGroups: KindleBookGroup[];
 	private readonly options: FirstSyncPreviewModalOptions;
+	private readonly identityIndex: CurrentClippingIdentityIndex;
 	private readonly choices = new Map<string, FirstSyncChoice>();
 	private readonly bookSectionEls = new Map<string, HTMLElement>();
 	private readonly filterButtonEls = new Map<BookStatusFilter, HTMLElement>();
@@ -72,6 +85,7 @@ export class FirstSyncPreviewModal extends Modal {
 		this.plugin = plugin;
 		this.bookGroups = bookGroups;
 		this.options = options;
+		this.identityIndex = new CurrentClippingIdentityIndex(bookGroups.flatMap((group) => group.clippings));
 	}
 
 	onOpen(): void {
@@ -350,8 +364,8 @@ export class FirstSyncPreviewModal extends Modal {
 		this.renderChoicesHelpToggle(bodyEl);
 
 		for (const highlight of group.clippings) {
-			const id = createClippingId(highlight);
-			const choice = this.choices.get(id);
+			const identity = createKindleHighlightIdentityKey(highlight);
+			const choice = this.choices.get(identity);
 			const row = bodyEl.createDiv();
 			row.addClass("kls-highlight-row");
 
@@ -363,7 +377,7 @@ export class FirstSyncPreviewModal extends Modal {
 			this.createDecisionButton(actions, "Import", choice, "import")
 				.onClick(() => {
 					const scrollTop = this.getCurrentScrollTop();
-					this.choices.set(id, "import");
+					this.choices.set(identity, "import");
 					this.renderHighlightReview(group);
 					this.restoreScrollTopAfterRender(scrollTop);
 				});
@@ -371,7 +385,7 @@ export class FirstSyncPreviewModal extends Modal {
 			this.createDecisionButton(actions, "Skip This Sync", choice, "skip")
 				.onClick(() => {
 					const scrollTop = this.getCurrentScrollTop();
-					this.choices.set(id, "skip");
+					this.choices.set(identity, "skip");
 					this.renderHighlightReview(group);
 					this.restoreScrollTopAfterRender(scrollTop);
 				});
@@ -379,7 +393,7 @@ export class FirstSyncPreviewModal extends Modal {
 			this.createDecisionButton(actions, "Ignore", choice, "ignore")
 				.onClick(() => {
 					const scrollTop = this.getCurrentScrollTop();
-					this.choices.set(id, "ignore");
+					this.choices.set(identity, "ignore");
 					this.renderHighlightReview(group);
 					this.restoreScrollTopAfterRender(scrollTop);
 				});
@@ -413,13 +427,13 @@ export class FirstSyncPreviewModal extends Modal {
 
 	private setGroupChoice(group: KindleBookGroup, choice: FirstSyncChoice): void {
 		for (const highlight of group.clippings) {
-			this.choices.set(createClippingId(highlight), choice);
+			this.choices.set(createKindleHighlightIdentityKey(highlight), choice);
 		}
 	}
 
 	private getHighlightsByChoice(choice: FirstSyncChoice): KindleHighlight[] {
 		return this.bookGroups.flatMap((group) =>
-			group.clippings.filter((highlight) => this.choices.get(createClippingId(highlight)) === choice)
+			group.clippings.filter((highlight) => this.choices.get(createKindleHighlightIdentityKey(highlight)) === choice)
 		);
 	}
 
@@ -427,7 +441,7 @@ export class FirstSyncPreviewModal extends Modal {
 		return this.bookGroups.flatMap((group) =>
 			group.clippings
 				.filter((highlight) => {
-					const choice = this.choices.get(createClippingId(highlight));
+					const choice = this.choices.get(createKindleHighlightIdentityKey(highlight));
 
 					return choice !== "import" && choice !== "ignore";
 				})
@@ -547,7 +561,7 @@ export class FirstSyncPreviewModal extends Modal {
 		const counts = new Map<FirstSyncChoice, number>();
 
 		for (const highlight of group.clippings) {
-			const choice = this.choices.get(createClippingId(highlight));
+			const choice = this.choices.get(createKindleHighlightIdentityKey(highlight));
 
 			if (choice) {
 				counts.set(choice, (counts.get(choice) ?? 0) + 1);
@@ -675,28 +689,33 @@ export class FirstSyncPreviewModal extends Modal {
 		const importHighlights = this.getHighlightsByChoice("import");
 		const ignoreHighlights = this.getHighlightsByChoice("ignore");
 		const skippedThisSyncHighlights = this.getSkippedThisSyncHighlights();
-
-		if (this.options.onComplete) {
-			await this.options.onComplete({
+		const result = this.options.onComplete
+			? await this.options.onComplete({
 				importHighlights,
 				ignoreHighlights,
 				skippedThisSyncHighlights,
-			});
-		} else {
-			await this.plugin.completeFirstSync(importHighlights, ignoreHighlights, skippedThisSyncHighlights);
-		}
+			})
+			: await this.plugin.completeFirstSync(
+				importHighlights,
+				ignoreHighlights,
+				skippedThisSyncHighlights,
+				this.identityIndex
+			);
 
 		this.close();
-		new Notice(this.createCompletionNotice(importHighlights.length));
+		new Notice(this.createCompletionNotice(result));
 	}
 
 	private getTitle(): string {
 		return this.options.title ?? "First Sync Preview";
 	}
 
-	private createCompletionNotice(importedCount: number): string {
-		return this.options.completionNotice?.(importedCount)
-			?? `First sync complete: ${importedCount} highlights imported.`;
+	private createCompletionNotice(result: SyncCompletionResult): string {
+		return this.options.completionNotice?.(
+			result.importedCount,
+			result.protectedSelectedHighlightCount
+		)
+			?? `First sync ${result.protectedSelectedHighlightCount > 0 ? "finished" : "complete"}: ${result.importedCount} highlights imported.`;
 	}
 
 	private saveBookListPosition(): void {
@@ -792,7 +811,7 @@ function createHighlightPreview(highlight: KindleHighlight): string {
 }
 
 function createBookAnchorKey(group: KindleBookGroup, index: number): string {
-	return `${index}:${group.bookTitle}:${group.author}`;
+	return JSON.stringify([index, createBookIdentityKey(group.bookTitle, group.author)]);
 }
 
 function createBookReviewSummary(group: KindleBookGroup, status: BookStatus): string {

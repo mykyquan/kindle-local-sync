@@ -1,7 +1,10 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { App } from "../__mocks__/obsidian";
 import { KindleHighlight } from "./parser/parseClippings";
-import { KindleBookGroup } from "./render/renderMarkdown";
+import { createClippingId, KindleBookGroup } from "./render/renderMarkdown";
+import { CurrentClippingIdentityIndex } from "./sync/HighlightIdentity";
+import { SyncSummaryHighlightItem } from "./SyncSummaryTypes";
+import type { SyncCompletionResult } from "./FirstSyncPreviewModal";
 
 let FirstSyncPreviewModal: typeof import("./FirstSyncPreviewModal").FirstSyncPreviewModal;
 
@@ -10,6 +13,54 @@ beforeAll(async () => {
 });
 
 describe("FirstSyncPreviewModal skip and ignore behavior", () => {
+	it("uses the actual imported count returned by completion", async () => {
+		const plugin = createPlugin();
+		const importedCounts: number[] = [];
+		const modal = createModal(plugin, [createBookGroup()], {
+			completionNotice: (importedCount) => {
+				importedCounts.push(importedCount);
+				return `Imported ${importedCount}`;
+			},
+		});
+		plugin.completeFirstSync.mockResolvedValueOnce({
+			importedCount: 1,
+			ignoreCleanupResult: createEmptyCleanupResult(),
+			protectedSelectedHighlightCount: 0,
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All").click();
+		await findByText(modal.contentEl, "Finish Sync").click();
+
+		expect(importedCounts).toEqual([1]);
+	});
+
+	it("uses finished wording when a selected import was protected", () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+		const createCompletionNotice = (modal as unknown as {
+			createCompletionNotice(result: SyncCompletionResult): string;
+		}).createCompletionNotice.bind(modal);
+
+		expect(createCompletionNotice({
+			importedCount: 0,
+			ignoreCleanupResult: createEmptyCleanupResult(),
+			protectedSelectedHighlightCount: 1,
+		})).toBe("First sync finished: 0 highlights imported.");
+	});
+
+	it("keeps completion wording after a fully successful first sync", () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+		const createCompletionNotice = (modal as unknown as {
+			createCompletionNotice(result: SyncCompletionResult): string;
+		}).createCompletionNotice.bind(modal);
+
+		expect(createCompletionNotice({
+			importedCount: 2,
+			ignoreCleanupResult: createEmptyCleanupResult(),
+			protectedSelectedHighlightCount: 0,
+		})).toBe("First sync complete: 2 highlights imported.");
+	});
+
 	it("labels book skip as Skip This Sync", () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
@@ -28,7 +79,12 @@ describe("FirstSyncPreviewModal skip and ignore behavior", () => {
 		await findByText(modal.contentEl, "Skip This Sync").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
 
-		expect(plugin.completeFirstSync).toHaveBeenCalledWith([], [], expect.any(Array));
+		expect(plugin.completeFirstSync).toHaveBeenCalledWith(
+			[],
+			[],
+			expect.any(Array),
+			expect.any(CurrentClippingIdentityIndex)
+		);
 	});
 
 	it("adds all book highlights to ignoredHighlights when Ignore All Highlights is clicked", async () => {
@@ -40,7 +96,12 @@ describe("FirstSyncPreviewModal skip and ignore behavior", () => {
 		await findByText(modal.contentEl, "Ignore All Highlights").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
 
-		expect(plugin.completeFirstSync).toHaveBeenCalledWith([], group.clippings, []);
+		expect(plugin.completeFirstSync).toHaveBeenCalledWith(
+			[],
+			group.clippings,
+			[],
+			expect.any(CurrentClippingIdentityIndex)
+		);
 	});
 
 	it("keeps per-highlight skip non-persistent", async () => {
@@ -55,7 +116,55 @@ describe("FirstSyncPreviewModal skip and ignore behavior", () => {
 		await findByText(modal.contentEl, "Finish Sync").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
 
-		expect(plugin.completeFirstSync).toHaveBeenCalledWith([], [], expect.any(Array));
+		expect(plugin.completeFirstSync).toHaveBeenCalledWith(
+			[],
+			[],
+			expect.any(Array),
+			expect.any(CurrentClippingIdentityIndex)
+		);
+	});
+
+	it("keeps a per-highlight Ignore decision scoped when real clipping IDs collide", async () => {
+		const plugin = createPlugin();
+		const bookA = createCollisionBookGroup("Collision 1h0o65e 20hu");
+		const bookB = createCollisionBookGroup("Collision 1y0rlvz 2269");
+		const modal = createModal(plugin, [bookA, bookB]);
+
+		expect(createClippingId(bookA.clippings[0]!)).toBe(createClippingId(bookB.clippings[0]!));
+		modal.onOpen();
+		await findByText(findSectionByHeading(modal.contentEl, `1 of 2 — ${bookA.bookTitle}`), "Review Highlights").click();
+		await findByText(modal.contentEl, "Ignore").click();
+		await findByText(modal.contentEl, "Back To Book List").click();
+		await findByText(modal.contentEl, "Finish Sync").click();
+		await findByText(modal.contentEl, "Finish Sync").click();
+
+		const [imports, ignores, skipped] = plugin.completeFirstSync.mock.calls[0]!;
+
+		expect(imports).toEqual([]);
+		expect(ignores).toEqual(bookA.clippings);
+		expect(skipped).toEqual([expect.objectContaining({
+			id: createClippingId(bookB.clippings[0]!),
+			title: bookB.bookTitle,
+			author: bookB.author,
+		})]);
+	});
+
+	it("keeps Ignore All scoped to its exact book when real clipping IDs collide", async () => {
+		const plugin = createPlugin();
+		const bookA = createCollisionBookGroup("Collision 1h0o65e 20hu");
+		const bookB = createCollisionBookGroup("Collision 1y0rlvz 2269");
+		const modal = createModal(plugin, [bookA, bookB]);
+
+		modal.onOpen();
+		await findByText(findSectionByHeading(modal.contentEl, `1 of 2 — ${bookA.bookTitle}`), "Ignore All Highlights").click();
+		await findByText(findSectionByHeading(modal.contentEl, `2 of 2 — ${bookB.bookTitle}`), "Import All").click();
+		await findByText(modal.contentEl, "Finish Sync").click();
+
+		const [imports, ignores, skipped] = plugin.completeFirstSync.mock.calls[0]!;
+
+		expect(imports).toEqual(bookB.clippings);
+		expect(ignores).toEqual(bookA.clippings);
+		expect(skipped).toEqual([]);
 	});
 });
 
@@ -129,7 +238,12 @@ describe("FirstSyncPreviewModal wording and layout", () => {
 		await findByText(modal.contentEl, "Ignore All Highlights").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
 
-		expect(plugin.completeFirstSync).toHaveBeenCalledWith([], group.clippings, []);
+		expect(plugin.completeFirstSync).toHaveBeenCalledWith(
+			[],
+			group.clippings,
+			[],
+			expect.any(CurrentClippingIdentityIndex)
+		);
 	});
 
 	it("does not style Ignore All Highlights as mod-warning", () => {
@@ -792,7 +906,12 @@ describe("FirstSyncPreviewModal sticky actions", () => {
 		await findByText(stickyModal.contentEl, "Import All").click();
 		await findByText(elementsByClass(stickyModal.contentEl, "kls-sticky-actions")[0], "Finish Sync").click();
 
-		expect(stickyPlugin.completeFirstSync).toHaveBeenCalledWith(createBookGroup().clippings, [], []);
+		expect(stickyPlugin.completeFirstSync).toHaveBeenCalledWith(
+			createBookGroup().clippings,
+			[],
+			[],
+			expect.any(CurrentClippingIdentityIndex)
+		);
 
 		const bottomPlugin = createPlugin();
 		const bottomModal = createModal(bottomPlugin, [createBookGroup()]);
@@ -801,7 +920,12 @@ describe("FirstSyncPreviewModal sticky actions", () => {
 		await findByText(bottomModal.contentEl, "Import All").click();
 		await buttonByTextAt(bottomModal.contentEl, "Finish Sync", -1).click();
 
-		expect(bottomPlugin.completeFirstSync).toHaveBeenCalledWith(createBookGroup().clippings, [], []);
+		expect(bottomPlugin.completeFirstSync).toHaveBeenCalledWith(
+			createBookGroup().clippings,
+			[],
+			[],
+			expect.any(CurrentClippingIdentityIndex)
+		);
 	});
 });
 
@@ -1119,7 +1243,12 @@ describe("FirstSyncPreviewModal finish confirmation", () => {
 		await findByText(modal.contentEl, "Finish Sync").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
 
-		expect(plugin.completeFirstSync).toHaveBeenCalledWith([], [], expect.any(Array));
+		expect(plugin.completeFirstSync).toHaveBeenCalledWith(
+			[],
+			[],
+			expect.any(Array),
+			expect.any(CurrentClippingIdentityIndex)
+		);
 	});
 
 	it("does not persist not-reviewed highlights to data.json", async () => {
@@ -1300,7 +1429,25 @@ function createModal(
 function createPlugin() {
 	return {
 		settings: {},
-		completeFirstSync: vi.fn(async () => {}),
+		completeFirstSync: vi.fn(async (
+			importHighlights: KindleHighlight[],
+			_ignoreHighlights: KindleHighlight[],
+			_skippedThisSyncHighlights: SyncSummaryHighlightItem[],
+			_identityIndex: CurrentClippingIdentityIndex
+		) => ({
+			importedCount: importHighlights.length,
+			ignoreCleanupResult: createEmptyCleanupResult(),
+			protectedSelectedHighlightCount: 0,
+		})),
+	};
+}
+
+function createEmptyCleanupResult() {
+	return {
+		filesScanned: 0,
+		filesUpdated: 0,
+		blocksRemoved: 0,
+		bookOutcomes: [],
 	};
 }
 
@@ -1338,6 +1485,22 @@ function createSingleHighlightBookGroup(bookTitle = "Atomic Habits", author = "J
 				content: "Small habits make a big difference.",
 			}),
 		],
+	};
+}
+
+function createCollisionBookGroup(bookTitle: string): KindleBookGroup {
+	const highlight = createHighlight({
+		bookTitle,
+		author: "Author",
+		location: "1",
+		dateAdded: "Date",
+		content: "Content",
+	});
+
+	return {
+		bookTitle,
+		author: highlight.author,
+		clippings: [highlight],
 	};
 }
 

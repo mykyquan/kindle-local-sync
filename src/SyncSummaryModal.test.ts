@@ -1,8 +1,28 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { App } from "../__mocks__/obsidian";
+import type { HighlightImportResult } from "./main";
 import { KindleHighlight } from "./parser/parseClippings";
+import { createClippingId, groupHighlightsByBook } from "./render/renderMarkdown";
 import { IgnoredHighlight } from "./settings";
 import { SyncClassification } from "./sync/SyncClassifier";
+import {
+	createBookIdentityKey,
+	createKindleHighlightIdentityKey,
+	CurrentClippingIdentityIndex,
+} from "./sync/HighlightIdentity";
+import {
+	IgnoredHighlightCleanupSummary,
+	IgnoredHighlightCleanupTargetOutcome,
+} from "./sync/IgnoredHighlightCleanup";
+import { createVaultWritePlan, VaultBookWriteOutcome } from "./sync/VaultWriter";
+import { InvalidVaultWriteContractError } from "./sync/VaultWriteContract";
+import {
+	createEmptyIgnoreResultsPresentation,
+	createIgnoreResultsPresentation,
+	createProtectedBooksPresentation,
+	IgnoreResultsPresentation,
+	ProtectedBooksPresentation,
+} from "./SyncOutcomePresentation";
 import { SyncSummaryHighlightItem } from "./SyncSummaryTypes";
 
 let SyncSummaryModal: typeof import("./SyncSummaryModal").SyncSummaryModal;
@@ -12,6 +32,22 @@ beforeAll(async () => {
 });
 
 describe("SyncSummaryModal ignored highlights navigation", () => {
+	it("retains only the UI-safe initial Ignore presentation", () => {
+		const cleanupResult: IgnoredHighlightCleanupSummary = {
+			filesScanned: 1,
+			filesUpdated: 0,
+			blocksRemoved: 0,
+			bookOutcomes: [],
+		};
+		const ignoreResults = createIgnoreResultsPresentation([cleanupResult]);
+		const modal = createModal({ ignoreResults });
+
+		expect((modal as unknown as {
+			ignoreResults: IgnoreResultsPresentation;
+		}).ignoreResults).toEqual(ignoreResults);
+		expect(JSON.stringify(modal)).not.toContain("filesScanned");
+	});
+
 	it("explains that unreviewed or skipped highlights return on the next sync", () => {
 		const modal = createModal({
 			skippedThisSyncHighlights: [createSummaryItem()],
@@ -31,8 +67,13 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 			}),
 			classification: createClassification({
 				ignoredHighlights: [createHighlight()],
+				possibleReappearedHighlights: [createHighlight()],
 			}),
 			skippedThisSyncHighlights: [createSummaryItem()],
+			protectedBooks: createProtectedBooksPresentation([createHighlight()], []),
+			ignoreResults: createIgnoreResultsPresentation([
+				createCleanupResult([createAllCleanupOutcomes()[0]!]),
+			]),
 		});
 
 		modal.onOpen();
@@ -42,6 +83,9 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 		expect(elementsByClass(modal.contentEl, "kls-summary-actions")).toHaveLength(1);
 		expect(actionRow.classes.has("kls-button-row")).toBe(true);
 		expect(actionButtons.map((button) => button.text())).toEqual([
+			"Review Missing Managed Highlights",
+			"View Books Left Unchanged",
+			"Review Ignore Results",
 			"View Ignored Highlights",
 			"Review Skipped This Sync",
 			"Close",
@@ -217,9 +261,9 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 		await findByText(modal.contentEl, "View Ignored Highlights").click();
 		await findByText(bookCardByTitle(modal.contentEl, "Atomic Habits"), "Remove All From Ignore List").click();
 
-		expect(plugin.unignoreHighlight).toHaveBeenCalledWith("one");
-		expect(plugin.unignoreHighlight).toHaveBeenCalledWith("two");
-		expect(plugin.unignoreHighlight).not.toHaveBeenCalledWith("three");
+		expect(plugin.unignoreHighlight).toHaveBeenCalledWith(expect.objectContaining({ id: "one" }));
+		expect(plugin.unignoreHighlight).toHaveBeenCalledWith(expect.objectContaining({ id: "two" }));
+		expect(plugin.unignoreHighlight).not.toHaveBeenCalledWith(expect.objectContaining({ id: "three" }));
 		expect(readText(modal.contentEl)).not.toContain("Atomic Habits");
 		expect(readText(modal.contentEl)).toContain("Deep Work");
 	});
@@ -239,7 +283,7 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 		await findByText(modal.contentEl, "View Ignored Highlights").click();
 		await findByText(modal.contentEl, "Remove All From Ignore List").click();
 
-		expect(plugin.unignoreHighlight).toHaveBeenCalledWith("kls-ignored");
+		expect(plugin.unignoreHighlight).toHaveBeenCalledWith(expect.objectContaining({ id: "kls-ignored" }));
 		expect(readText(modal.contentEl)).toContain(
 			"No ignored highlights. Highlights you ignore during sync will appear here."
 		);
@@ -307,7 +351,7 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Remove From Ignore List").click();
 
-		expect(plugin.unignoreHighlight).toHaveBeenCalledWith("kls-ignored");
+		expect(plugin.unignoreHighlight).toHaveBeenCalledWith(expect.objectContaining({ id: "kls-ignored" }));
 		expect(readText(modal.contentEl)).toContain("No ignored highlights left in this book.");
 	});
 
@@ -497,7 +541,10 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Ignore Going Forward").click();
 
-		expect(plugin.ignoreSummaryHighlight).toHaveBeenCalledWith(highlight);
+		expect(plugin.ignoreSummaryHighlight).toHaveBeenCalledWith(
+			highlight,
+			expect.any(CurrentClippingIdentityIndex)
+		);
 	});
 
 	it("removes the highlight row after Ignore Going Forward", async () => {
@@ -574,8 +621,48 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		await findByText(modal.contentEl, "Ignore All Highlights").click();
 		await findByText(modal.contentEl, "Ignore All Highlights").click();
 
-		expect(plugin.ignoreSummaryHighlight).toHaveBeenCalledWith(highlights[0]);
-		expect(plugin.ignoreSummaryHighlight).toHaveBeenCalledWith(highlights[1]);
+		expect(plugin.ignoreSummaryHighlight).toHaveBeenCalledWith(
+			highlights[0],
+			expect.any(CurrentClippingIdentityIndex)
+		);
+		expect(plugin.ignoreSummaryHighlight).toHaveBeenCalledWith(
+			highlights[1],
+			expect.any(CurrentClippingIdentityIndex)
+		);
+	});
+
+	it("keeps a colliding skipped item from another book after Ignore Going Forward", async () => {
+		const plugin = createPlugin();
+		const bookA = createCollisionHighlight("Collision 1h0o65e 20hu");
+		const bookB = createCollisionHighlight("Collision 1y0rlvz 2269");
+		const itemA = createSummaryItem({
+			id: createClippingId(bookA),
+			title: bookA.bookTitle,
+			author: bookA.author,
+		});
+		const itemB = createSummaryItem({
+			id: createClippingId(bookB),
+			title: bookB.bookTitle,
+			author: bookB.author,
+		});
+		const modal = createModal({
+			plugin,
+			skippedThisSyncHighlights: [itemA, itemB],
+		});
+
+		expect(itemA.id).toBe(itemB.id);
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Skipped This Sync").click();
+		await findByText(bookCardByTitle(modal.contentEl, itemA.title), "Review Highlights").click();
+		await findByText(modal.contentEl, "Ignore Going Forward").click();
+		await findByText(modal.contentEl, "Back to Skipped Books").click();
+
+		expect(plugin.ignoreSummaryHighlight).toHaveBeenCalledWith(
+			itemA,
+			expect.any(CurrentClippingIdentityIndex)
+		);
+		expect(readText(modal.contentEl)).not.toContain(itemA.title);
+		expect(readText(modal.contentEl)).toContain(itemB.title);
 	});
 
 	it("shows empty state when all skipped highlights are handled", async () => {
@@ -592,7 +679,372 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 	});
 });
 
+describe("SyncSummaryModal protected-book outcomes", () => {
+	it("omits protected outcome UI when no book was protected", () => {
+		const modal = createModal();
+
+		modal.onOpen();
+
+		expect(readText(modal.contentEl)).toContain("Sync complete");
+		expect(readText(modal.contentEl)).not.toContain("Some books were left unchanged");
+		expect(buttonTexts(modal.contentEl)).not.toContain("View Books Left Unchanged");
+	});
+
+	it("shows singular selected-import copy and the neutral protected panel", () => {
+		const selected = createHighlight();
+		const modal = createModal({
+			protectedBooks: createProtectedBooksPresentation([selected], [selected]),
+		});
+
+		modal.onOpen();
+
+		expect(readText(modal.contentEl)).toContain("Sync finished");
+		expect(readText(modal.contentEl)).toContain("Some books were left unchanged");
+		expect(readText(modal.contentEl)).toContain(
+			"1 existing book note was left unchanged because it could not be updated safely."
+		);
+		expect(readText(modal.contentEl)).toContain(
+			"1 selected highlight was not imported and will be available for review next time."
+		);
+		expect(elementsByClass(modal.contentEl, "kls-outcome-panel")).toHaveLength(1);
+		expect(buttonTexts(modal.contentEl)).toContain("View Books Left Unchanged");
+	});
+
+	it("shows automatic-history copy without describing selected new imports", async () => {
+		const automatic = [
+			createHighlight(),
+			createHighlight({ bookTitle: "Deep Work", author: "Cal Newport" }),
+		];
+		const modal = createModal({
+			protectedBooks: createProtectedBooksPresentation(automatic, []),
+		});
+
+		modal.onOpen();
+
+		expect(readText(modal.contentEl)).toContain("Sync finished");
+		expect(readText(modal.contentEl)).toContain(
+			"2 existing book notes were left unchanged because they could not be updated safely."
+		);
+		expect(readText(modal.contentEl)).toContain("Their existing imported history was kept.");
+		expect(readText(modal.contentEl)).not.toContain("selected highlight");
+
+		await findByText(modal.contentEl, "View Books Left Unchanged").click();
+		expect(readText(modal.contentEl)).toContain("Existing imported history was kept for this book.");
+		expect(readText(modal.contentEl)).not.toContain("selected highlight");
+	});
+
+	it("renders long protected-book details with only Back and Close, then restores summary scroll", async () => {
+		const highlights = Array.from({ length: 24 }, (_, index) => createHighlight({
+			bookTitle: `Book ${index + 1}`,
+			author: `Author ${index + 1}`,
+			content: `Highlight ${index + 1}`,
+		}));
+		const modal = createModal({
+			protectedBooks: createProtectedBooksPresentation(highlights, [highlights[0]!]),
+		});
+		const closeSpy = vi.spyOn(modal, "close");
+
+		modal.onOpen();
+		setScrollTop(modal.contentEl, 510);
+		await findByText(modal.contentEl, "View Books Left Unchanged").click();
+
+		expect(readText(modal.contentEl)).toContain("Books left unchanged");
+		expect(elementsByClass(modal.contentEl, "kls-book-card")).toHaveLength(24);
+		expect(readText(modal.contentEl)).toContain("Author: Author 24");
+		expect(readText(modal.contentEl)).toContain("1 affected highlight");
+		expect(readText(modal.contentEl)).toContain("1 selected highlight returning for review");
+		expect(readText(modal.contentEl)).toContain("Existing imported history was kept for this book.");
+		expect(readText(modal.contentEl)).not.toContain("0 selected highlights returning for review");
+		expect(buttonTexts(modal.contentEl)).toEqual(["Back", "Close"]);
+		expect(readText(modal.contentEl)).not.toMatch(
+			/kls-|kindle-local-sync|unsafe-existing-managed-region|notePath|collision|marker/i
+		);
+
+		await findByText(modal.contentEl, "Close").click();
+		expect(closeSpy).toHaveBeenCalledTimes(1);
+		await findByText(modal.contentEl, "Back").click();
+		expect(readText(modal.contentEl)).toContain("Sync finished");
+		expect(scrollTop(modal.contentEl)).toBe(510);
+	});
+});
+
+describe("SyncSummaryModal Ignore outcomes", () => {
+	it("omits Ignore result UI when there are no current target outcomes", () => {
+		const modal = createModal({
+			ignoreResults: createIgnoreResultsPresentation([createEmptyCleanupResult()]),
+		});
+
+		modal.onOpen();
+
+		expect(readText(modal.contentEl)).not.toContain("Ignore results");
+		expect(buttonTexts(modal.contentEl)).not.toContain("Review Ignore Results");
+	});
+
+	it("renders every approved non-technical cleanup result in original order", async () => {
+		const outcomes = createAllCleanupOutcomes();
+		const presentation = createIgnoreResultsPresentation([
+			createCleanupResult(outcomes),
+		]);
+		const modal = createModal({ ignoreResults: presentation });
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Ignore Results").click();
+		const text = readText(modal.contentEl);
+		const approvedCopy = [
+			"This highlight was removed from the matching note.",
+			"No matching note was found. No existing note was changed.",
+			"This highlight was already absent from the matching note. No note change was needed.",
+			"More than one note matched this book, so the existing notes were left unchanged.",
+			"The existing note could not be updated safely, so it was left unchanged.",
+			"The existing note could not be updated. It may still contain this highlight.",
+			"We couldn’t confirm whether the existing note changed. Check the note before trying again.",
+		];
+
+		expect(elementsByClass(modal.contentEl, "kls-book-card")).toHaveLength(7);
+		for (const copy of approvedCopy) {
+			expect(text).toContain(copy);
+		}
+		expect(approvedCopy.map((copy) => text.indexOf(copy))).toEqual(
+			[...approvedCopy].map((copy) => text.indexOf(copy)).sort((left, right) => left - right)
+		);
+		expect(buttonTexts(modal.contentEl)).toEqual(["Back", "Close"]);
+		expect(text).not.toMatch(/start-without-end|discovery|cleanup-failed|cleanup-state-unknown|kls-/);
+	});
+
+	it("shows accurate mixed removed and already-absent counts without false removal wording", async () => {
+		const highlight = createHighlight();
+		const target = createCleanupTarget(highlight);
+		const presentation = createIgnoreResultsPresentation([createCleanupResult([
+			{ target, status: "removed-safely", blocksRemoved: 1 },
+			{ target, status: "no-matching-highlight-block" },
+		])]);
+		const modal = createModal({ ignoreResults: presentation });
+
+		modal.onOpen();
+
+		expect(readText(modal.contentEl)).toContain("2 highlights will be ignored in future syncs.");
+		expect(readText(modal.contentEl)).toContain(
+			"Your ignore choices were saved for future syncs. Some existing notes were left unchanged."
+		);
+		expect(readText(modal.contentEl)).toContain("1 highlight was removed from an existing note.");
+		await findByText(modal.contentEl, "Review Ignore Results").click();
+		expect(readText(modal.contentEl).match(/removed from the matching note/g)).toHaveLength(1);
+		expect(readText(modal.contentEl).match(/already absent from the matching note/g)).toHaveLength(1);
+	});
+
+	it("uses neutral overview wording when cleanup could not be completed", () => {
+		const outcome = createAllCleanupOutcomes()[5]!;
+		const modal = createModal({
+			ignoreResults: createIgnoreResultsPresentation([createCleanupResult([outcome])]),
+		});
+
+		modal.onOpen();
+
+		expect(readText(modal.contentEl)).toContain("1 highlight will be ignored in future syncs.");
+		expect(readText(modal.contentEl)).toContain(
+			"The existing-note update could not be completed for 1 highlight."
+		);
+		expect(readText(modal.contentEl)).not.toContain("left unchanged");
+		expect(readText(modal.contentEl)).not.toContain("was removed");
+	});
+
+	it("does not describe a missing matching note as an unchanged existing note", () => {
+		const outcome = createAllCleanupOutcomes()[1]!;
+		const modal = createModal({
+			ignoreResults: createIgnoreResultsPresentation([createCleanupResult([outcome])]),
+		});
+
+		modal.onOpen();
+		const text = readText(modal.contentEl);
+
+		expect(text).toContain(
+			"No existing-note change was made for highlights without a matching note."
+		);
+		expect(text).toContain("No matching note was found for 1 highlight.");
+		expect(text).not.toContain("Some existing notes were left unchanged");
+		expect(text).not.toContain("existing note was left unchanged");
+	});
+
+	it("uses neutral overview wording when the cleanup state is unconfirmed", () => {
+		const outcome = createAllCleanupOutcomes()[6]!;
+		const modal = createModal({
+			ignoreResults: createIgnoreResultsPresentation([createCleanupResult([outcome])]),
+		});
+
+		modal.onOpen();
+
+		expect(readText(modal.contentEl)).toContain(
+			"The final note state could not be confirmed for 1 highlight."
+		);
+		expect(readText(modal.contentEl)).not.toContain("left unchanged");
+		expect(readText(modal.contentEl)).not.toContain("was removed");
+	});
+
+	it("accurately distinguishes missing, absent, unchanged, failed, and unconfirmed mixed results", () => {
+		const outcomes = createAllCleanupOutcomes();
+		const modal = createModal({
+			ignoreResults: createIgnoreResultsPresentation([createCleanupResult([
+				...outcomes,
+			])]),
+		});
+
+		modal.onOpen();
+		const text = readText(modal.contentEl);
+
+		expect(text).toContain("1 highlight was removed from an existing note.");
+		expect(text).toContain(
+			"No existing-note change was made for highlights without a matching note."
+		);
+		expect(text).toContain("No matching note was found for 1 highlight.");
+		expect(text).toContain("1 highlight was already absent from its matching note.");
+		expect(text).toContain("Existing notes were left unchanged for 2 highlights.");
+		expect(text).toContain("The existing-note update could not be completed for 1 highlight.");
+		expect(text).toContain("The final note state could not be confirmed for 1 highlight.");
+		expect(text).not.toContain("Some existing notes were left unchanged");
+	});
+
+	it("restores summary scroll after Ignore details and supports Close", async () => {
+		const modal = createModal({
+			ignoreResults: createIgnoreResultsPresentation([
+				createCleanupResult([createAllCleanupOutcomes()[1]!]),
+			]),
+		});
+		const closeSpy = vi.spyOn(modal, "close");
+
+		modal.onOpen();
+		setScrollTop(modal.contentEl, 390);
+		await findByText(modal.contentEl, "Review Ignore Results").click();
+		await findByText(modal.contentEl, "Close").click();
+		expect(closeSpy).toHaveBeenCalledTimes(1);
+		await findByText(modal.contentEl, "Back").click();
+		expect(scrollTop(modal.contentEl)).toBe(390);
+	});
+});
+
 describe("SyncSummaryModal missing managed highlight review", () => {
+	it("keeps a colliding missing-managed item from another book after Ignore Going Forward", async () => {
+		const plugin = createPlugin();
+		const bookA = createCollisionHighlight("Collision 1h0o65e 20hu");
+		const bookB = createCollisionHighlight("Collision 1y0rlvz 2269");
+		const modal = createModal({
+			plugin,
+			classification: createClassification({
+				possibleReappearedHighlights: [bookA, bookB],
+			}),
+		});
+
+		expect(createClippingId(bookA)).toBe(createClippingId(bookB));
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Managed Highlights").click();
+		await buttonsByText(modal.contentEl, "Ignore Going Forward")[0]!.click();
+
+		expect(plugin.ignoreHighlights).toHaveBeenCalledWith(
+			[bookA],
+			expect.any(CurrentClippingIdentityIndex)
+		);
+		expect(readText(modal.contentEl)).not.toContain(bookA.bookTitle);
+		expect(readText(modal.contentEl)).toContain(bookB.bookTitle);
+	});
+
+	it("increments the imported count and removes a successfully imported recovery item", async () => {
+		const highlight = createHighlight();
+		const plugin = createPlugin();
+		const modal = createModal({
+			plugin,
+			classification: createClassification({
+				possibleReappearedHighlights: [highlight],
+			}),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Managed Highlights").click();
+		await findByText(modal.contentEl, "Import Again").click();
+
+		expect(plugin.importHighlights).toHaveBeenCalledWith(
+			[highlight],
+			expect.any(CurrentClippingIdentityIndex),
+			true,
+			[highlight]
+		);
+		expect(readText(modal.contentEl)).toContain("No missing managed highlights left to review.");
+		await findByText(modal.contentEl, "Back to Summary").click();
+		expect(readText(modal.contentEl)).toContain("1 new highlights imported");
+		expect(readText(modal.contentEl)).toContain("Missing managed highlights to review: 0");
+	});
+
+	it("returns to completion wording after a protected recovery retry later succeeds", async () => {
+		const highlight = createHighlight();
+		const plugin = createPlugin();
+		plugin.importHighlights
+			.mockResolvedValueOnce(createImportResult([highlight], ["protected"]))
+			.mockResolvedValueOnce(createImportResult([highlight]));
+		const modal = createModal({
+			plugin,
+			classification: createClassification({
+				possibleReappearedHighlights: [highlight],
+			}),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Managed Highlights").click();
+		setScrollTop(modal.contentEl, 275);
+		await findByText(modal.contentEl, "Import Again").click();
+
+		expect(buttonTexts(modal.contentEl)).toContain("Import Again");
+		expect(readText(modal.contentEl)).toContain(
+			"This note was left unchanged. This highlight is still available to try again."
+		);
+		const status = elementByClass(modal.contentEl, "kls-inline-status");
+		expect(status.attributes.get("role")).toBe("status");
+		expect(status.attributes.get("aria-live")).toBe("polite");
+		expect(scrollTop(modal.contentEl)).toBe(275);
+		expect(readText(modal.contentEl)).not.toContain("kls-");
+		expect(readText(modal.contentEl)).not.toContain("kindle-local-sync:start");
+		expect(readText(modal.contentEl)).not.toContain("unsafe-existing-managed-region");
+		expect(readText(modal.contentEl)).not.toContain("Kindle Highlights/Atomic Habits");
+		await findByText(modal.contentEl, "Back to Summary").click();
+		expect(readText(modal.contentEl)).toContain("Sync finished");
+		expect(readText(modal.contentEl)).not.toContain("Sync complete");
+		expect(readText(modal.contentEl)).toContain("0 new highlights imported");
+		expect(readText(modal.contentEl)).toContain("Missing managed highlights to review: 1");
+
+		await findByText(modal.contentEl, "Review Missing Managed Highlights").click();
+		expect(readText(modal.contentEl)).toContain(
+			"This note was left unchanged. This highlight is still available to try again."
+		);
+		await findByText(modal.contentEl, "Import Again").click();
+		expect(readText(modal.contentEl)).not.toContain("This note was left unchanged.");
+		expect(readText(modal.contentEl)).toContain("No missing managed highlights left to review.");
+		await findByText(modal.contentEl, "Back to Summary").click();
+		expect(readText(modal.contentEl)).toContain("Sync complete");
+		expect(readText(modal.contentEl)).not.toContain("Sync finished");
+		expect(readText(modal.contentEl)).toContain("1 new highlights imported");
+	});
+
+	it("keeps a recovery item and count unchanged when the writer contract is invalid", async () => {
+		const highlight = createHighlight();
+		const plugin = createPlugin();
+		plugin.importHighlights.mockRejectedValueOnce(
+			new InvalidVaultWriteContractError("outcome-count")
+		);
+		const modal = createModal({
+			plugin,
+			classification: createClassification({
+				possibleReappearedHighlights: [highlight],
+			}),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Managed Highlights").click();
+		await expect(findByText(modal.contentEl, "Import Again").click())
+			.rejects.toBeInstanceOf(InvalidVaultWriteContractError);
+
+		expect(buttonTexts(modal.contentEl)).toContain("Import Again");
+		await findByText(modal.contentEl, "Back to Summary").click();
+		expect(readText(modal.contentEl)).toContain("0 new highlights imported");
+		expect(readText(modal.contentEl)).toContain("Missing managed highlights to review: 1");
+	});
+
 	it("explains why previously imported highlights need recovery review", async () => {
 		const modal = createModal({
 			classification: createClassification({
@@ -629,7 +1081,7 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 
 		expect(elementsByClass(buttonRow, "kls-action-button").map((button) => button.text())).toEqual([
 			"Import Again",
-			"Ignore Forever",
+			"Ignore Going Forward",
 			"Skip This Time",
 		]);
 	});
@@ -778,12 +1230,26 @@ function createModal(options: {
 	plugin?: ReturnType<typeof createPlugin>;
 	classification?: SyncClassification;
 	skippedThisSyncHighlights?: SyncSummaryHighlightItem[];
+	protectedBooks?: ProtectedBooksPresentation;
+	ignoreResults?: IgnoreResultsPresentation;
+	automaticHighlights?: KindleHighlight[];
+	importedCount?: number;
 } = {}) {
+	const classification = options.classification ?? createClassification();
+
 	return new SyncSummaryModal(new App() as never, (options.plugin ?? createPlugin()) as never, {
-		classification: options.classification ?? createClassification(),
-		automaticHighlights: [],
-		importedCount: 0,
+		classification,
+		automaticHighlights: options.automaticHighlights ?? [],
+		importedCount: options.importedCount ?? 0,
 		skippedThisSyncHighlights: options.skippedThisSyncHighlights ?? [],
+		identityIndex: new CurrentClippingIdentityIndex([
+			...classification.newHighlights,
+			...classification.duplicateHighlights,
+			...classification.ignoredHighlights,
+			...classification.possibleReappearedHighlights,
+		]),
+		protectedBooks: options.protectedBooks,
+		ignoreResults: options.ignoreResults,
 	});
 }
 
@@ -793,22 +1259,129 @@ function createPlugin(options: { ignoredHighlights?: IgnoredHighlight[] } = {}) 
 	};
 
 	return {
-		importHighlights: vi.fn(async () => {}),
-		ignoreHighlights: vi.fn(async () => {}),
+		importHighlights: vi.fn(async (highlights: KindleHighlight[]): Promise<HighlightImportResult> =>
+			createImportResult(highlights)),
+		ignoreHighlights: vi.fn(async () => ({
+			cleanupResult: createEmptyCleanupResult(),
+			outcomePresentation: createEmptyIgnoreResultsPresentation(),
+		})),
 		ignoreSummaryHighlight: vi.fn(async (highlight: SyncSummaryHighlightItem) => {
-			settings.ignoredHighlights = settings.ignoredHighlights.filter((existing) => existing.id !== highlight.id);
 			settings.ignoredHighlights.push({
 				id: highlight.id,
 				title: highlight.title,
+				author: highlight.author,
 				textPreview: highlight.textPreview,
 				ignoredAt: "2026-07-09T00:00:00.000Z",
 				lang: highlight.lang,
 			});
+
+			return {
+				cleanupResult: createEmptyCleanupResult(),
+				outcomePresentation: createEmptyIgnoreResultsPresentation(),
+			};
 		}),
-		unignoreHighlight: vi.fn(async (id: string) => {
-			settings.ignoredHighlights = settings.ignoredHighlights.filter((highlight) => highlight.id !== id);
+		unignoreHighlight: vi.fn(async (target: IgnoredHighlight) => {
+			settings.ignoredHighlights = settings.ignoredHighlights.filter((highlight) => highlight !== target);
 		}),
 		settings,
+	};
+}
+
+function createImportResult(
+	highlights: KindleHighlight[],
+	statuses: Array<VaultBookWriteOutcome["status"]> = []
+): HighlightImportResult {
+	const plan = createVaultWritePlan("Kindle Highlights", groupHighlightsByBook(highlights));
+	const bookOutcomes = plan.bookPlans.map((bookPlan, index): VaultBookWriteOutcome => {
+		const status = statuses[index] ?? "updated";
+		const base = {
+			bookTitle: bookPlan.group.bookTitle,
+			author: bookPlan.group.author,
+			notePath: bookPlan.notePath,
+			highlightIds: [...bookPlan.highlightIds],
+		};
+
+		return status === "protected"
+			? { ...base, status, reason: "existing-highlights-not-retained" }
+			: { ...base, status };
+	});
+	const protectedBookIdentities = new Set(bookOutcomes
+		.filter((outcome) => outcome.status === "protected")
+		.map((outcome) => createBookIdentityKey(outcome.bookTitle, outcome.author)));
+	const safelyCompletedHighlights = highlights.filter((highlight, index) =>
+		highlights.findIndex((candidate) =>
+			createKindleHighlightIdentityKey(candidate) === createKindleHighlightIdentityKey(highlight)
+		) === index
+		&& !protectedBookIdentities.has(createBookIdentityKey(highlight.bookTitle, highlight.author))
+	);
+	const protectedHighlights = highlights.filter((highlight, index) =>
+		highlights.findIndex((candidate) =>
+			createKindleHighlightIdentityKey(candidate) === createKindleHighlightIdentityKey(highlight)
+		) === index
+		&& protectedBookIdentities.has(createBookIdentityKey(highlight.bookTitle, highlight.author))
+	);
+
+	return {
+		writeSummary: {
+			books: plan.bookPlans.length,
+			filesCreated: bookOutcomes.filter((outcome) => outcome.status === "created").length,
+			filesUpdated: bookOutcomes.filter((outcome) => outcome.status === "updated").length,
+			filesUnchanged: bookOutcomes.filter((outcome) => outcome.status === "confirmed").length,
+			filesProtected: bookOutcomes.filter((outcome) => outcome.status === "protected").length,
+			highlightsRendered: plan.highlightsRendered,
+			duplicatesSkipped: plan.duplicatesSkipped,
+			bookOutcomes,
+		},
+		safelyCompletedHighlights,
+		protectedHighlights,
+	};
+}
+
+function createEmptyCleanupResult() {
+	return {
+		filesScanned: 0,
+		filesUpdated: 0,
+		blocksRemoved: 0,
+		bookOutcomes: [],
+	};
+}
+
+function createCleanupResult(
+	targetOutcomes: IgnoredHighlightCleanupTargetOutcome[]
+): IgnoredHighlightCleanupSummary {
+	const firstTarget = targetOutcomes[0]?.target;
+
+	return {
+		filesScanned: 1,
+		filesUpdated: targetOutcomes.some((outcome) => outcome.status === "removed-safely") ? 1 : 0,
+		blocksRemoved: targetOutcomes.filter((outcome) => outcome.status === "removed-safely").length,
+		bookOutcomes: firstTarget ? [{
+			bookTitle: firstTarget.bookTitle,
+			author: firstTarget.author,
+			targetOutcomes,
+		}] : [],
+	};
+}
+
+function createAllCleanupOutcomes(): IgnoredHighlightCleanupTargetOutcome[] {
+	const target = createCleanupTarget(createHighlight());
+
+	return [
+		{ target, status: "removed-safely", blocksRemoved: 1 },
+		{ target, status: "no-matching-note" },
+		{ target, status: "no-matching-highlight-block" },
+		{ target, status: "ambiguous-note-ownership" },
+		{ target, status: "unsafe-managed-region", reason: "start-without-end" },
+		{ target, status: "cleanup-failed", stage: "discovery" },
+		{ target, status: "cleanup-state-unknown", stage: "write" },
+	];
+}
+
+function createCleanupTarget(highlight: KindleHighlight) {
+	return {
+		bookTitle: highlight.bookTitle,
+		author: highlight.author,
+		id: createClippingId(highlight),
 	};
 }
 
@@ -834,10 +1407,21 @@ function createHighlight(overrides: Partial<KindleHighlight> = {}): KindleHighli
 	};
 }
 
+function createCollisionHighlight(bookTitle: string): KindleHighlight {
+	return createHighlight({
+		bookTitle,
+		author: "Author",
+		location: "1",
+		dateAdded: "Date",
+		content: "Content",
+	});
+}
+
 function createIgnoredHighlight(overrides: Partial<IgnoredHighlight> = {}): IgnoredHighlight {
 	return {
 		id: "kls-ignored",
 		title: "Atomic Habits",
+		author: "James Clear",
 		textPreview: "Small habits make a big difference.",
 		ignoredAt: "2026-07-09T12:00:00.000Z",
 		...overrides,
@@ -848,6 +1432,7 @@ function createSummaryItem(overrides: Partial<SyncSummaryHighlightItem> = {}): S
 	return {
 		id: "kls-skipped",
 		title: "Atomic Habits",
+		author: "James Clear",
 		textPreview: "Small habits make a big difference.",
 		location: "154",
 		...overrides,
@@ -863,6 +1448,7 @@ interface TestElement {
 	click: () => Promise<void>;
 	scrollTop: number;
 	scrollIntoViewCalls: unknown[];
+	attributes: Map<string, string>;
 }
 
 function readText(element: unknown): string {
@@ -884,6 +1470,13 @@ function buttonTexts(element: unknown): string[] {
 	collectButtonTexts(element as TestElement, texts);
 
 	return texts;
+}
+
+function buttonsByText(element: unknown, text: string): TestElement[] {
+	const buttons: TestElement[] = [];
+
+	collectElementsByTag(element as TestElement, "button", buttons);
+	return buttons.filter((button) => button.text() === text);
 }
 
 function elementsByClass(element: unknown, className: string): TestElement[] {
@@ -931,6 +1524,16 @@ function collectElementsByClass(element: TestElement, className: string, matches
 
 	for (const child of element.children) {
 		collectElementsByClass(child, className, matches);
+	}
+}
+
+function collectElementsByTag(element: TestElement, tagName: string, matches: TestElement[]): void {
+	if (element.tagName === tagName) {
+		matches.push(element);
+	}
+
+	for (const child of element.children) {
+		collectElementsByTag(child, tagName, matches);
 	}
 }
 

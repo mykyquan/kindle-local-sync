@@ -1,7 +1,8 @@
 import type { TFile, Vault } from "obsidian";
 import { KindleHighlight } from "../parser/parseClippings";
 import { createClippingId, KindleBookGroup } from "../render/renderMarkdown";
-import { createBookNotePath } from "./VaultWriter";
+import { createKindleHighlightIdentityKey } from "./HighlightIdentity";
+import { allocateBookNotePaths } from "./VaultWriter";
 
 const ID_MARKER_PREFIX = "<!-- kindle-local-sync-id:";
 
@@ -10,19 +11,27 @@ export function createVaultHighlightLookup(
 	highlightsFolder: string,
 	bookGroups: KindleBookGroup[]
 ): (id: string, highlight: KindleHighlight) => Promise<boolean> {
-	const notePathsByHighlightId = new Map<string, string>();
-	const usedNotePaths = new Set<string>();
+	const notePathsByHighlightIdentity = new Map<string, string>();
+	const notePaths = allocateBookNotePaths(highlightsFolder, bookGroups);
 
-	for (const group of bookGroups) {
-		const notePath = createBookNotePath(highlightsFolder, group, usedNotePaths);
+	for (const [groupIndex, group] of bookGroups.entries()) {
+		const notePath = notePaths[groupIndex];
+
+		if (!notePath) {
+			continue;
+		}
 
 		for (const clipping of group.clippings) {
-			notePathsByHighlightId.set(createClippingId(clipping), notePath);
+			notePathsByHighlightIdentity.set(createKindleHighlightIdentityKey(clipping), notePath);
 		}
 	}
 
-	return async (id: string): Promise<boolean> => {
-		const notePath = notePathsByHighlightId.get(id);
+	return async (id: string, highlight: KindleHighlight): Promise<boolean> => {
+		if (id !== createClippingId(highlight)) {
+			return false;
+		}
+
+		const notePath = notePathsByHighlightIdentity.get(createKindleHighlightIdentityKey(highlight));
 
 		if (!notePath) {
 			return false;

@@ -72,9 +72,9 @@ describe("IgnoredHighlightsModal", () => {
 		modal.onOpen();
 		await findByText(bookCardByTitle(modal.contentEl, "Atomic Habits"), "Remove All From Ignore List").click();
 
-		expect(plugin.unignoreHighlight).toHaveBeenCalledWith("one");
-		expect(plugin.unignoreHighlight).toHaveBeenCalledWith("two");
-		expect(plugin.unignoreHighlight).not.toHaveBeenCalledWith("three");
+		expect(plugin.unignoreHighlight).toHaveBeenCalledWith(expect.objectContaining({ id: "one" }));
+		expect(plugin.unignoreHighlight).toHaveBeenCalledWith(expect.objectContaining({ id: "two" }));
+		expect(plugin.unignoreHighlight).not.toHaveBeenCalledWith(expect.objectContaining({ id: "three" }));
 		expect(readText(modal.contentEl)).not.toContain("Atomic Habits");
 		expect(readText(modal.contentEl)).toContain("Deep Work");
 	});
@@ -86,7 +86,7 @@ describe("IgnoredHighlightsModal", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Remove All From Ignore List").click();
 
-		expect(plugin.unignoreHighlight).toHaveBeenCalledWith("one");
+		expect(plugin.unignoreHighlight).toHaveBeenCalledWith(expect.objectContaining({ id: "one" }));
 		expect(readText(modal.contentEl)).toContain(
 			"No ignored highlights. Highlights you ignore during sync will appear here."
 		);
@@ -152,7 +152,7 @@ describe("IgnoredHighlightsModal", () => {
 		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Remove From Ignore List").click();
 
-		expect(plugin.unignoreHighlight).toHaveBeenCalledWith("one");
+		expect(plugin.unignoreHighlight).toHaveBeenCalledWith(expect.objectContaining({ id: "one" }));
 		expect(readText(modal.contentEl)).toContain("No ignored highlights left in this book.");
 		expect(readText(modal.contentEl)).not.toContain("one preview");
 	});
@@ -172,8 +172,8 @@ function createPlugin(ignoredHighlights: IgnoredHighlight[]) {
 		settings: {
 			ignoredHighlights: [...ignoredHighlights],
 		},
-		unignoreHighlight: vi.fn(async (id: string) => {
-			plugin.settings.ignoredHighlights = plugin.settings.ignoredHighlights.filter((highlight) => highlight.id !== id);
+		unignoreHighlight: vi.fn(async (target: IgnoredHighlight) => {
+			plugin.settings.ignoredHighlights = plugin.settings.ignoredHighlights.filter((highlight) => highlight !== target);
 		}),
 	};
 

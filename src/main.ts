@@ -1,6 +1,6 @@
 import { App, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
 import { ExistingNotesWithoutDataModal } from "./ExistingNotesWithoutDataModal";
-import { FirstSyncPreviewModal } from "./FirstSyncPreviewModal";
+import { FirstSyncPreviewModal, SyncCompletionResult } from "./FirstSyncPreviewModal";
 import { IgnoredHighlightsModal } from "./IgnoredHighlightsModal";
 import { KindleHighlight, parseClippings } from "./parser/parseClippings";
 import { createClippingId, groupHighlightsByBook, KindleBookGroup } from "./render/renderMarkdown";
@@ -13,12 +13,55 @@ import {
 import { readClippingsFile } from "./sync/ClippingsReader";
 import { hasExistingHighlightNotes } from "./sync/ExistingHighlightNotes";
 import { detectClippingsPath } from "./sync/KindleDetector";
-import { removeIgnoredHighlightBlocksFromExistingNotes } from "./sync/IgnoredHighlightCleanup";
+import {
+	IgnoredHighlightCleanupSummary,
+	IgnoredHighlightCleanupTarget,
+	removeIgnoredHighlightBlocksFromExistingNotes,
+} from "./sync/IgnoredHighlightCleanup";
+import {
+	createAuthoredStoredHighlightIdentityKeySet,
+	createBookIdentityKey,
+	createHighlightIdentityKey,
+	createKindleHighlightIdentityKey,
+	createStoredHighlightIdentityKeySet,
+	CurrentClippingIdentityIndex,
+	hasSameHighlightIdentity,
+} from "./sync/HighlightIdentity";
 import { classifyHighlightsForSync, SyncClassification } from "./sync/SyncClassifier";
 import { createVaultHighlightLookup } from "./sync/VaultHighlightLookup";
-import { writeBookNotesToVault } from "./sync/VaultWriter";
+import { VaultWriteSummary, writeBookNotesToVault } from "./sync/VaultWriter";
+import {
+	InvalidVaultWriteContractError,
+	validateAndPartitionVaultWriteSummary,
+} from "./sync/VaultWriteContract";
 import { SyncSummaryModal } from "./SyncSummaryModal";
-import { SyncSummaryHighlightItem } from "./SyncSummaryTypes";
+import {
+	createIgnoreResultsPresentation,
+	createProtectedBooksPresentation,
+	IgnoreResultsPresentation,
+} from "./SyncOutcomePresentation";
+import { createSyncSummaryHighlightItem, SyncSummaryHighlightItem } from "./SyncSummaryTypes";
+
+export interface HighlightImportResult {
+	writeSummary: VaultWriteSummary;
+	safelyCompletedHighlights: KindleHighlight[];
+	protectedHighlights: KindleHighlight[];
+}
+
+export interface IgnoreOperationResult {
+	cleanupResult: IgnoredHighlightCleanupSummary;
+	outcomePresentation: IgnoreResultsPresentation;
+}
+
+interface ExistingSyncState {
+	importedHighlights: ImportedHighlightRecord[];
+	ignoredHighlights: IgnoredHighlight[];
+}
+
+interface ExistingSyncOptions {
+	state: ExistingSyncState;
+	commitState: () => Promise<void>;
+}
 
 export default class KindleLocalSyncPlugin extends Plugin {
 	settings: KindleSyncSettings = migrateSettings(null);
@@ -67,15 +110,24 @@ export default class KindleLocalSyncPlugin extends Plugin {
 				return;
 			}
 
+			const identityIndex = new CurrentClippingIdentityIndex(highlights);
 			syncPhase = "render/group";
 			const bookGroups = groupHighlightsByBook(highlights);
 
 			if (!this.settings.hasCompletedFirstSync) {
-				new FirstSyncPreviewModal(this.app, this, bookGroups).open();
+				new FirstSyncPreviewModal(this.app, this, bookGroups, {
+					onComplete: ({ importHighlights, ignoreHighlights, skippedThisSyncHighlights }) =>
+						this.completeFirstSync(
+							importHighlights,
+							ignoreHighlights,
+							skippedThisSyncHighlights,
+							identityIndex
+						),
+				}).open();
 				return;
 			}
 
-			await this.syncExistingHighlights(highlights, bookGroups);
+			await this.syncExistingHighlights(highlights, bookGroups, identityIndex);
 		} catch (error) {
 			console.error(`Kindle sync failed during ${syncPhase}.`, error);
 			// eslint-disable-next-line obsidianmd/ui/sentence-case
@@ -97,14 +149,36 @@ export default class KindleLocalSyncPlugin extends Plugin {
 	async completeFirstSync(
 		importHighlights: KindleHighlight[],
 		ignoreHighlights: KindleHighlight[],
-		skippedThisSyncHighlights: SyncSummaryHighlightItem[] = []
-	): Promise<void> {
-		await this.importHighlights(importHighlights, false);
-		this.addIgnoredHighlights(ignoreHighlights);
+		skippedThisSyncHighlights: SyncSummaryHighlightItem[],
+		identityIndex: CurrentClippingIdentityIndex
+	): Promise<SyncCompletionResult> {
+		let importResult: HighlightImportResult;
+
+		try {
+			importResult = await this.importHighlights(
+				importHighlights,
+				identityIndex,
+				false,
+				importHighlights
+			);
+		} catch (error) {
+			await this.preserveExplicitIgnoresAfterInvalidContract(error, ignoreHighlights, identityIndex);
+			throw error;
+		}
+
+		const importedCount = countMatchingHighlights(importHighlights, importResult.safelyCompletedHighlights);
+
+		this.addIgnoredHighlights(ignoreHighlights, identityIndex);
 		this.settings.hasCompletedFirstSync = true;
 		this.hasSavedPluginData = true;
 		await this.saveSettings();
-		await this.cleanupIgnoredHighlightBlocks(ignoreHighlights.map(createClippingId));
+		const ignoreCleanupResult = await this.cleanupPersistedIgnoredHighlightBlocks(
+			ignoreHighlights.map(createCleanupTarget)
+		);
+		const protectedBooks = createProtectedBooksPresentation(
+			importResult.protectedHighlights,
+			importHighlights
+		);
 
 		new SyncSummaryModal(this.app, this, {
 			classification: {
@@ -114,9 +188,21 @@ export default class KindleLocalSyncPlugin extends Plugin {
 				possibleReappearedHighlights: [],
 			},
 			automaticHighlights: importHighlights,
-			importedCount: importHighlights.length,
+			importedCount,
 			skippedThisSyncHighlights,
+			identityIndex,
+			protectedBooks,
+			ignoreResults: createIgnoreResultsPresentation(
+				[ignoreCleanupResult],
+				ignoreHighlights.map(createSyncSummaryHighlightItem)
+			),
 		}).open();
+
+		return {
+			importedCount,
+			ignoreCleanupResult,
+			protectedSelectedHighlightCount: protectedBooks.selectedHighlightCount,
+		};
 	}
 
 	async completeReviewedSync(
@@ -124,15 +210,37 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		ignoreHighlights: KindleHighlight[],
 		skippedThisSyncHighlights: SyncSummaryHighlightItem[],
 		automaticHighlights: KindleHighlight[],
-		classification: SyncClassification
-	): Promise<void> {
-		const highlightsToWrite = combineHighlightsById(automaticHighlights, importHighlights);
-		await this.importHighlights(highlightsToWrite, false);
-		this.addIgnoredHighlights(ignoreHighlights);
+		classification: SyncClassification,
+		identityIndex: CurrentClippingIdentityIndex
+	): Promise<SyncCompletionResult> {
+		const highlightsToWrite = combineHighlightsByIdentity(automaticHighlights, importHighlights);
+		let importResult: HighlightImportResult;
+
+		try {
+			importResult = await this.importHighlights(
+				highlightsToWrite,
+				identityIndex,
+				false,
+				importHighlights
+			);
+		} catch (error) {
+			await this.preserveExplicitIgnoresAfterInvalidContract(error, ignoreHighlights, identityIndex);
+			throw error;
+		}
+
+		const importedCount = countMatchingHighlights(importHighlights, importResult.safelyCompletedHighlights);
+
+		this.addIgnoredHighlights(ignoreHighlights, identityIndex);
 		this.settings.hasCompletedFirstSync = true;
 		this.hasSavedPluginData = true;
 		await this.saveSettings();
-		await this.cleanupIgnoredHighlightBlocks(ignoreHighlights.map(createClippingId));
+		const ignoreCleanupResult = await this.cleanupPersistedIgnoredHighlightBlocks(
+			ignoreHighlights.map(createCleanupTarget)
+		);
+		const protectedBooks = createProtectedBooksPresentation(
+			importResult.protectedHighlights,
+			importHighlights
+		);
 
 		new SyncSummaryModal(this.app, this, {
 			classification: {
@@ -144,9 +252,21 @@ export default class KindleLocalSyncPlugin extends Plugin {
 				],
 			},
 			automaticHighlights: highlightsToWrite,
-			importedCount: importHighlights.length,
+			importedCount,
 			skippedThisSyncHighlights,
+			identityIndex,
+			protectedBooks,
+			ignoreResults: createIgnoreResultsPresentation(
+				[ignoreCleanupResult],
+				ignoreHighlights.map(createSyncSummaryHighlightItem)
+			),
 		}).open();
+
+		return {
+			importedCount,
+			ignoreCleanupResult,
+			protectedSelectedHighlightCount: protectedBooks.selectedHighlightCount,
+		};
 	}
 
 	async continueExistingNotesWithoutDataSync(): Promise<void> {
@@ -156,16 +276,24 @@ export default class KindleLocalSyncPlugin extends Plugin {
 			return;
 		}
 
+		const identityIndex = new CurrentClippingIdentityIndex(highlights);
 		const bookGroups = groupHighlightsByBook(highlights);
 		const trustedExistingHighlights = await this.findHighlightsAlreadyInVault(highlights, bookGroups);
+		const stagedState: ExistingSyncState = {
+			importedHighlights: appendImportedHighlightRecords([], trustedExistingHighlights, identityIndex),
+			ignoredHighlights: [],
+		};
 
-		this.settings.hasCompletedFirstSync = true;
-		this.settings.importedHighlights = [];
-		this.settings.ignoredHighlights = [];
-		this.addImportedHighlights(trustedExistingHighlights);
-		this.hasSavedPluginData = true;
-		await this.saveSettings();
-		await this.syncExistingHighlights(highlights, bookGroups);
+		await this.syncExistingHighlights(highlights, bookGroups, identityIndex, {
+			state: stagedState,
+			commitState: async () => {
+				this.settings.hasCompletedFirstSync = true;
+				this.settings.importedHighlights = stagedState.importedHighlights;
+				this.settings.ignoredHighlights = stagedState.ignoredHighlights;
+				this.hasSavedPluginData = true;
+				await this.saveSettings();
+			},
+		});
 	}
 
 	async reviewExistingNotesWithoutDataAsFirstSync(): Promise<void> {
@@ -183,79 +311,139 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		}).open();
 	}
 
-	async importHighlights(highlights: KindleHighlight[], persist = true): Promise<Awaited<ReturnType<typeof writeBookNotesToVault>>> {
+	async importHighlights(
+		highlights: KindleHighlight[],
+		identityIndex: CurrentClippingIdentityIndex,
+		persist = true,
+		explicitHighlights: KindleHighlight[] = highlights
+	): Promise<HighlightImportResult> {
 		const bookGroups = groupHighlightsByBook(highlights);
-		const summary = await writeBookNotesToVault(this.app.vault, this.settings.highlightsFolder, bookGroups);
+		const writerResult: unknown = await writeBookNotesToVault(
+			this.app.vault,
+			this.settings.highlightsFolder,
+			bookGroups
+		);
+		const {
+			writeSummary,
+			safelyCompletedHighlights,
+			protectedHighlights,
+		} = validateAndPartitionVaultWriteSummary(
+			this.settings.highlightsFolder,
+			highlights,
+			writerResult
+		);
 
-		this.addImportedHighlights(highlights);
+		const safelyCompletedExplicitHighlights = explicitHighlights.filter((highlight) =>
+			safelyCompletedHighlights.some((candidate) => hasSameHighlightIdentity(candidate, highlight))
+		);
+
+		// Automatic legacy trust must not backfill records; only a safely completed explicit Import persists authorship.
+		if (safelyCompletedExplicitHighlights.length > 0) {
+			this.addImportedHighlights(safelyCompletedExplicitHighlights, identityIndex);
+		}
 
 		if (persist) {
 			await this.saveSettings();
 		}
 
-		return summary;
+		return {
+			writeSummary,
+			safelyCompletedHighlights,
+			protectedHighlights,
+		};
 	}
 
-	async ignoreHighlights(highlights: KindleHighlight[]): Promise<void> {
-		this.addIgnoredHighlights(highlights);
+	async ignoreHighlights(
+		highlights: KindleHighlight[],
+		identityIndex: CurrentClippingIdentityIndex
+	): Promise<IgnoreOperationResult> {
+		this.addIgnoredHighlights(highlights, identityIndex);
 		await this.saveSettings();
-		await this.cleanupIgnoredHighlightBlocks(highlights.map(createClippingId));
+		const cleanupResult = await this.cleanupPersistedIgnoredHighlightBlocks(
+			highlights.map(createCleanupTarget)
+		);
+
+		return {
+			cleanupResult,
+			outcomePresentation: createIgnoreResultsPresentation(
+				[cleanupResult],
+				highlights.map(createSyncSummaryHighlightItem)
+			),
+		};
 	}
 
-	async ignoreSummaryHighlight(highlight: SyncSummaryHighlightItem): Promise<void> {
-		this.addIgnoredSummaryHighlights([highlight]);
+	async ignoreSummaryHighlight(
+		highlight: SyncSummaryHighlightItem,
+		identityIndex: CurrentClippingIdentityIndex
+	): Promise<IgnoreOperationResult> {
+		this.addIgnoredSummaryHighlights([highlight], identityIndex);
 		await this.saveSettings();
-		await this.cleanupIgnoredHighlightBlocks([highlight.id]);
+		const cleanupResult = await this.cleanupPersistedIgnoredHighlightBlocks([
+			createSummaryCleanupTarget(highlight),
+		]);
+
+		return {
+			cleanupResult,
+			outcomePresentation: createIgnoreResultsPresentation([cleanupResult], [highlight]),
+		};
 	}
 
-	async unignoreHighlight(id: string): Promise<void> {
-		this.settings.ignoredHighlights = this.settings.ignoredHighlights.filter((highlight) => highlight.id !== id);
+	async unignoreHighlight(highlight: IgnoredHighlight): Promise<void> {
+		this.settings.ignoredHighlights = this.settings.ignoredHighlights.filter((candidate) => candidate !== highlight);
 		await this.saveSettings();
 	}
 
-	private addImportedHighlights(highlights: KindleHighlight[]): void {
-		const existingIds = new Set(this.settings.importedHighlights.map((highlight) => highlight.id));
-		const importedAt = new Date().toISOString();
-		const records: ImportedHighlightRecord[] = [];
+	private addImportedHighlights(
+		highlights: KindleHighlight[],
+		identityIndex: CurrentClippingIdentityIndex
+	): void {
+		this.settings.importedHighlights = appendImportedHighlightRecords(
+			this.settings.importedHighlights,
+			highlights,
+			identityIndex
+		);
+	}
 
-		for (const highlight of highlights) {
-			const id = createClippingId(highlight);
-
-			if (existingIds.has(id)) {
-				continue;
-			}
-
-			existingIds.add(id);
-			records.push({
-				id,
-				title: highlight.bookTitle,
-				textPreview: createTextPreview(highlight),
-				importedAt,
-			});
+	private async preserveExplicitIgnoresAfterInvalidContract(
+		error: unknown,
+		highlights: KindleHighlight[],
+		identityIndex: CurrentClippingIdentityIndex
+	): Promise<void> {
+		if (!(error instanceof InvalidVaultWriteContractError) || highlights.length === 0) {
+			return;
 		}
 
-		this.settings.importedHighlights = [
-			...this.settings.importedHighlights,
-			...records,
-		];
+		// Import authorization failed, but the user's independent exact-book Ignore decision remains valid.
+		const result = await this.ignoreHighlights(highlights, identityIndex);
+
+		this.hasSavedPluginData = true;
+		error.retainIgnoreCleanupResult(result.cleanupResult);
 	}
 
-	private addIgnoredHighlights(highlights: KindleHighlight[]): void {
-		const existingIds = new Set(this.settings.ignoredHighlights.map((highlight) => highlight.id));
+	private addIgnoredHighlights(
+		highlights: KindleHighlight[],
+		identityIndex: CurrentClippingIdentityIndex
+	): void {
+		const existingIdentities = createAuthoredStoredHighlightIdentityKeySet(
+			this.settings.ignoredHighlights,
+			identityIndex
+		);
 		const ignoredAt = new Date().toISOString();
 		const records: IgnoredHighlight[] = [];
 
 		for (const highlight of highlights) {
 			const id = createClippingId(highlight);
+			const identity = createKindleHighlightIdentityKey(highlight);
 
-			if (existingIds.has(id)) {
+			if (existingIdentities.has(identity)) {
 				continue;
 			}
 
-			existingIds.add(id);
+			existingIdentities.add(identity);
 			records.push({
 				id,
 				title: highlight.bookTitle,
+				author: highlight.author,
 				textPreview: createTextPreview(highlight),
 				ignoredAt,
 			});
@@ -267,20 +455,29 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		];
 	}
 
-	private addIgnoredSummaryHighlights(highlights: SyncSummaryHighlightItem[]): void {
-		const existingIds = new Set(this.settings.ignoredHighlights.map((highlight) => highlight.id));
+	private addIgnoredSummaryHighlights(
+		highlights: SyncSummaryHighlightItem[],
+		identityIndex: CurrentClippingIdentityIndex
+	): void {
+		const existingIdentities = createAuthoredStoredHighlightIdentityKeySet(
+			this.settings.ignoredHighlights,
+			identityIndex
+		);
 		const ignoredAt = new Date().toISOString();
 		const records: IgnoredHighlight[] = [];
 
 		for (const highlight of highlights) {
-			if (existingIds.has(highlight.id)) {
+			const identity = createHighlightIdentityKey(highlight.title, highlight.author, highlight.id);
+
+			if (existingIdentities.has(identity)) {
 				continue;
 			}
 
-			existingIds.add(highlight.id);
+			existingIdentities.add(identity);
 			records.push({
 				id: highlight.id,
 				title: highlight.title,
+				author: highlight.author,
 				textPreview: highlight.textPreview,
 				ignoredAt,
 				lang: highlight.lang,
@@ -293,55 +490,89 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		];
 	}
 
-	private async cleanupIgnoredHighlightBlocks(ignoredHighlightIds: string[]): Promise<void> {
+	private async cleanupIgnoredHighlightBlocks(
+		targets: IgnoredHighlightCleanupTarget[]
+	): Promise<IgnoredHighlightCleanupSummary> {
+		return removeIgnoredHighlightBlocksFromExistingNotes(
+			this.app.vault,
+			this.settings.highlightsFolder,
+			targets
+		);
+	}
+
+	private async cleanupPersistedIgnoredHighlightBlocks(
+		targets: IgnoredHighlightCleanupTarget[]
+	): Promise<IgnoredHighlightCleanupSummary> {
 		try {
-			await removeIgnoredHighlightBlocksFromExistingNotes(
-				this.app.vault,
-				this.settings.highlightsFolder,
-				ignoredHighlightIds
-			);
+			return await this.cleanupIgnoredHighlightBlocks(targets);
 		} catch (error) {
-			console.error("Failed to remove ignored highlights from existing Kindle notes.", error);
+			// The Ignore decision is already durable. An unexpected cleanup rejection must not hide its summary.
+			console.error("Failed to confirm existing-note cleanup after saving Ignore choices.", error);
+			return createUnconfirmedIgnoredHighlightCleanupSummary(targets);
 		}
 	}
 
 	private async syncExistingHighlights(
 		highlights: KindleHighlight[],
-		bookGroups: KindleBookGroup[]
+		bookGroups: KindleBookGroup[],
+		identityIndex: CurrentClippingIdentityIndex,
+		options?: ExistingSyncOptions
 	): Promise<void> {
+		const state = options?.state ?? this.settings;
 		const classification = await classifyHighlightsForSync(highlights, {
-			ignoredHighlights: this.settings.ignoredHighlights,
-			importedHighlights: this.settings.importedHighlights,
+			ignoredHighlights: state.ignoredHighlights,
+			importedHighlights: state.importedHighlights,
+			identityIndex,
 			highlightExistsInNote: createVaultHighlightLookup(this.app.vault, this.settings.highlightsFolder, bookGroups),
 		});
-		const automaticHighlights = this.getReviewedHighlightsForAutomaticSync(highlights, classification);
+		const automaticHighlights = this.getReviewedHighlightsForAutomaticSync(
+			highlights,
+			classification,
+			identityIndex,
+			state
+		);
 
 		if (classification.newHighlights.length > 0) {
+			await options?.commitState();
 			new FirstSyncPreviewModal(this.app, this, groupHighlightsByBook(classification.newHighlights), {
 				title: "Review New Highlights",
-				completionNotice: (importedCount) => `Sync complete: ${importedCount} highlights imported.`,
+				completionNotice: (importedCount, protectedSelectedHighlightCount) =>
+					`${protectedSelectedHighlightCount > 0 ? "Sync finished" : "Sync complete"}: ${importedCount} highlights imported.`,
 				onComplete: async ({ importHighlights, ignoreHighlights, skippedThisSyncHighlights }) => {
-					await this.completeReviewedSync(
+					return this.completeReviewedSync(
 						importHighlights,
 						ignoreHighlights,
 						skippedThisSyncHighlights,
 						automaticHighlights,
-						classification
+						classification,
+						identityIndex
 					);
 				},
 			}).open();
 			return;
 		}
 
-		const summary = await this.importHighlights(automaticHighlights);
+		const importResult = await this.importHighlights(
+			automaticHighlights,
+			identityIndex,
+			options === undefined,
+			[]
+		);
+
+		await options?.commitState();
 
 		new SyncSummaryModal(this.app, this, {
 			classification,
 			automaticHighlights,
 			importedCount: classification.newHighlights.length,
+			identityIndex,
+			protectedBooks: createProtectedBooksPresentation(
+				importResult.protectedHighlights,
+				[]
+			),
 		}).open();
 
-		if (summary.highlightsRendered === 0 && classification.possibleReappearedHighlights.length === 0) {
+		if (importResult.writeSummary.highlightsRendered === 0 && classification.possibleReappearedHighlights.length === 0) {
 			new Notice("Kindle sync complete: no new highlights to import.");
 		}
 	}
@@ -391,16 +622,28 @@ export default class KindleLocalSyncPlugin extends Plugin {
 
 	private getReviewedHighlightsForAutomaticSync(
 		highlights: KindleHighlight[],
-		classification: SyncClassification
+		classification: SyncClassification,
+		identityIndex: CurrentClippingIdentityIndex,
+		state: ExistingSyncState = this.settings
 	): KindleHighlight[] {
-		const importedIds = new Set(this.settings.importedHighlights.map((highlight) => highlight.id));
-		const ignoredIds = new Set(this.settings.ignoredHighlights.map((highlight) => highlight.id));
-		const suspiciousIds = new Set(classification.possibleReappearedHighlights.map(createClippingId));
+		const importedIdentities = createStoredHighlightIdentityKeySet(
+			state.importedHighlights,
+			identityIndex
+		);
+		const ignoredIdentities = createStoredHighlightIdentityKeySet(
+			state.ignoredHighlights,
+			identityIndex
+		);
+		const suspiciousIdentities = new Set(
+			classification.possibleReappearedHighlights.map(createKindleHighlightIdentityKey)
+		);
 
 		return highlights.filter((highlight) => {
-			const id = createClippingId(highlight);
+			const identity = createKindleHighlightIdentityKey(highlight);
 
-			return importedIds.has(id) && !ignoredIds.has(id) && !suspiciousIds.has(id);
+			return importedIdentities.has(identity)
+				&& !ignoredIdentities.has(identity)
+				&& !suspiciousIdentities.has(identity);
 		});
 	}
 }
@@ -464,23 +707,132 @@ function createTextPreview(highlight: KindleHighlight): string {
 	return highlight.content.replace(/\s+/g, " ").trim().slice(0, 120);
 }
 
-function combineHighlightsById(
-	firstHighlights: KindleHighlight[],
-	secondHighlights: KindleHighlight[]
-): KindleHighlight[] {
-	const seenIds = new Set<string>();
-	const combinedHighlights: KindleHighlight[] = [];
+function appendImportedHighlightRecords(
+	existingRecords: ImportedHighlightRecord[],
+	highlights: KindleHighlight[],
+	identityIndex: CurrentClippingIdentityIndex
+): ImportedHighlightRecord[] {
+	const existingIdentities = createAuthoredStoredHighlightIdentityKeySet(
+		existingRecords,
+		identityIndex
+	);
+	const importedAt = new Date().toISOString();
+	const records: ImportedHighlightRecord[] = [];
 
-	for (const highlight of [...firstHighlights, ...secondHighlights]) {
+	for (const highlight of highlights) {
 		const id = createClippingId(highlight);
+		const identity = createKindleHighlightIdentityKey(highlight);
 
-		if (seenIds.has(id)) {
+		if (existingIdentities.has(identity)) {
 			continue;
 		}
 
-		seenIds.add(id);
+		existingIdentities.add(identity);
+		records.push({
+			id,
+			title: highlight.bookTitle,
+			author: highlight.author,
+			textPreview: createTextPreview(highlight),
+			importedAt,
+		});
+	}
+
+	return records.length === 0
+		? existingRecords
+		: [...existingRecords, ...records];
+}
+
+function createCleanupTarget(highlight: KindleHighlight): IgnoredHighlightCleanupTarget {
+	return {
+		bookTitle: highlight.bookTitle,
+		author: highlight.author,
+		id: createClippingId(highlight),
+	};
+}
+
+function createSummaryCleanupTarget(highlight: SyncSummaryHighlightItem): IgnoredHighlightCleanupTarget {
+	return {
+		bookTitle: highlight.title,
+		author: highlight.author,
+		id: highlight.id,
+	};
+}
+
+function createUnconfirmedIgnoredHighlightCleanupSummary(
+	targets: IgnoredHighlightCleanupTarget[]
+): IgnoredHighlightCleanupSummary {
+	const bookOutcomes: IgnoredHighlightCleanupSummary["bookOutcomes"] = [];
+	const bookOutcomesByIdentity = new Map<string, IgnoredHighlightCleanupSummary["bookOutcomes"][number]>();
+	const seenTargetIdentities = new Set<string>();
+
+	for (const target of targets) {
+		const targetIdentity = createHighlightIdentityKey(target.bookTitle, target.author, target.id);
+
+		if (seenTargetIdentities.has(targetIdentity)) {
+			continue;
+		}
+
+		seenTargetIdentities.add(targetIdentity);
+		const bookIdentity = createBookIdentityKey(target.bookTitle, target.author);
+		let bookOutcome = bookOutcomesByIdentity.get(bookIdentity);
+
+		if (!bookOutcome) {
+			bookOutcome = {
+				bookTitle: target.bookTitle,
+				author: target.author,
+				targetOutcomes: [],
+			};
+			bookOutcomesByIdentity.set(bookIdentity, bookOutcome);
+			bookOutcomes.push(bookOutcome);
+		}
+
+		bookOutcome.targetOutcomes.push({
+			target,
+			status: "cleanup-state-unknown",
+			stage: "write",
+		});
+	}
+
+	return {
+		filesScanned: 0,
+		filesUpdated: 0,
+		blocksRemoved: 0,
+		bookOutcomes,
+	};
+}
+
+function combineHighlightsByIdentity(
+	firstHighlights: KindleHighlight[],
+	secondHighlights: KindleHighlight[]
+): KindleHighlight[] {
+	const combinedHighlights: KindleHighlight[] = [];
+
+	for (const highlight of [...firstHighlights, ...secondHighlights]) {
+		if (combinedHighlights.some((candidate) => hasSameHighlightIdentity(candidate, highlight))) {
+			continue;
+		}
+
 		combinedHighlights.push(highlight);
 	}
 
 	return combinedHighlights;
+}
+
+function countMatchingHighlights(
+	highlights: KindleHighlight[],
+	matchingHighlights: KindleHighlight[]
+): number {
+	const uniqueHighlights: KindleHighlight[] = [];
+
+	for (const highlight of highlights) {
+		if (uniqueHighlights.some((candidate) => hasSameHighlightIdentity(candidate, highlight))) {
+			continue;
+		}
+
+		uniqueHighlights.push(highlight);
+	}
+
+	return uniqueHighlights.filter((highlight) =>
+		matchingHighlights.some((candidate) => hasSameHighlightIdentity(candidate, highlight))
+	).length;
 }

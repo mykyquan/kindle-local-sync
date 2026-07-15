@@ -2,22 +2,68 @@ import type { TFile, Vault } from "obsidian";
 import {
 	dedupeClippings,
 	KindleBookGroup,
+	createClippingId,
 	renderBookMarkdown,
 	renderSyncRegion,
 	replaceOrAppendSyncRegion,
 } from "../render/renderMarkdown";
 import { sanitizeMarkdownFilename, sanitizeVaultFolderPath } from "../utils/sanitizePath";
+import { analyzeManagedRegion } from "./ManagedRegion";
 
 export interface VaultWriteSummary {
 	books: number;
 	filesCreated: number;
 	filesUpdated: number;
 	filesUnchanged: number;
+	filesProtected: number;
+	highlightsRendered: number;
+	duplicatesSkipped: number;
+	bookOutcomes: VaultBookWriteOutcome[];
+}
+
+export const VAULT_BOOK_PROTECTION_REASONS = [
+	"unsafe-existing-managed-region",
+	"existing-highlights-not-retained",
+] as const;
+
+export type VaultBookProtectionReason = typeof VAULT_BOOK_PROTECTION_REASONS[number];
+
+interface VaultBookWriteOutcomeBase {
+	bookTitle: string;
+	author: string;
+	notePath: string;
+	highlightIds: string[];
+}
+
+export type VaultBookWriteOutcome =
+	| (VaultBookWriteOutcomeBase & {
+		status: "created" | "updated" | "confirmed";
+	})
+	| (VaultBookWriteOutcomeBase & {
+		status: "protected";
+		reason: VaultBookProtectionReason;
+	});
+
+export interface VaultBookWritePlan {
+	group: KindleBookGroup;
+	notePath: string;
+	highlightIds: string[];
+	duplicatesSkipped: number;
+}
+
+export interface VaultWritePlan {
+	bookPlans: VaultBookWritePlan[];
 	highlightsRendered: number;
 	duplicatesSkipped: number;
 }
 
-type FileWriteResult = "created" | "updated" | "unchanged";
+type FileWriteResult =
+	| { status: "created" | "updated" | "confirmed" }
+	| { status: "protected"; reason: VaultBookProtectionReason };
+
+type ExistingMarkdownUpdate =
+	| { kind: "update"; markdown: string }
+	| { kind: "protected"; reason: VaultBookProtectionReason };
 
 export async function writeBookNotesToVault(
 	vault: Vault,
@@ -25,42 +71,79 @@ export async function writeBookNotesToVault(
 	bookGroups: KindleBookGroup[]
 ): Promise<VaultWriteSummary> {
 	const folderPath = normalizeVaultPath(sanitizeVaultFolderPath(highlightsFolder));
-	const summary: VaultWriteSummary = {
-		books: bookGroups.length,
-		filesCreated: 0,
-		filesUpdated: 0,
-		filesUnchanged: 0,
-		highlightsRendered: 0,
-		duplicatesSkipped: 0,
-	};
 
 	await ensureFolder(vault, folderPath);
 
-	const usedNotePaths = new Set<string>();
+	const writePlan = createVaultWritePlan(highlightsFolder, bookGroups);
+	const summary: VaultWriteSummary = {
+		books: writePlan.bookPlans.length,
+		filesCreated: 0,
+		filesUpdated: 0,
+		filesUnchanged: 0,
+		filesProtected: 0,
+		highlightsRendered: writePlan.highlightsRendered,
+		duplicatesSkipped: writePlan.duplicatesSkipped,
+		bookOutcomes: [],
+	};
 
-	for (const group of bookGroups) {
+	for (const bookPlan of writePlan.bookPlans) {
+		const writeResult = await writeBookNote(vault, bookPlan.notePath, bookPlan.group);
+		const outcome: VaultBookWriteOutcome = {
+			bookTitle: bookPlan.group.bookTitle,
+			author: bookPlan.group.author,
+			notePath: bookPlan.notePath,
+			highlightIds: [...bookPlan.highlightIds],
+			...writeResult,
+		};
+
+		summary.bookOutcomes.push(outcome);
+
+		if (writeResult.status === "created") {
+			summary.filesCreated++;
+		} else if (writeResult.status === "updated") {
+			summary.filesUpdated++;
+		} else if (writeResult.status === "confirmed") {
+			summary.filesUnchanged++;
+		} else {
+			summary.filesProtected++;
+		}
+	}
+
+	return summary;
+}
+
+/** Builds the exact ordered request contract shared by the writer and its result validator. */
+export function createVaultWritePlan(
+	highlightsFolder: string,
+	bookGroups: readonly KindleBookGroup[]
+): VaultWritePlan {
+	const notePaths = allocateBookNotePaths(highlightsFolder, bookGroups);
+	const bookPlans = bookGroups.map((group, groupIndex): VaultBookWritePlan => {
+		const notePath = notePaths[groupIndex];
+
+		if (!notePath) {
+			throw new Error("Cannot sync Kindle highlights because a book note path could not be allocated.");
+		}
+
 		const deduped = dedupeClippings(group.clippings);
 		const uniqueGroup = {
 			...group,
 			clippings: deduped.clippings,
 		};
-		const notePath = createUniqueBookNotePath(folderPath, uniqueGroup, usedNotePaths);
 
-		summary.highlightsRendered += uniqueGroup.clippings.length;
-		summary.duplicatesSkipped += deduped.duplicatesSkipped;
+		return {
+			group: uniqueGroup,
+			notePath,
+			highlightIds: uniqueGroup.clippings.map(createClippingId),
+			duplicatesSkipped: deduped.duplicatesSkipped,
+		};
+	});
 
-		const writeResult = await writeBookNote(vault, notePath, uniqueGroup);
-
-		if (writeResult === "created") {
-			summary.filesCreated++;
-		} else if (writeResult === "updated") {
-			summary.filesUpdated++;
-		} else {
-			summary.filesUnchanged++;
-		}
-	}
-
-	return summary;
+	return {
+		bookPlans,
+		highlightsRendered: bookPlans.reduce((count, plan) => count + plan.highlightIds.length, 0),
+		duplicatesSkipped: bookPlans.reduce((count, plan) => count + plan.duplicatesSkipped, 0),
+	};
 }
 
 export function createBookNotePath(
@@ -71,6 +154,16 @@ export function createBookNotePath(
 	const folderPath = normalizeVaultPath(sanitizeVaultFolderPath(highlightsFolder));
 
 	return createUniqueBookNotePath(folderPath, group, usedNotePaths);
+}
+
+/** Allocates all book paths in order so every sync component shares collision suffixes. */
+export function allocateBookNotePaths(
+	highlightsFolder: string,
+	bookGroups: readonly KindleBookGroup[]
+): string[] {
+	const usedNotePaths = new Set<string>();
+
+	return bookGroups.map((group) => createBookNotePath(highlightsFolder, group, usedNotePaths));
 }
 
 async function writeBookNote(vault: Vault, notePath: string, group: KindleBookGroup): Promise<FileWriteResult> {
@@ -91,7 +184,7 @@ async function writeBookNote(vault: Vault, notePath: string, group: KindleBookGr
 
 	try {
 		await vault.create(notePath, newMarkdown);
-		return "created";
+		return { status: "created" };
 	} catch (error) {
 		if (!isFileAlreadyExistsError(error)) {
 			throw error;
@@ -129,14 +222,16 @@ async function updateExistingVaultFile(
 	group: KindleBookGroup
 ): Promise<FileWriteResult> {
 	const existingMarkdown = await vault.read(existingFile);
-	const updatedMarkdown = replaceOrAppendSyncRegion(existingMarkdown, renderSyncRegion(group));
+	const update = prepareSafeManagedRegionUpdate(existingMarkdown, group);
 
-	if (updatedMarkdown === existingMarkdown) {
-		return "unchanged";
+	if (update.kind === "protected" || update.markdown === existingMarkdown) {
+		return update.kind === "protected"
+			? { status: "protected", reason: update.reason }
+			: { status: "confirmed" };
 	}
 
-	await vault.modify(existingFile, updatedMarkdown);
-	return "updated";
+	await vault.modify(existingFile, update.markdown);
+	return { status: "updated" };
 }
 
 async function updateExistingAdapterFile(
@@ -155,14 +250,48 @@ async function updateExistingAdapterFile(
 	}
 
 	const existingMarkdown = await vault.adapter.read(notePath);
-	const updatedMarkdown = replaceOrAppendSyncRegion(existingMarkdown, renderSyncRegion(group));
+	const update = prepareSafeManagedRegionUpdate(existingMarkdown, group);
 
-	if (updatedMarkdown === existingMarkdown) {
-		return "unchanged";
+	if (update.kind === "protected" || update.markdown === existingMarkdown) {
+		return update.kind === "protected"
+			? { status: "protected", reason: update.reason }
+			: { status: "confirmed" };
 	}
 
-	await vault.adapter.write(notePath, updatedMarkdown);
-	return "updated";
+	await vault.adapter.write(notePath, update.markdown);
+	return { status: "updated" };
+}
+
+function prepareSafeManagedRegionUpdate(
+	existingMarkdown: string,
+	group: KindleBookGroup
+): ExistingMarkdownUpdate {
+	const analysis = analyzeManagedRegion(existingMarkdown);
+
+	if (analysis.kind === "unsafe") {
+		return {
+			kind: "protected",
+			reason: "unsafe-existing-managed-region",
+		};
+	}
+
+	if (analysis.kind === "valid-with-ids") {
+		const proposedIds = new Set(group.clippings.map(createClippingId));
+
+		// Ordinary sync is not deletion authority. If the proposed group is incomplete,
+		// preserve the entire note instead of guessing which managed blocks may be removed.
+		if (analysis.highlightIds.some((id) => !proposedIds.has(id))) {
+			return {
+				kind: "protected",
+				reason: "existing-highlights-not-retained",
+			};
+		}
+	}
+
+	return {
+		kind: "update",
+		markdown: replaceOrAppendSyncRegion(existingMarkdown, renderSyncRegion(group)),
+	};
 }
 
 async function adapterPathExists(vault: Vault, path: string): Promise<boolean> {

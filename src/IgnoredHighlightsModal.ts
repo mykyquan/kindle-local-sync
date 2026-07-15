@@ -1,6 +1,7 @@
 import { App, ButtonComponent, Modal } from "obsidian";
 import type KindleLocalSyncPlugin from "./main";
 import { IgnoredHighlight } from "./settings";
+import { createStoredBookIdentityKey } from "./sync/HighlightIdentity";
 
 export class IgnoredHighlightsModal extends Modal {
 	private readonly plugin: KindleLocalSyncPlugin;
@@ -32,7 +33,8 @@ export class IgnoredHighlightsModal extends Modal {
 		const bookListEl = this.contentEl.createDiv();
 		bookListEl.addClass("kls-book-list");
 
-		for (const [title, highlights] of groupIgnoredHighlightsByTitle(this.plugin.settings.ignoredHighlights)) {
+		for (const [bookIdentity, highlights] of groupIgnoredHighlightsByBook(this.plugin.settings.ignoredHighlights)) {
+			const title = getIgnoredTitle(highlights[0]);
 			const section = bookListEl.createDiv();
 			section.addClass("kls-book-section");
 			section.addClass("kls-book-card");
@@ -46,7 +48,7 @@ export class IgnoredHighlightsModal extends Modal {
 			this.createActionButton(header, "Review Highlights")
 				.onClick(() => {
 					this.saveIgnoredHighlightsScrollPosition();
-					this.renderIgnoredBookHighlights(title);
+					this.renderIgnoredBookHighlights(bookIdentity);
 				});
 
 			section.createEl("p", {
@@ -68,7 +70,7 @@ export class IgnoredHighlightsModal extends Modal {
 		this.restoreScrollPosition(this.ignoredHighlightsScrollTop);
 	}
 
-	private renderIgnoredBookHighlights(bookTitle: string): void {
+	private renderIgnoredBookHighlights(bookIdentity: string): void {
 		this.contentEl.empty();
 
 		const header = this.contentEl.createDiv();
@@ -84,12 +86,13 @@ export class IgnoredHighlightsModal extends Modal {
 		backActions.addClass("kls-ignored-detail-actions");
 		this.createActionButton(backActions, "Back to Ignored Highlights")
 			.onClick(() => {
-				this.saveIgnoredBookScrollPosition(bookTitle);
+				this.saveIgnoredBookScrollPosition(bookIdentity);
 				this.renderIgnoredHighlights();
 			});
 
 		const bookHighlights = this.plugin.settings.ignoredHighlights
-			.filter((highlight) => getIgnoredTitle(highlight) === bookTitle);
+			.filter((highlight) => createStoredBookIdentityKey(highlight) === bookIdentity);
+		const bookTitle = getIgnoredTitle(bookHighlights[0]);
 
 		const detailCard = this.contentEl.createDiv();
 		detailCard.addClass("kls-book-section");
@@ -101,7 +104,7 @@ export class IgnoredHighlightsModal extends Modal {
 
 		if (bookHighlights.length === 0) {
 			detailCard.createEl("p", { text: "No ignored highlights left in this book." }).addClass("kls-empty-state");
-			this.restoreScrollPosition(this.ignoredBookScrollTopByTitle.get(bookTitle) ?? 0);
+			this.restoreScrollPosition(this.ignoredBookScrollTopByTitle.get(bookIdentity) ?? 0);
 			return;
 		}
 
@@ -125,18 +128,18 @@ export class IgnoredHighlightsModal extends Modal {
 			actions.addClass("kls-book-actions");
 			this.createActionButton(actions, "Remove From Ignore List")
 				.onClick(async () => {
-					this.saveIgnoredBookScrollPosition(bookTitle);
-					await this.plugin.unignoreHighlight(highlight.id);
-					this.renderIgnoredBookHighlights(bookTitle);
+					this.saveIgnoredBookScrollPosition(bookIdentity);
+					await this.plugin.unignoreHighlight(highlight);
+					this.renderIgnoredBookHighlights(bookIdentity);
 				});
 		}
 
-		this.restoreScrollPosition(this.ignoredBookScrollTopByTitle.get(bookTitle) ?? 0);
+		this.restoreScrollPosition(this.ignoredBookScrollTopByTitle.get(bookIdentity) ?? 0);
 	}
 
 	private async unignoreHighlights(highlights: IgnoredHighlight[]): Promise<void> {
 		for (const highlight of [...highlights]) {
-			await this.plugin.unignoreHighlight(highlight.id);
+			await this.plugin.unignoreHighlight(highlight);
 		}
 	}
 
@@ -167,19 +170,19 @@ export class IgnoredHighlightsModal extends Modal {
 	}
 }
 
-function getIgnoredTitle(highlight: IgnoredHighlight): string {
-	return highlight.title || "Untitled Kindle Book";
+function getIgnoredTitle(highlight: IgnoredHighlight | undefined): string {
+	return highlight?.title || "Untitled Kindle Book";
 }
 
-function groupIgnoredHighlightsByTitle(highlights: IgnoredHighlight[]): Map<string, IgnoredHighlight[]> {
+function groupIgnoredHighlightsByBook(highlights: IgnoredHighlight[]): Map<string, IgnoredHighlight[]> {
 	const groups = new Map<string, IgnoredHighlight[]>();
 
 	for (const highlight of highlights) {
-		const title = getIgnoredTitle(highlight);
-		const group = groups.get(title) ?? [];
+		const bookIdentity = createStoredBookIdentityKey(highlight);
+		const group = groups.get(bookIdentity) ?? [];
 
 		group.push(highlight);
-		groups.set(title, group);
+		groups.set(bookIdentity, group);
 	}
 
 	return groups;

@@ -37,4 +37,23 @@ describe("settings migration", () => {
 
 		expect(settings.ignoredHighlights).toEqual(ignoredHighlights);
 	});
+
+	it("preserves legacy authorless imported and ignored records byte-for-byte and in order", () => {
+		const loadedData = {
+			importedHighlights: [
+				{ id: "kls-one", title: "One", textPreview: "First", importedAt: "2026-01-01" },
+				{ id: "kls-two", title: "Two", textPreview: "Second", importedAt: "2026-01-02" },
+			],
+			ignoredHighlights: [
+				{ id: "kls-three", title: "Three", textPreview: "Third", ignoredAt: "2026-01-03" },
+			],
+		};
+		const before = JSON.stringify(loadedData);
+		const settings = migrateSettings(loadedData);
+
+		expect(JSON.stringify({
+			importedHighlights: settings.importedHighlights,
+			ignoredHighlights: settings.ignoredHighlights,
+		})).toBe(before);
+	});
 });

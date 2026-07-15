@@ -121,6 +121,55 @@ export class Notice {
 	}
 }
 
+export function getFrontMatterInfo(content: string): {
+	exists: boolean;
+	frontmatter: string;
+	from: number;
+	to: number;
+	contentStart: number;
+} {
+	const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+
+	if (!match || match[1] === undefined) {
+		return { exists: false, frontmatter: "", from: 0, to: 0, contentStart: 0 };
+	}
+
+	return {
+		exists: true,
+		frontmatter: match[1],
+		from: 4,
+		to: 4 + match[1].length,
+		contentStart: match[0].length,
+	};
+}
+
+export function parseYaml(yaml: string): unknown {
+	const parsed: Record<string, unknown> = {};
+
+	for (const line of yaml.split(/\r?\n/)) {
+		const separatorIndex = line.indexOf(":");
+
+		if (separatorIndex === -1) {
+			continue;
+		}
+
+		const key = line.slice(0, separatorIndex).trim();
+		const rawValue = line.slice(separatorIndex + 1).trim();
+
+		if (!key) {
+			continue;
+		}
+
+		if (rawValue.startsWith("\"") && rawValue.endsWith("\"")) {
+			parsed[key] = JSON.parse(rawValue);
+		} else {
+			parsed[key] = rawValue;
+		}
+	}
+
+	return parsed;
+}
+
 export class Modal {
 	app: App;
 	contentEl = new MockElement();
