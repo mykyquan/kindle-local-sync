@@ -30,6 +30,7 @@ export interface SyncSummaryModalOptions {
 	ignoreResults?: IgnoreResultsPresentation;
 }
 
+type SummaryButtonTreatment = "native" | "subtle" | "strong";
 
 export class SyncSummaryModal extends Modal {
 	private readonly plugin: KindleLocalSyncPlugin;
@@ -74,6 +75,7 @@ export class SyncSummaryModal extends Modal {
 	private readonly classification: SyncClassification;
 
 	onOpen(): void {
+		this.contentEl.addClass("kls-glass-scope");
 		this.renderSummary();
 	}
 
@@ -109,7 +111,7 @@ export class SyncSummaryModal extends Modal {
 		actions.addClass("kls-summary-actions");
 
 		if (this.suspiciousHighlights.length > 0) {
-			this.createActionButton(actions, "Review Missing Managed Highlights")
+			this.createActionButton(actions, "Review Missing Managed Highlights", "subtle")
 				.onClick(() => {
 					this.saveSummaryScrollPosition();
 					this.renderSuspiciousItems();
@@ -117,7 +119,7 @@ export class SyncSummaryModal extends Modal {
 		}
 
 		if (this.protectedBooks.bookCount > 0) {
-			this.createActionButton(actions, "View Books Left Unchanged")
+			this.createActionButton(actions, "View Books Left Unchanged", "subtle")
 				.onClick(() => {
 					this.saveSummaryScrollPosition();
 					this.renderProtectedBooks();
@@ -125,7 +127,7 @@ export class SyncSummaryModal extends Modal {
 		}
 
 		if (this.ignoreResults.highlightCount > 0) {
-			this.createActionButton(actions, "Review Ignore Results")
+			this.createActionButton(actions, "Review Ignore Results", "subtle")
 				.onClick(() => {
 					this.saveSummaryScrollPosition();
 					this.renderIgnoreResults();
@@ -133,7 +135,7 @@ export class SyncSummaryModal extends Modal {
 		}
 
 		if (this.classification.ignoredHighlights.length > 0) {
-			this.createActionButton(actions, "View Ignored Highlights")
+			this.createActionButton(actions, "View Ignored Highlights", "subtle")
 				.onClick(() => {
 					this.saveSummaryScrollPosition();
 					this.renderIgnoredHighlights();
@@ -141,7 +143,7 @@ export class SyncSummaryModal extends Modal {
 		}
 
 		if (this.skippedThisSyncHighlights.length > 0) {
-			this.createActionButton(actions, "Review Skipped This Sync")
+			this.createActionButton(actions, "Review Skipped This Sync", "subtle")
 				.onClick(() => {
 					this.saveSummaryScrollPosition();
 					this.clearSkippedBooksReturnAnchor();
@@ -149,7 +151,7 @@ export class SyncSummaryModal extends Modal {
 				});
 		}
 
-		this.createActionButton(actions, "Close")
+		this.createActionButton(actions, "Close", "subtle")
 			.onClick(() => this.close());
 
 		this.restoreScrollPosition(this.summaryScrollTop);
@@ -302,14 +304,21 @@ export class SyncSummaryModal extends Modal {
 
 		actions.addClass("kls-button-row");
 		actions.addClass("kls-summary-actions");
-		this.createActionButton(actions, "Back").onClick(onBack);
-		this.createActionButton(actions, "Close").onClick(() => this.close());
+		this.createActionButton(actions, "Back", "subtle").onClick(onBack);
+		this.createActionButton(actions, "Close", "subtle").onClick(() => this.close());
 	}
 
-	private createActionButton(containerEl: HTMLElement, text: string): ButtonComponent {
+	private createActionButton(
+		containerEl: HTMLElement,
+		text: string,
+		treatment: SummaryButtonTreatment = "native"
+	): ButtonComponent {
 		const button = new ButtonComponent(containerEl).setButtonText(text);
 
 		button.buttonEl.addClass("kls-action-button");
+		if (treatment !== "native") {
+			button.buttonEl.addClass(`kls-glass-${treatment}`);
+		}
 
 		return button;
 	}
@@ -327,7 +336,7 @@ export class SyncSummaryModal extends Modal {
 		const backActions = this.contentEl.createDiv();
 		backActions.addClass("kls-button-row");
 		backActions.addClass("kls-summary-actions");
-		this.createActionButton(backActions, "Back to Summary")
+		this.createActionButton(backActions, "Back to Summary", "subtle")
 			.onClick(() => this.renderSummary());
 
 		for (const highlight of this.suspiciousHighlights) {
@@ -348,7 +357,7 @@ export class SyncSummaryModal extends Modal {
 			const actions = row.createDiv();
 			actions.addClass("kls-button-row");
 
-			this.createActionButton(actions, "Import Again")
+			this.createActionButton(actions, "Import Again", "subtle")
 				.onClick(async () => {
 					const sameBookHighlights = this.automaticHighlights.filter((candidate) =>
 						hasSameBookIdentity(candidate, highlight)
@@ -421,7 +430,7 @@ export class SyncSummaryModal extends Modal {
 		const backActions = this.contentEl.createDiv();
 		backActions.addClass("kls-button-row");
 		backActions.addClass("kls-summary-actions");
-		this.createActionButton(backActions, "Back to Summary")
+		this.createActionButton(backActions, "Back to Summary", "subtle")
 			.onClick(() => {
 				this.saveIgnoredHighlightsScrollPosition();
 				this.renderSummary();
@@ -450,7 +459,7 @@ export class SyncSummaryModal extends Modal {
 			const titleEl = header.createEl("h3", { text: title });
 			titleEl.addClass("kls-book-title");
 
-			this.createActionButton(header, "Review Highlights")
+			this.createActionButton(header, "Review Highlights", "subtle")
 				.onClick(() => {
 					this.saveIgnoredHighlightsScrollPosition();
 					this.renderIgnoredBookHighlights(bookIdentity);
@@ -488,7 +497,7 @@ export class SyncSummaryModal extends Modal {
 		backActions.addClass("kls-button-row");
 		backActions.addClass("kls-summary-actions");
 		backActions.addClass("kls-ignored-detail-actions");
-		this.createActionButton(backActions, "Back to Ignored Highlights")
+		this.createActionButton(backActions, "Back to Ignored Highlights", "subtle")
 			.onClick(() => {
 				this.saveIgnoredBookScrollPosition(bookIdentity);
 				this.renderIgnoredHighlights();
@@ -553,7 +562,7 @@ export class SyncSummaryModal extends Modal {
 		const backActions = this.contentEl.createDiv();
 		backActions.addClass("kls-button-row");
 		backActions.addClass("kls-summary-actions");
-		this.createActionButton(backActions, "Back to Summary")
+		this.createActionButton(backActions, "Back to Summary", "subtle")
 			.onClick(() => {
 				this.saveSkippedBooksScrollPosition();
 				this.renderSummary();
@@ -582,7 +591,7 @@ export class SyncSummaryModal extends Modal {
 			const titleEl = header.createEl("h3", { text: title });
 			titleEl.addClass("kls-book-title");
 
-			this.createActionButton(header, "Review Highlights")
+			this.createActionButton(header, "Review Highlights", "subtle")
 				.onClick(() => {
 					this.saveSkippedBooksScrollPosition();
 					this.skippedBooksReturnAnchorKey = bookKey;
@@ -618,7 +627,7 @@ export class SyncSummaryModal extends Modal {
 		actions.addClass("kls-button-row");
 		actions.addClass("kls-summary-actions");
 
-		this.createActionButton(actions, "Cancel")
+		this.createActionButton(actions, "Cancel", "subtle")
 			.onClick(() => this.renderSkippedBooks());
 
 		this.createActionButton(actions, "Ignore All Highlights")
@@ -641,7 +650,7 @@ export class SyncSummaryModal extends Modal {
 		const backActions = this.contentEl.createDiv();
 		backActions.addClass("kls-button-row");
 		backActions.addClass("kls-summary-actions");
-		this.createActionButton(backActions, "Back to Skipped Books")
+		this.createActionButton(backActions, "Back to Skipped Books", "subtle")
 			.onClick(() => {
 				this.saveSkippedBookScrollPosition(bookIdentity);
 				this.shouldRestoreSkippedBooksAnchor = true;

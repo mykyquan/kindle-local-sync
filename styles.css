@@ -473,6 +473,125 @@ If your plugin does not need CSS, delete this file.
 	overflow-wrap: anywhere;
 }
 
+.kls-glass-scope {
+	--kls-glass-blur: 10px;
+	--kls-glass-surface: var(--interactive-normal);
+	--kls-glass-surface-hover: var(--interactive-hover);
+	--kls-glass-border: var(--background-modifier-border-hover, var(--background-modifier-border));
+	--kls-glass-focus: var(--background-modifier-border-focus, var(--interactive-accent));
+	--kls-glass-shadow: var(--shadow-s, 0 1px 2px var(--background-modifier-border));
+	--kls-glass-transition: 120ms ease-out;
+}
+
+.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]) {
+	border: 1px solid var(--kls-glass-border);
+	background: var(--kls-glass-surface);
+	color: var(--text-normal);
+	box-shadow: var(--kls-glass-shadow);
+	transition:
+		background-color var(--kls-glass-transition),
+		border-color var(--kls-glass-transition),
+		box-shadow var(--kls-glass-transition),
+		transform var(--kls-glass-transition);
+}
+
+.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):hover {
+	border-color: var(--background-modifier-border-focus, var(--interactive-accent));
+	background: var(--kls-glass-surface-hover);
+	transform: translateY(-1px);
+}
+
+.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):active {
+	box-shadow: none;
+	transform: translateY(0);
+}
+
+.kls-glass-scope .kls-glass-strong:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]) {
+	border: 1px solid var(--interactive-accent);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	box-shadow: var(--kls-glass-shadow);
+	transition:
+		background-color var(--kls-glass-transition),
+		border-color var(--kls-glass-transition),
+		box-shadow var(--kls-glass-transition),
+		transform var(--kls-glass-transition);
+}
+
+.kls-glass-scope .kls-glass-strong:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):hover {
+	border-color: var(--interactive-accent-hover);
+	background: var(--interactive-accent-hover);
+	transform: translateY(-1px);
+}
+
+.kls-glass-scope .kls-glass-strong:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):active {
+	box-shadow: none;
+	transform: translateY(0);
+}
+
+.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):focus-visible,
+.kls-glass-scope .kls-glass-strong:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):focus-visible {
+	outline: 2px solid var(--kls-glass-focus);
+	outline-offset: 2px;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]) {
+		background: color-mix(in srgb, var(--interactive-normal) 82%, transparent);
+		-webkit-backdrop-filter: blur(var(--kls-glass-blur)) saturate(1.05);
+		backdrop-filter: blur(var(--kls-glass-blur)) saturate(1.05);
+	}
+
+	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):hover {
+		background: color-mix(in srgb, var(--interactive-hover) 88%, transparent);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]),
+	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):hover,
+	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):active,
+	.kls-glass-scope .kls-glass-strong:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]),
+	.kls-glass-scope .kls-glass-strong:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):hover,
+	.kls-glass-scope .kls-glass-strong:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):active {
+		transition: none;
+		transform: none;
+	}
+}
+
+@media (prefers-reduced-transparency: reduce) {
+	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]) {
+		background: var(--kls-glass-surface);
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
+
+	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):hover {
+		background: var(--kls-glass-surface-hover);
+	}
+}
+
+@media (forced-colors: active) {
+	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]),
+	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):hover,
+	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):active,
+	.kls-glass-scope .kls-glass-strong:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]),
+	.kls-glass-scope .kls-glass-strong:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):hover,
+	.kls-glass-scope .kls-glass-strong:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):active {
+		border: 1px solid ButtonText;
+		background: ButtonFace;
+		color: ButtonText;
+		box-shadow: none;
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
+
+	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):focus-visible,
+	.kls-glass-scope .kls-glass-strong:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):focus-visible {
+		outline-color: Highlight;
+	}
+}
+
 .kls-book-status {
 	display: inline-flex;
 	flex-wrap: wrap;

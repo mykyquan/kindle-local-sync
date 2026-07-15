@@ -80,6 +80,7 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 		const actionRow = elementByClass(modal.contentEl, "kls-summary-actions");
 		const actionButtons = elementsByClass(actionRow, "kls-action-button");
 
+		expect(elementsByClass(modal.contentEl, "kls-glass-scope")).toHaveLength(1);
 		expect(elementsByClass(modal.contentEl, "kls-summary-actions")).toHaveLength(1);
 		expect(actionRow.classes.has("kls-button-row")).toBe(true);
 		expect(actionButtons.map((button) => button.text())).toEqual([
@@ -90,8 +91,76 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 			"Review Skipped This Sync",
 			"Close",
 		]);
+		expect(actionButtons.every((button) => button.classes.has("kls-glass-subtle"))).toBe(true);
+		expect(elementsByClass(modal.contentEl, "kls-glass-strong")).toHaveLength(0);
 		expect(findByText(actionRow, "Close").classes.has("mod-cta")).toBe(false);
 		expect(findByText(actionRow, "Close").classes.has("mod-warning")).toBe(false);
+	});
+
+	it("uses subtle glass for safe recovery actions while Ignore and Skip remain native", async () => {
+		const modal = createModal({
+			classification: createClassification({
+				possibleReappearedHighlights: [createHighlight()],
+			}),
+		});
+
+		modal.onOpen();
+		const reviewButton = findByText(modal.contentEl, "Review Missing Managed Highlights");
+
+		expect(reviewButton.classes.has("kls-glass-subtle")).toBe(true);
+		await reviewButton.click();
+
+		const backButton = findByText(modal.contentEl, "Back to Summary");
+		const importButton = findByText(modal.contentEl, "Import Again");
+		const ignoreButton = findByText(modal.contentEl, "Ignore Going Forward");
+		const skipButton = findByText(modal.contentEl, "Skip This Time");
+
+		expect(backButton.classes.has("kls-glass-subtle")).toBe(true);
+		expect(importButton.classes.has("kls-glass-subtle")).toBe(true);
+		expect(ignoreButton.classes.has("mod-warning")).toBe(true);
+		expectNativeGlassTreatment(ignoreButton);
+		expectNativeGlassTreatment(skipButton);
+	});
+
+	it("keeps Remove and Ignore actions native while their navigation and Cancel actions use subtle glass", async () => {
+		const modal = createModal({
+			plugin: createPlugin({
+				ignoredHighlights: [createIgnoredHighlight()],
+			}),
+			classification: createClassification({
+				ignoredHighlights: [createHighlight()],
+			}),
+			skippedThisSyncHighlights: [createSummaryItem()],
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "View Ignored Highlights").click();
+
+		expect(findByText(modal.contentEl, "Back to Summary").classes.has("kls-glass-subtle")).toBe(true);
+		expect(findByText(modal.contentEl, "Review Highlights").classes.has("kls-glass-subtle")).toBe(true);
+		expectNativeGlassTreatment(findByText(modal.contentEl, "Remove All From Ignore List"));
+
+		await findByText(modal.contentEl, "Review Highlights").click();
+		expect(findByText(modal.contentEl, "Back to Ignored Highlights").classes.has("kls-glass-subtle")).toBe(true);
+		expectNativeGlassTreatment(findByText(modal.contentEl, "Remove From Ignore List"));
+
+		await findByText(modal.contentEl, "Back to Ignored Highlights").click();
+		await findByText(modal.contentEl, "Back to Summary").click();
+		await findByText(modal.contentEl, "Review Skipped This Sync").click();
+
+		expect(findByText(modal.contentEl, "Back to Summary").classes.has("kls-glass-subtle")).toBe(true);
+		expect(findByText(modal.contentEl, "Review Highlights").classes.has("kls-glass-subtle")).toBe(true);
+		const ignoreAllButton = findByText(modal.contentEl, "Ignore All Highlights");
+
+		expectNativeGlassTreatment(ignoreAllButton);
+		await ignoreAllButton.click();
+
+		const cancelButton = findByText(modal.contentEl, "Cancel");
+		const confirmIgnoreButton = findByText(modal.contentEl, "Ignore All Highlights");
+
+		expect(cancelButton.classes.has("kls-glass-subtle")).toBe(true);
+		expect(confirmIgnoreButton.classes.has("mod-warning")).toBe(true);
+		expectNativeGlassTreatment(confirmIgnoreButton);
 	});
 
 	it("uses Title Case button labels in Sync Summary", async () => {
@@ -756,6 +825,12 @@ describe("SyncSummaryModal protected-book outcomes", () => {
 		expect(readText(modal.contentEl)).toContain("Existing imported history was kept for this book.");
 		expect(readText(modal.contentEl)).not.toContain("0 selected highlights returning for review");
 		expect(buttonTexts(modal.contentEl)).toEqual(["Back", "Close"]);
+		for (const label of ["Back", "Close"]) {
+			const button = findByText(modal.contentEl, label);
+
+			expect(button.classes.has("kls-glass-subtle")).toBe(true);
+			expect(button.classes.has("kls-glass-strong")).toBe(false);
+		}
 		expect(readText(modal.contentEl)).not.toMatch(
 			/kls-|kindle-local-sync|unsafe-existing-managed-region|notePath|collision|marker/i
 		);
@@ -808,6 +883,12 @@ describe("SyncSummaryModal Ignore outcomes", () => {
 			[...approvedCopy].map((copy) => text.indexOf(copy)).sort((left, right) => left - right)
 		);
 		expect(buttonTexts(modal.contentEl)).toEqual(["Back", "Close"]);
+		for (const label of ["Back", "Close"]) {
+			const button = findByText(modal.contentEl, label);
+
+			expect(button.classes.has("kls-glass-subtle")).toBe(true);
+			expect(button.classes.has("kls-glass-strong")).toBe(false);
+		}
 		expect(text).not.toMatch(/start-without-end|discovery|cleanup-failed|cleanup-state-unknown|kls-/);
 	});
 
@@ -1449,6 +1530,11 @@ interface TestElement {
 	scrollTop: number;
 	scrollIntoViewCalls: unknown[];
 	attributes: Map<string, string>;
+}
+
+function expectNativeGlassTreatment(element: TestElement): void {
+	expect(element.classes.has("kls-glass-subtle")).toBe(false);
+	expect(element.classes.has("kls-glass-strong")).toBe(false);
 }
 
 function readText(element: unknown): string {
