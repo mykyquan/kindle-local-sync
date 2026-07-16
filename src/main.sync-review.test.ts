@@ -171,6 +171,67 @@ beforeEach(() => {
 	});
 });
 
+describe("automatic sync failure presentation", () => {
+	const failureNotice = "Kindle sync wasn’t completed. Please try again.";
+
+	it("shows only the failure notice when the writer rejects", async () => {
+		const highlight = createHighlight();
+		const plugin = await createPlugin(createSettings({
+			importedHighlights: [createImportedRecord(highlight)],
+		}));
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		mocks.parseClippings.mockReturnValue([highlight]);
+		mocks.writeBookNotesToVault.mockRejectedValueOnce(new Error("Disk write failed."));
+		await plugin.syncHighlights();
+
+		expect(mocks.syncSummaryInstances).toHaveLength(0);
+		expect(mocks.syncSummaryOpen).not.toHaveBeenCalled();
+		expect(Notice.messages).toEqual([failureNotice]);
+		expect(Notice.messages.join(" ")).not.toContain("sync complete");
+		consoleError.mockRestore();
+	});
+
+	it("shows only the failure notice when automatic writer validation rejects", async () => {
+		const highlight = createHighlight();
+		const plugin = await createPlugin(createSettings({
+			importedHighlights: [createImportedRecord(highlight)],
+		}));
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		mocks.parseClippings.mockReturnValue([highlight]);
+		mocks.writeBookNotesToVault.mockImplementationOnce(
+			async (_vault: unknown, _folder: string, bookGroups: KindleBookGroup[]) =>
+				createMissingOutcomeSummary(bookGroups)
+		);
+		await plugin.syncHighlights();
+
+		expect(mocks.syncSummaryInstances).toHaveLength(0);
+		expect(mocks.syncSummaryOpen).not.toHaveBeenCalled();
+		expect(Notice.messages).toEqual([failureNotice]);
+		consoleError.mockRestore();
+	});
+
+	it("shows only the failure notice when automatic settings persistence rejects", async () => {
+		const highlight = createHighlight();
+		const plugin = await createPlugin(createSettings({
+			importedHighlights: [createImportedRecord(highlight)],
+		}));
+		const importedBefore = JSON.stringify(plugin.settings.importedHighlights);
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		mocks.parseClippings.mockReturnValue([highlight]);
+		vi.spyOn(plugin, "saveData").mockRejectedValueOnce(new Error("Settings save failed."));
+		await plugin.syncHighlights();
+
+		expect(mocks.syncSummaryInstances).toHaveLength(0);
+		expect(mocks.syncSummaryOpen).not.toHaveBeenCalled();
+		expect(JSON.stringify(plugin.settings.importedHighlights)).toBe(importedBefore);
+		expect(Notice.messages).toEqual([failureNotice]);
+		consoleError.mockRestore();
+	});
+});
+
 describe("sync review gate", () => {
 	it("opens review before importing on first sync", async () => {
 		const highlight = createHighlight();

@@ -149,8 +149,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 			await this.syncExistingHighlights(highlights, bookGroups, identityIndex);
 		} catch (error) {
 			console.error(`Kindle sync failed during ${syncPhase}.`, error);
-			// eslint-disable-next-line obsidianmd/ui/sentence-case
-			new Notice("Failed to sync My Clippings.txt. Check the file path, format, and target folder.");
+			new Notice("Kindle sync wasn’t completed. Please try again.");
 		}
 	}
 
