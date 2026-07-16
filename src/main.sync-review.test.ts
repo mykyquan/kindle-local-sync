@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { App } from "../__mocks__/obsidian";
+import { App, Notice } from "../__mocks__/obsidian";
 import type { KindleHighlight } from "./parser/parseClippings";
 import { createClippingId, KindleBookGroup } from "./render/renderMarkdown";
 import type { IgnoredHighlight, ImportedHighlightRecord, KindleSyncSettings } from "./settings";
@@ -33,6 +33,10 @@ interface ReviewModalCapture {
 	open: ReturnType<typeof vi.fn>;
 }
 
+interface ExistingNotesWithoutDataCapture {
+	open: ReturnType<typeof vi.fn>;
+}
+
 interface SyncSummaryCapture {
 	classification: SyncClassification;
 	automaticHighlights: KindleHighlight[];
@@ -49,6 +53,7 @@ const mocks = vi.hoisted(() => ({
 	writeBookNotesToVault: vi.fn(),
 	removeIgnoredHighlightBlocksFromExistingNotes: vi.fn(),
 	highlightExistsInNote: vi.fn(),
+	existingNotesWithoutDataInstances: [] as ExistingNotesWithoutDataCapture[],
 	firstSyncPreviewInstances: [] as ReviewModalCapture[],
 	syncSummaryInstances: [] as SyncSummaryCapture[],
 	syncSummaryOpen: vi.fn(),
@@ -87,6 +92,21 @@ vi.mock("./sync/VaultHighlightLookup", () => ({
 	createVaultHighlightLookup: () => mocks.highlightExistsInNote,
 }));
 
+vi.mock("./ExistingNotesWithoutDataModal", () => ({
+	ExistingNotesWithoutDataModal: class {
+		private readonly capture: ExistingNotesWithoutDataCapture;
+
+		constructor() {
+			this.capture = { open: vi.fn() };
+			mocks.existingNotesWithoutDataInstances.push(this.capture);
+		}
+
+		open(): void {
+			this.capture.open();
+		}
+	},
+}));
+
 vi.mock("./FirstSyncPreviewModal", () => ({
 	FirstSyncPreviewModal: class {
 		private readonly capture: ReviewModalCapture;
@@ -119,13 +139,19 @@ vi.mock("./SyncSummaryModal", () => ({
 }));
 
 let KindleLocalSyncPlugin: typeof import("./main").default;
+let SettingsPersistenceVerificationError: typeof import("./main").SettingsPersistenceVerificationError;
 
 beforeAll(async () => {
-	KindleLocalSyncPlugin = (await import("./main")).default;
+	const mainModule = await import("./main");
+
+	KindleLocalSyncPlugin = mainModule.default;
+	SettingsPersistenceVerificationError = mainModule.SettingsPersistenceVerificationError;
 });
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	Notice.messages.length = 0;
+	mocks.existingNotesWithoutDataInstances.length = 0;
 	mocks.firstSyncPreviewInstances.length = 0;
 	mocks.syncSummaryInstances.length = 0;
 	mocks.detectClippingsPath.mockResolvedValue("/Volumes/Kindle/documents/My Clippings.txt");
@@ -838,6 +864,349 @@ describe("protected writer result propagation", () => {
 		expect(plugin.settings.ignoredHighlights.map((record) => record.id)).toEqual([createClippingId(ignoredHighlight)]);
 	});
 
+	it("keeps First Sync settings staged while persistence is pending and commits once after success", async () => {
+		const importedHighlight = createHighlight({ bookTitle: "Import", author: "Author One" });
+		const ignoredHighlight = createHighlight({ bookTitle: "Ignore", author: "Author Two" });
+		const plugin = await createPlugin(null);
+		const liveSettings = plugin.settings;
+		const settingsBefore = JSON.stringify(liveSettings);
+		const persistence = createDeferred<void>();
+		const saveData = vi.spyOn(plugin, "saveData").mockReturnValueOnce(persistence.promise);
+
+		const completion = plugin.completeFirstSync(
+			[importedHighlight],
+			[ignoredHighlight],
+			[],
+			createIdentityIndex([importedHighlight, ignoredHighlight])
+		);
+
+		await waitForMockCall(saveData);
+		const stagedSettings = saveData.mock.calls[0]?.[0] as KindleSyncSettings;
+
+		expect(plugin.settings).toBe(liveSettings);
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+		expect(stagedSettings.importedHighlights).not.toBe(liveSettings.importedHighlights);
+		expect(stagedSettings.ignoredHighlights).not.toBe(liveSettings.ignoredHighlights);
+		expect(stagedSettings.hasCompletedFirstSync).toBe(true);
+		expect(stagedSettings.importedHighlights.map((record) => record.id)).toEqual([
+			createClippingId(importedHighlight),
+		]);
+		expect(stagedSettings.ignoredHighlights.map((record) => record.id)).toEqual([
+			createClippingId(ignoredHighlight),
+		]);
+
+		(plugin as unknown as { setDurableData(data: unknown): void }).setDurableData(stagedSettings);
+		(plugin as unknown as { setLoadDataResult(data: unknown): void }).setLoadDataResult(stagedSettings);
+		persistence.resolve(undefined);
+		await completion;
+		expect(saveData).toHaveBeenCalledTimes(1);
+		expect(plugin.settings).toBe(stagedSettings);
+	});
+
+	it("keeps Review New Highlights settings staged while persistence is pending and commits once", async () => {
+		const automaticHighlight = createHighlight({ bookTitle: "Existing", author: "Author Zero" });
+		const importedHighlight = createHighlight({ bookTitle: "Import", author: "Author One" });
+		const ignoredHighlight = createHighlight({ bookTitle: "Ignore", author: "Author Two" });
+		const plugin = await createPlugin(createSettings({
+			importedHighlights: [createImportedRecord(automaticHighlight)],
+		}));
+		const liveSettings = plugin.settings;
+		const settingsBefore = JSON.stringify(liveSettings);
+		const persistence = createDeferred<void>();
+		const saveData = vi.spyOn(plugin, "saveData").mockReturnValueOnce(persistence.promise);
+
+		const completion = plugin.completeReviewedSync(
+			[importedHighlight],
+			[ignoredHighlight],
+			[],
+			[automaticHighlight],
+			{
+				newHighlights: [importedHighlight, ignoredHighlight],
+				duplicateHighlights: [automaticHighlight],
+				ignoredHighlights: [],
+				possibleReappearedHighlights: [],
+			},
+			createIdentityIndex([automaticHighlight, importedHighlight, ignoredHighlight])
+		);
+
+		await waitForMockCall(saveData);
+		const stagedSettings = saveData.mock.calls[0]?.[0] as KindleSyncSettings;
+
+		expect(plugin.settings).toBe(liveSettings);
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+		expect(stagedSettings.importedHighlights).not.toBe(liveSettings.importedHighlights);
+		expect(stagedSettings.ignoredHighlights).not.toBe(liveSettings.ignoredHighlights);
+		expect(stagedSettings.importedHighlights[0]).not.toBe(liveSettings.importedHighlights[0]);
+		expect(stagedSettings.importedHighlights.map((record) => record.id)).toEqual([
+			createClippingId(automaticHighlight),
+			createClippingId(importedHighlight),
+		]);
+		expect(stagedSettings.ignoredHighlights.map((record) => record.id)).toEqual([
+			createClippingId(ignoredHighlight),
+		]);
+
+		(plugin as unknown as { setDurableData(data: unknown): void }).setDurableData(stagedSettings);
+		(plugin as unknown as { setLoadDataResult(data: unknown): void }).setLoadDataResult(stagedSettings);
+		persistence.resolve(undefined);
+		await completion;
+		expect(saveData).toHaveBeenCalledTimes(1);
+		expect(plugin.settings).toBe(stagedSettings);
+	});
+
+	it("keeps First Sync review eligibility after settings persistence rejects and the review is discarded", async () => {
+		const importedHighlight = createHighlight({ bookTitle: "Import", author: "Author One" });
+		const ignoredHighlight = createHighlight({ bookTitle: "Ignore", author: "Author Two" });
+		const highlights = [importedHighlight, ignoredHighlight];
+		const plugin = await createPlugin(null);
+		const settingsBefore = JSON.stringify(plugin.settings);
+
+		vi.spyOn(plugin, "saveData").mockRejectedValueOnce(new Error("Settings save failed."));
+		await expect(plugin.completeFirstSync(
+			[importedHighlight],
+			[ignoredHighlight],
+			[],
+			createIdentityIndex(highlights)
+		)).rejects.toThrow("Settings save failed.");
+
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+		expect(plugin.settings.importedHighlights).toEqual([]);
+		expect(plugin.settings.ignoredHighlights).toEqual([]);
+		expect(plugin.settings.hasCompletedFirstSync).toBe(false);
+
+		mocks.firstSyncPreviewInstances.length = 0;
+		mocks.parseClippings.mockReturnValue(highlights);
+		await plugin.syncHighlights();
+
+		expect(mocks.firstSyncPreviewInstances).toHaveLength(1);
+		expect(mocks.firstSyncPreviewInstances[0]?.options?.title).toBeUndefined();
+		expect(reviewedHighlightIds()).toEqual(highlights.map(createClippingId));
+	});
+
+	it("keeps rejected Review New Highlight decisions eligible for the next review", async () => {
+		const automaticHighlight = createHighlight({ bookTitle: "Existing", author: "Author Zero" });
+		const importedHighlight = createHighlight({ bookTitle: "Import", author: "Author One" });
+		const ignoredHighlight = createHighlight({ bookTitle: "Ignore", author: "Author Two" });
+		const plugin = await createPlugin(createSettings({
+			importedHighlights: [createImportedRecord(automaticHighlight)],
+		}));
+		const settingsBefore = JSON.stringify(plugin.settings);
+
+		vi.spyOn(plugin, "saveData").mockRejectedValueOnce(new Error("Settings save failed."));
+		await expect(plugin.completeReviewedSync(
+			[importedHighlight],
+			[ignoredHighlight],
+			[],
+			[automaticHighlight],
+			{
+				newHighlights: [importedHighlight, ignoredHighlight],
+				duplicateHighlights: [automaticHighlight],
+				ignoredHighlights: [],
+				possibleReappearedHighlights: [],
+			},
+			createIdentityIndex([automaticHighlight, importedHighlight, ignoredHighlight])
+		)).rejects.toThrow("Settings save failed.");
+
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+		expect(plugin.settings.importedHighlights.map((record) => record.id)).toEqual([
+			createClippingId(automaticHighlight),
+		]);
+		expect(plugin.settings.ignoredHighlights).toEqual([]);
+
+		mocks.firstSyncPreviewInstances.length = 0;
+		mocks.parseClippings.mockReturnValue([automaticHighlight, importedHighlight, ignoredHighlight]);
+		await plugin.syncHighlights();
+
+		expect(mocks.firstSyncPreviewInstances).toHaveLength(1);
+		expect(mocks.firstSyncPreviewInstances[0]?.options?.title).toBe("Review New Highlights");
+		expect(reviewedHighlightIds()).toEqual([
+			createClippingId(importedHighlight),
+			createClippingId(ignoredHighlight),
+		]);
+	});
+
+	it("does not expose Import Again persistence changes when settings save rejects", async () => {
+		const highlight = createHighlight();
+		const importedRecord = createImportedRecord(highlight);
+		const plugin = await createPlugin(createSettings({ importedHighlights: [importedRecord] }));
+		const liveSettings = plugin.settings;
+		const settingsBefore = JSON.stringify(liveSettings);
+		const persistence = createDeferred<void>();
+		const saveData = vi.spyOn(plugin, "saveData").mockReturnValueOnce(persistence.promise);
+		const importRequest = plugin.importHighlights(
+			[highlight],
+			createIdentityIndex([highlight]),
+			true,
+			[highlight]
+		);
+
+		await waitForMockCall(saveData);
+		expect(plugin.settings).toBe(liveSettings);
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+
+		persistence.reject(new Error("Settings save failed."));
+		await expect(importRequest).rejects.toThrow("Settings save failed.");
+		expect(plugin.settings).toBe(liveSettings);
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+	});
+
+	it("does not expose Import Again persistence changes when save resolves without persistence", async () => {
+		const existingHighlight = createHighlight({ bookTitle: "Existing", author: "Author One" });
+		const recoveredHighlight = createHighlight({ bookTitle: "Recovered", author: "Author Two" });
+		const plugin = await createPlugin(createSettings({
+			importedHighlights: [createImportedRecord(existingHighlight)],
+		}));
+		const liveSettings = plugin.settings;
+		const settingsBefore = JSON.stringify(liveSettings);
+
+		persistenceControl(plugin).setSaveDataPersists(false);
+
+		await expect(plugin.importHighlights(
+			[recoveredHighlight],
+			createIdentityIndex([existingHighlight, recoveredHighlight]),
+			true,
+			[recoveredHighlight]
+		)).rejects.toBeInstanceOf(SettingsPersistenceVerificationError);
+
+		expect(plugin.settings).toBe(liveSettings);
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+		expect(plugin.settings.importedHighlights.map((record) => record.id)).toEqual([
+			createClippingId(existingHighlight),
+		]);
+	});
+
+	it("creates fully isolated snapshot arrays and records even when Import Again adds no record", async () => {
+		const importedHighlight = createHighlight({ bookTitle: "Imported", author: "Author One" });
+		const ignoredHighlight = createHighlight({ bookTitle: "Ignored", author: "Author Two" });
+		const importedRecord = createImportedRecord(importedHighlight);
+		const ignoredRecord = createIgnoredRecord(ignoredHighlight);
+		const plugin = await createPlugin(createSettings({
+			importedHighlights: [importedRecord],
+			ignoredHighlights: [ignoredRecord],
+		}));
+		const liveSettings = plugin.settings;
+		const persistence = createDeferred<void>();
+		const saveData = vi.spyOn(plugin, "saveData").mockReturnValueOnce(persistence.promise);
+		const importRequest = plugin.importHighlights(
+			[importedHighlight],
+			createIdentityIndex([importedHighlight]),
+			true,
+			[importedHighlight]
+		);
+
+		await waitForMockCall(saveData);
+		const stagedSettings = saveData.mock.calls[0]?.[0] as KindleSyncSettings;
+
+		expect(stagedSettings.importedHighlights).not.toBe(liveSettings.importedHighlights);
+		expect(stagedSettings.ignoredHighlights).not.toBe(liveSettings.ignoredHighlights);
+		expect(stagedSettings.importedHighlights[0]).not.toBe(liveSettings.importedHighlights[0]);
+		expect(stagedSettings.ignoredHighlights[0]).not.toBe(liveSettings.ignoredHighlights[0]);
+		expect(stagedSettings.importedHighlights).toEqual(liveSettings.importedHighlights);
+		expect(stagedSettings.ignoredHighlights).toEqual(liveSettings.ignoredHighlights);
+		expect(plugin.settings).toBe(liveSettings);
+		stagedSettings.importedHighlights[0]!.textPreview = "Changed while persistence is pending";
+		stagedSettings.ignoredHighlights[0]!.textPreview = "Changed while persistence is pending";
+		expect(liveSettings.importedHighlights[0]!.textPreview).toBe(importedHighlight.content);
+		expect(liveSettings.ignoredHighlights[0]!.textPreview).toBe(ignoredHighlight.content);
+		stagedSettings.importedHighlights[0]!.textPreview = importedHighlight.content;
+		stagedSettings.ignoredHighlights[0]!.textPreview = ignoredHighlight.content;
+
+		persistence.resolve(undefined);
+		await importRequest;
+		expect(plugin.settings).toBe(stagedSettings);
+	});
+
+	it("keeps live settings isolated when persistence mutates its snapshot and rejects", async () => {
+		const importedHighlight = createHighlight({ bookTitle: "Imported", author: "Author One" });
+		const ignoredHighlight = createHighlight({ bookTitle: "Ignored", author: "Author Two" });
+		const plugin = await createPlugin(createSettings({
+			importedHighlights: [createImportedRecord(importedHighlight)],
+			ignoredHighlights: [createIgnoredRecord(ignoredHighlight)],
+		}));
+		const liveSettings = plugin.settings;
+		const settingsBefore = JSON.stringify(liveSettings);
+
+		vi.spyOn(plugin, "saveData").mockImplementationOnce(async (data) => {
+			const snapshot = data as KindleSyncSettings;
+
+			snapshot.importedHighlights[0]!.textPreview = "Mutated during persistence";
+			snapshot.ignoredHighlights[0]!.textPreview = "Mutated during persistence";
+			snapshot.importedHighlights.push(createImportedRecord(createHighlight({ location: "999" })));
+			throw new Error("Settings save failed.");
+		});
+
+		await expect(plugin.importHighlights(
+			[importedHighlight],
+			createIdentityIndex([importedHighlight]),
+			true,
+			[importedHighlight]
+		)).rejects.toThrow("Settings save failed.");
+
+		expect(plugin.settings).toBe(liveSettings);
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+	});
+
+	it("does not share records with the old settings object after a successful snapshot commit", async () => {
+		const historicalImport = createHighlight({ bookTitle: "Historical", author: "Author One" });
+		const historicalIgnore = createHighlight({ bookTitle: "Ignored", author: "Author Two" });
+		const newImport = createHighlight({ bookTitle: "New", author: "Author Three" });
+		const oldSettings = createSettings({
+			importedHighlights: [createImportedRecord(historicalImport)],
+			ignoredHighlights: [createIgnoredRecord(historicalIgnore)],
+		});
+		const plugin = await createPlugin(oldSettings);
+		const oldLiveSettings = plugin.settings;
+		const oldImportedRecord = oldLiveSettings.importedHighlights[0]!;
+		const oldIgnoredRecord = oldLiveSettings.ignoredHighlights[0]!;
+
+		await plugin.importHighlights(
+			[newImport],
+			createIdentityIndex([newImport]),
+			true,
+			[newImport]
+		);
+		const committedSettings = plugin.settings;
+
+		expect(committedSettings).not.toBe(oldLiveSettings);
+		expect(committedSettings.importedHighlights[0]).not.toBe(oldImportedRecord);
+		expect(committedSettings.ignoredHighlights[0]).not.toBe(oldIgnoredRecord);
+		oldImportedRecord.textPreview = "Changed after success";
+		oldIgnoredRecord.textPreview = "Changed after success";
+		oldLiveSettings.importedHighlights.length = 0;
+		oldLiveSettings.ignoredHighlights.length = 0;
+
+		expect(committedSettings.importedHighlights.map((record) => record.textPreview)).toEqual([
+			historicalImport.content,
+			newImport.content,
+		]);
+		expect(committedSettings.ignoredHighlights.map((record) => record.textPreview)).toEqual([
+			historicalIgnore.content,
+		]);
+	});
+
+	it("retains imported and ignored records across serialized recovery mutations", async () => {
+		const importedHighlight = createHighlight({ bookTitle: "Imported", author: "Author One" });
+		const ignoredHighlight = createHighlight({ bookTitle: "Ignored", author: "Author Two" });
+		const plugin = await createPlugin(createSettings());
+
+		await plugin.importHighlights(
+			[importedHighlight],
+			createIdentityIndex([importedHighlight, ignoredHighlight]),
+			true,
+			[importedHighlight]
+		);
+		await plugin.ignoreHighlights(
+			[ignoredHighlight],
+			createIdentityIndex([importedHighlight, ignoredHighlight])
+		);
+
+		expect(plugin.settings.importedHighlights.map((record) => record.id)).toEqual([
+			createClippingId(importedHighlight),
+		]);
+		expect(plugin.settings.ignoredHighlights.map((record) => record.id)).toEqual([
+			createClippingId(ignoredHighlight),
+		]);
+	});
+
 	it("propagates blocked first-sync Ignore cleanup into completion and summary state", async () => {
 		const ignoredHighlight = createHighlight();
 		const target = {
@@ -988,6 +1357,7 @@ describe("protected writer result propagation", () => {
 		}
 
 		expect(rejectedError).toBeInstanceOf(InvalidVaultWriteContractError);
+		expect(rejectedError).not.toBeInstanceOf(SettingsPersistenceVerificationError);
 		expect((rejectedError as InvalidVaultWriteContractError).preservedIgnoreCleanupResults)
 			.toEqual([cleanupResult]);
 		expect(plugin.settings.importedHighlights).toEqual([]);
@@ -1007,6 +1377,38 @@ describe("protected writer result propagation", () => {
 			}]
 		);
 		expect(saveData).toHaveBeenCalledTimes(1);
+		expect(mocks.syncSummaryInstances).toHaveLength(0);
+	});
+
+	it("does not retain saved-Ignore results when invalid-contract Ignore persistence is unverified", async () => {
+		const importedHighlight = createHighlight({ bookTitle: "Import A", author: "Author A" });
+		const ignoredHighlight = createHighlight({ bookTitle: "Ignore B", author: "Author B" });
+		const plugin = await createPlugin(null);
+
+		persistenceControl(plugin).setSaveDataPersists(false);
+		mocks.writeBookNotesToVault.mockImplementation(
+			async (_vault: unknown, _folder: string, bookGroups: KindleBookGroup[]) =>
+				createMissingOutcomeSummary(bookGroups)
+		);
+
+		let failure: unknown;
+		try {
+			await plugin.completeFirstSync(
+				[importedHighlight],
+				[ignoredHighlight],
+				[],
+				createIdentityIndex([importedHighlight, ignoredHighlight])
+			);
+		} catch (error) {
+			failure = error;
+		}
+
+		expect(failure).toBeInstanceOf(SettingsPersistenceVerificationError);
+		expect(failure).not.toBeInstanceOf(InvalidVaultWriteContractError);
+		expect(plugin.settings.importedHighlights).toEqual([]);
+		expect(plugin.settings.ignoredHighlights).toEqual([]);
+		expect(plugin.settings.hasCompletedFirstSync).toBe(false);
+		expect(mocks.removeIgnoredHighlightBlocksFromExistingNotes).not.toHaveBeenCalled();
 		expect(mocks.syncSummaryInstances).toHaveLength(0);
 	});
 
@@ -1144,6 +1546,161 @@ describe("protected writer result propagation", () => {
 	});
 });
 
+describe("reconnect discovery after config-only settings persistence", () => {
+	it("opens reconnect after the user saves a custom clippings path in the same process", async () => {
+		const plugin = await createPlugin(null);
+
+		await saveCustomClippingsPath(plugin);
+		mocks.hasExistingHighlightNotes.mockResolvedValue(true);
+		await plugin.syncHighlights();
+
+		expect(persistenceControl(plugin).getDurableData()).toMatchObject({
+			clippingsPath: "/Users/test/QA Input/My Clippings.txt",
+			importedHighlights: [],
+			ignoredHighlights: [],
+			hasCompletedFirstSync: false,
+		});
+		expect(mocks.existingNotesWithoutDataInstances).toHaveLength(1);
+		expect(mocks.existingNotesWithoutDataInstances[0]?.open).toHaveBeenCalledTimes(1);
+		expect(mocks.firstSyncPreviewInstances).toHaveLength(0);
+		expect(mocks.detectClippingsPath).not.toHaveBeenCalled();
+	});
+
+	it("opens reconnect after config-only data is loaded by a restarted plugin instance", async () => {
+		const firstPlugin = await createPlugin(null);
+
+		await saveCustomClippingsPath(firstPlugin);
+		const configOnlyData = persistenceControl(firstPlugin).getDurableData() as KindleSyncSettings;
+		const reloadedPlugin = await createPlugin(configOnlyData);
+
+		mocks.hasExistingHighlightNotes.mockResolvedValue(true);
+		await reloadedPlugin.syncHighlights();
+
+		expect(mocks.existingNotesWithoutDataInstances).toHaveLength(1);
+		expect(mocks.firstSyncPreviewInstances).toHaveLength(0);
+		expect(readHasTrustedSyncState(reloadedPlugin)).toBe(false);
+	});
+
+	it("keeps a genuine new user without managed notes in First Sync", async () => {
+		const highlight = createHighlight();
+		const plugin = await createPlugin(null);
+
+		await saveCustomClippingsPath(plugin);
+		mocks.hasExistingHighlightNotes.mockResolvedValue(false);
+		mocks.parseClippings.mockReturnValue([highlight]);
+		await plugin.syncHighlights();
+
+		expect(mocks.existingNotesWithoutDataInstances).toHaveLength(0);
+		expect(mocks.firstSyncPreviewInstances).toHaveLength(1);
+		expect(mocks.firstSyncPreviewInstances[0]?.options?.title).toBeUndefined();
+		expect(reviewedHighlightIds()).toEqual([createClippingId(highlight)]);
+	});
+
+	it("keeps completed trusted data on the ordinary sync path", async () => {
+		const highlight = createHighlight();
+		const plugin = await createPlugin(createSettings({
+			importedHighlights: [createImportedRecord(highlight)],
+			hasCompletedFirstSync: true,
+		}));
+
+		mocks.hasExistingHighlightNotes.mockResolvedValue(true);
+		mocks.parseClippings.mockReturnValue([highlight]);
+		mocks.highlightExistsInNote.mockResolvedValue(true);
+		await plugin.syncHighlights();
+
+		expect(mocks.existingNotesWithoutDataInstances).toHaveLength(0);
+		expect(mocks.firstSyncPreviewInstances).toHaveLength(0);
+		expect(mocks.syncSummaryInstances).toHaveLength(1);
+	});
+
+	it("reconnects only physically confirmed A1 and B1 without recreating unavailable Ignore state", async () => {
+		const a1 = createHighlight({ bookTitle: "Atomic Habits", author: "James Clear" });
+		const b1 = createHighlight({
+			bookTitle: "Deep Work",
+			author: "Cal Newport",
+			location: "160",
+			content: "Deep work is valuable.",
+		});
+		const c1 = createHighlight({
+			bookTitle: "Digital Minimalism",
+			author: "Cal Newport",
+			location: "170",
+			content: "Attention is a resource worth protecting.",
+		});
+		const confirmedIds = new Set([createClippingId(a1), createClippingId(b1)]);
+		const plugin = await createPlugin(null);
+
+		await saveCustomClippingsPath(plugin);
+		mocks.parseClippings.mockReturnValue([a1, b1, c1]);
+		mocks.highlightExistsInNote.mockImplementation(async (id: string) => confirmedIds.has(id));
+		await plugin.continueExistingNotesWithoutDataSync();
+
+		const importedIds = plugin.settings.importedHighlights.map((record) => record.id);
+
+		expect(importedIds).toEqual([createClippingId(a1), createClippingId(b1)]);
+		expect(new Set(importedIds).size).toBe(2);
+		expect(plugin.settings.ignoredHighlights).toEqual([]);
+		expect(plugin.settings.hasCompletedFirstSync).toBe(true);
+		expect(persistenceControl(plugin).getDurableData()).toEqual(plugin.settings);
+		expect(mocks.firstSyncPreviewInstances).toHaveLength(1);
+		expect(mocks.firstSyncPreviewInstances[0]?.options?.title).toBe("Review New Highlights");
+		expect(reviewedHighlightIds()).toEqual([createClippingId(c1)]);
+		// Existing managed notes are classified and trusted without being rewritten or duplicated.
+		expect(mocks.writeBookNotesToVault).not.toHaveBeenCalled();
+	});
+
+	it("keeps reconnect retryable when save resolves without durable persistence", async () => {
+		const existingHighlight = createHighlight();
+		const plugin = await createPlugin(null);
+
+		await saveCustomClippingsPath(plugin);
+		const configOnlyData = persistenceControl(plugin).getDurableData();
+		persistenceControl(plugin).setSaveDataPersists(false);
+		mocks.parseClippings.mockReturnValue([existingHighlight]);
+		mocks.highlightExistsInNote.mockResolvedValue(true);
+
+		await expect(plugin.continueExistingNotesWithoutDataSync())
+			.rejects.toBeInstanceOf(SettingsPersistenceVerificationError);
+
+		expect(plugin.settings.importedHighlights).toEqual([]);
+		expect(plugin.settings.ignoredHighlights).toEqual([]);
+		expect(plugin.settings.hasCompletedFirstSync).toBe(false);
+		expect(readHasSavedPluginData(plugin)).toBe(true);
+		expect(readHasTrustedSyncState(plugin)).toBe(false);
+		expect(persistenceControl(plugin).getDurableData()).toEqual(configOnlyData);
+		expect(mocks.syncSummaryInstances).toHaveLength(0);
+		expect(Notice.messages).toEqual([]);
+
+		mocks.hasExistingHighlightNotes.mockResolvedValue(true);
+		await plugin.syncHighlights();
+
+		expect(mocks.existingNotesWithoutDataInstances).toHaveLength(1);
+		expect(mocks.firstSyncPreviewInstances).toHaveLength(0);
+	});
+
+	it("keeps reconnect retryable when the writer rejects", async () => {
+		const existingHighlight = createHighlight();
+		const plugin = await createPlugin(null);
+
+		await saveCustomClippingsPath(plugin);
+		mocks.parseClippings.mockReturnValue([existingHighlight]);
+		mocks.highlightExistsInNote.mockResolvedValue(true);
+		mocks.writeBookNotesToVault.mockRejectedValueOnce(new Error("Disk write failed."));
+
+		await expect(plugin.continueExistingNotesWithoutDataSync())
+			.rejects.toThrow("Disk write failed.");
+
+		expect(plugin.settings.importedHighlights).toEqual([]);
+		expect(plugin.settings.hasCompletedFirstSync).toBe(false);
+		expect(readHasTrustedSyncState(plugin)).toBe(false);
+		expect(mocks.syncSummaryInstances).toHaveLength(0);
+		expect(Notice.messages).toEqual([]);
+		mocks.hasExistingHighlightNotes.mockResolvedValue(true);
+		await plugin.syncHighlights();
+		expect(mocks.existingNotesWithoutDataInstances).toHaveLength(1);
+	});
+});
+
 describe("existing notes without data review choices", () => {
 	it("Reconnect existing notes does not force review when current clippings match existing managed notes", async () => {
 		const existingHighlight = createHighlight();
@@ -1248,6 +1805,84 @@ describe("existing notes without data review choices", () => {
 		expect(mocks.syncSummaryInstances).toHaveLength(0);
 	});
 
+	it("does not persist staged reconnect trust when the automatic writer rejects", async () => {
+		const existingHighlight = createHighlight();
+		const plugin = await createPlugin(null);
+		const settingsBefore = JSON.stringify(plugin.settings);
+		const saveData = vi.spyOn(plugin, "saveData");
+
+		mocks.parseClippings.mockReturnValue([existingHighlight]);
+		mocks.highlightExistsInNote.mockResolvedValue(true);
+		mocks.writeBookNotesToVault.mockRejectedValueOnce(new Error("Disk write failed."));
+
+		await expect(plugin.continueExistingNotesWithoutDataSync())
+			.rejects.toThrow("Disk write failed.");
+
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+		expect(plugin.settings.importedHighlights).toEqual([]);
+		expect(plugin.settings.hasCompletedFirstSync).toBe(false);
+		expect(saveData).not.toHaveBeenCalled();
+		expect(mocks.syncSummaryInstances).toHaveLength(0);
+	});
+
+	it("does not commit staged reconnect trust when settings persistence rejects", async () => {
+		const existingHighlight = createHighlight();
+		const plugin = await createPlugin(null);
+		const settingsBefore = JSON.stringify(plugin.settings);
+		const saveData = vi.spyOn(plugin, "saveData").mockRejectedValueOnce(
+			new Error("Settings save failed.")
+		);
+
+		mocks.parseClippings.mockReturnValue([existingHighlight]);
+		mocks.highlightExistsInNote.mockResolvedValue(true);
+
+		await expect(plugin.continueExistingNotesWithoutDataSync())
+			.rejects.toThrow("Settings save failed.");
+
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+		expect(plugin.settings.importedHighlights).toEqual([]);
+		expect(plugin.settings.hasCompletedFirstSync).toBe(false);
+		expect(saveData).toHaveBeenCalledTimes(1);
+		expect(mocks.syncSummaryInstances).toHaveLength(0);
+	});
+
+	it("does not commit staged reconnect trust when save resolves without persistence", async () => {
+		const existingHighlight = createHighlight();
+		const plugin = await createPlugin(null);
+		const liveSettings = plugin.settings;
+		const settingsBefore = JSON.stringify(liveSettings);
+
+		persistenceControl(plugin).setSaveDataPersists(false);
+		mocks.parseClippings.mockReturnValue([existingHighlight]);
+		mocks.highlightExistsInNote.mockResolvedValue(true);
+
+		await expect(plugin.continueExistingNotesWithoutDataSync())
+			.rejects.toBeInstanceOf(SettingsPersistenceVerificationError);
+
+		expect(plugin.settings).toBe(liveSettings);
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+		expect(plugin.settings.importedHighlights).toEqual([]);
+		expect(plugin.settings.hasCompletedFirstSync).toBe(false);
+		expect(readHasSavedPluginData(plugin)).toBe(false);
+		expect(mocks.syncSummaryInstances).toHaveLength(0);
+	});
+
+	it("does not expose review-as-first-sync state until persistence is verified", async () => {
+		const highlight = createHighlight();
+		const plugin = await createPlugin(createSettings({ hasCompletedFirstSync: true }));
+		const liveSettings = plugin.settings;
+
+		persistenceControl(plugin).setSaveDataPersists(false);
+		mocks.parseClippings.mockReturnValue([highlight]);
+
+		await expect(plugin.reviewExistingNotesWithoutDataAsFirstSync())
+			.rejects.toBeInstanceOf(SettingsPersistenceVerificationError);
+
+		expect(plugin.settings).toBe(liveSettings);
+		expect(plugin.settings.hasCompletedFirstSync).toBe(true);
+		expect(mocks.firstSyncPreviewInstances).toHaveLength(0);
+	});
+
 	it("internal review-all method forces full review even when notes can be matched", async () => {
 		const existingHighlight = createHighlight();
 		const newHighlight = createHighlight({
@@ -1271,6 +1906,248 @@ describe("existing notes without data review choices", () => {
 	});
 });
 
+describe("durable settings persistence verification", () => {
+	it("keeps a resolved but non-durable First Sync untrusted and retries with fresh timestamps", async () => {
+		vi.useFakeTimers();
+		const failedAttemptTime = new Date("2026-07-16T07:11:12.000Z");
+		const successfulAttemptTime = new Date("2026-07-16T08:22:30.000Z");
+		const importedHighlight = createHighlight({ bookTitle: "Atomic Habits", author: "James Clear" });
+		const ignoredHighlight = createHighlight({ bookTitle: "Digital Minimalism", author: "Cal Newport" });
+		const historicalImport = createHighlight({ bookTitle: "Historical Import", author: "Existing Author" });
+		const historicalIgnore = createHighlight({ bookTitle: "Historical Ignore", author: "Existing Author" });
+		const initialSettings = createSettings({
+			hasCompletedFirstSync: false,
+			importedHighlights: [createImportedRecord(historicalImport)],
+			ignoredHighlights: [createIgnoredRecord(historicalIgnore)],
+		});
+		const plugin = await createPlugin(initialSettings);
+		const persistence = persistenceControl(plugin);
+		const liveSettings = plugin.settings;
+		const settingsBefore = JSON.stringify(liveSettings);
+		const hasSavedPluginDataBefore = readHasSavedPluginData(plugin);
+		const saveData = vi.spyOn(plugin, "saveData");
+		const loadData = vi.spyOn(plugin, "loadData");
+		let physicalNoteWriteCompleted = false;
+
+		mocks.writeBookNotesToVault.mockImplementation(
+			async (_vault: unknown, _folder: string, bookGroups: KindleBookGroup[]) => {
+				physicalNoteWriteCompleted = true;
+				return createWriterSummary(bookGroups);
+			}
+		);
+		persistence.setSaveDataPersists(false);
+		vi.setSystemTime(failedAttemptTime);
+
+		let failure: unknown;
+		try {
+			await plugin.completeFirstSync(
+				[importedHighlight],
+				[ignoredHighlight],
+				[],
+				createIdentityIndex([importedHighlight, ignoredHighlight])
+			);
+		} catch (error) {
+			failure = error;
+		}
+
+		expect(failure).toBeInstanceOf(SettingsPersistenceVerificationError);
+		expect((failure as InstanceType<typeof SettingsPersistenceVerificationError>).code)
+			.toBe("mismatched-readback");
+		expect(physicalNoteWriteCompleted).toBe(true);
+		expect(plugin.settings).toBe(liveSettings);
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+		expect(plugin.settings.importedHighlights).toEqual(initialSettings.importedHighlights);
+		expect(plugin.settings.ignoredHighlights).toEqual(initialSettings.ignoredHighlights);
+		expect(plugin.settings.hasCompletedFirstSync).toBe(false);
+		expect(readHasSavedPluginData(plugin)).toBe(hasSavedPluginDataBefore);
+		expect(persistence.getDurableData()).toEqual(initialSettings);
+		expect(mocks.removeIgnoredHighlightBlocksFromExistingNotes).not.toHaveBeenCalled();
+		expect(mocks.syncSummaryInstances).toHaveLength(0);
+		expect(mocks.syncSummaryOpen).not.toHaveBeenCalled();
+		expect(Notice.messages).toEqual([]);
+
+		mocks.firstSyncPreviewInstances.length = 0;
+		mocks.parseClippings.mockReturnValue([importedHighlight, ignoredHighlight]);
+		await plugin.syncHighlights();
+
+		expect(mocks.firstSyncPreviewInstances).toHaveLength(1);
+		expect(mocks.firstSyncPreviewInstances[0]?.options?.title).toBeUndefined();
+		expect(reviewedHighlightIds()).toEqual([
+			createClippingId(importedHighlight),
+			createClippingId(ignoredHighlight),
+		]);
+
+		persistence.setSaveDataPersists(true);
+		vi.setSystemTime(successfulAttemptTime);
+		await finishIncrementalReview({
+			importHighlights: [importedHighlight],
+			ignoreHighlights: [ignoredHighlight],
+			skippedThisSyncHighlights: [],
+		});
+
+		const durableSettings = persistence.getDurableData() as KindleSyncSettings;
+		const importedRecord = durableSettings.importedHighlights.find((record) =>
+			record.id === createClippingId(importedHighlight)
+		);
+		const ignoredRecord = durableSettings.ignoredHighlights.find((record) =>
+			record.id === createClippingId(ignoredHighlight)
+		);
+
+		expect(durableSettings.importedHighlights[0]).toEqual(initialSettings.importedHighlights[0]);
+		expect(durableSettings.ignoredHighlights[0]).toEqual(initialSettings.ignoredHighlights[0]);
+		expect(importedRecord?.importedAt).toBe(successfulAttemptTime.toISOString());
+		expect(ignoredRecord?.ignoredAt).toBe(successfulAttemptTime.toISOString());
+		expect(importedRecord?.importedAt).not.toBe(failedAttemptTime.toISOString());
+		expect(ignoredRecord?.ignoredAt).not.toBe(failedAttemptTime.toISOString());
+		expect(durableSettings.hasCompletedFirstSync).toBe(true);
+		expect(saveData).toHaveBeenCalledTimes(2);
+		expect(loadData).toHaveBeenCalledTimes(2);
+		expect(mocks.removeIgnoredHighlightBlocksFromExistingNotes).toHaveBeenCalledTimes(1);
+		expect(mocks.syncSummaryInstances).toHaveLength(1);
+		expect(mocks.syncSummaryOpen).toHaveBeenCalledTimes(1);
+		vi.useRealTimers();
+	});
+
+	it("performs one save, one read-back, one commit, one cleanup, and one summary on ordinary success", async () => {
+		const importedHighlight = createHighlight({ bookTitle: "Import", author: "Author One" });
+		const ignoredHighlight = createHighlight({ bookTitle: "Ignore", author: "Author Two" });
+		const plugin = await createPlugin(createSettings({ hasCompletedFirstSync: false }));
+		const liveSettings = plugin.settings;
+		const saveData = vi.spyOn(plugin, "saveData");
+		const loadData = vi.spyOn(plugin, "loadData");
+
+		await plugin.completeFirstSync(
+			[importedHighlight],
+			[ignoredHighlight],
+			[],
+			createIdentityIndex([importedHighlight, ignoredHighlight])
+		);
+
+		expect(saveData).toHaveBeenCalledTimes(1);
+		expect(loadData).toHaveBeenCalledTimes(1);
+		expect(plugin.settings).not.toBe(liveSettings);
+		expect(persistenceControl(plugin).getDurableData()).toEqual(plugin.settings);
+		expect(mocks.removeIgnoredHighlightBlocksFromExistingNotes).toHaveBeenCalledTimes(1);
+		expect(mocks.syncSummaryInstances).toHaveLength(1);
+		expect(mocks.syncSummaryOpen).toHaveBeenCalledTimes(1);
+	});
+
+	it("uses JSON normalization and ignores object key ordering during verification", async () => {
+		const highlight = createHighlight();
+		const plugin = await createPlugin(createSettings({ hasCompletedFirstSync: false }));
+		const originalSaveData = plugin.saveData.bind(plugin);
+		const control = persistenceControl(plugin);
+
+		(plugin.settings as KindleSyncSettings & { unsupported?: undefined }).unsupported = undefined;
+		vi.spyOn(plugin, "saveData").mockImplementationOnce(async (data) => {
+			await originalSaveData(data);
+			const snapshot = data as KindleSyncSettings;
+
+			control.setLoadDataResult({
+				hasCompletedFirstSync: snapshot.hasCompletedFirstSync,
+				importedHighlights: snapshot.importedHighlights.map((record) => ({
+					importedAt: record.importedAt,
+					textPreview: record.textPreview,
+					author: record.author,
+					title: record.title,
+					id: record.id,
+				})),
+				ignoredHighlights: snapshot.ignoredHighlights,
+				skipIgnoredHighlights: snapshot.skipIgnoredHighlights,
+				strictLocalOnly: snapshot.strictLocalOnly,
+				highlightsFolder: snapshot.highlightsFolder,
+				clippingsPath: snapshot.clippingsPath,
+			});
+		});
+
+		await plugin.completeFirstSync(
+			[highlight],
+			[],
+			[],
+			createIdentityIndex([highlight])
+		);
+
+		expect((plugin.settings as KindleSyncSettings & { unsupported?: unknown }).unsupported).toBeUndefined();
+		expect(plugin.settings.importedHighlights).toHaveLength(1);
+		expect(mocks.syncSummaryInstances).toHaveLength(1);
+	});
+
+	it.each([
+		["null read-back", "missing-readback", (plugin: InstanceType<typeof KindleLocalSyncPlugin>) => {
+			persistenceControl(plugin).setLoadDataResult(null);
+		}],
+		["malformed read-back", "malformed-readback", (plugin: InstanceType<typeof KindleLocalSyncPlugin>) => {
+			persistenceControl(plugin).setLoadDataResult({ importedHighlights: "not-an-array" });
+		}],
+		["read failure", "read-failed", (plugin: InstanceType<typeof KindleLocalSyncPlugin>) => {
+			persistenceControl(plugin).setLoadDataError(new Error("Settings read failed."));
+		}],
+	] as const)("fails safely for %s", async (_label, expectedCode, configure) => {
+		const highlight = createHighlight();
+		const plugin = await createPlugin(createSettings({ hasCompletedFirstSync: false }));
+		const liveSettings = plugin.settings;
+		const settingsBefore = JSON.stringify(liveSettings);
+
+		configure(plugin);
+
+		let failure: unknown;
+		try {
+			await plugin.completeFirstSync(
+				[highlight],
+				[],
+				[],
+				createIdentityIndex([highlight])
+			);
+		} catch (error) {
+			failure = error;
+		}
+
+		expect(failure).toBeInstanceOf(SettingsPersistenceVerificationError);
+		expect((failure as InstanceType<typeof SettingsPersistenceVerificationError>).code).toBe(expectedCode);
+		expect(plugin.settings).toBe(liveSettings);
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+		expect(mocks.removeIgnoredHighlightBlocksFromExistingNotes).not.toHaveBeenCalled();
+		expect(mocks.syncSummaryInstances).toHaveLength(0);
+	});
+
+	it("serializes snapshot creation through durable verification", async () => {
+		const firstHighlight = createHighlight({ bookTitle: "First", author: "Author One" });
+		const secondHighlight = createHighlight({ bookTitle: "Second", author: "Author Two" });
+		const plugin = await createPlugin(createSettings());
+		const firstSave = createDeferred<void>();
+		const originalSaveData = plugin.saveData.bind(plugin);
+		const saveData = vi.spyOn(plugin, "saveData")
+			.mockImplementationOnce(async (data) => {
+				await firstSave.promise;
+				await originalSaveData(data);
+			})
+			.mockImplementation(async (data) => originalSaveData(data));
+
+		const firstRequest = plugin.ignoreHighlights(
+			[firstHighlight],
+			createIdentityIndex([firstHighlight, secondHighlight])
+		);
+		await waitForMockCall(saveData);
+		const secondRequest = plugin.ignoreHighlights(
+			[secondHighlight],
+			createIdentityIndex([firstHighlight, secondHighlight])
+		);
+		await Promise.resolve();
+
+		expect(saveData).toHaveBeenCalledTimes(1);
+		firstSave.resolve(undefined);
+		await firstRequest;
+		await secondRequest;
+
+		expect(saveData).toHaveBeenCalledTimes(2);
+		expect(plugin.settings.ignoredHighlights.map((record) => record.title)).toEqual([
+			firstHighlight.bookTitle,
+			secondHighlight.bookTitle,
+		]);
+		expect(persistenceControl(plugin).getDurableData()).toEqual(plugin.settings);
+	});
+});
+
 async function createPlugin(
 	loadedData: Partial<KindleSyncSettings> | null
 ): Promise<InstanceType<typeof KindleLocalSyncPlugin>> {
@@ -1279,6 +2156,32 @@ async function createPlugin(
 	(plugin as unknown as { setLoadedData(data: unknown): void }).setLoadedData(loadedData);
 	await plugin.loadSettings();
 	return plugin;
+}
+
+interface PersistenceControl {
+	setSaveDataPersists(persist: boolean): void;
+	setLoadDataResult(data: unknown): void;
+	setLoadDataError(error: unknown): void;
+	getDurableData(): unknown;
+}
+
+function persistenceControl(plugin: InstanceType<typeof KindleLocalSyncPlugin>): PersistenceControl {
+	return plugin as unknown as PersistenceControl;
+}
+
+function readHasSavedPluginData(plugin: InstanceType<typeof KindleLocalSyncPlugin>): boolean {
+	return (plugin as unknown as { hasSavedPluginData: boolean }).hasSavedPluginData;
+}
+
+function readHasTrustedSyncState(plugin: InstanceType<typeof KindleLocalSyncPlugin>): boolean {
+	return (plugin as unknown as { hasTrustedSyncState: boolean }).hasTrustedSyncState;
+}
+
+async function saveCustomClippingsPath(
+	plugin: InstanceType<typeof KindleLocalSyncPlugin>
+): Promise<void> {
+	plugin.settings.clippingsPath = "/Users/test/QA Input/My Clippings.txt";
+	await plugin.saveSettings();
 }
 
 function createSettings(overrides: Partial<KindleSyncSettings> = {}): KindleSyncSettings {
@@ -1412,6 +2315,33 @@ function createMissingOutcomeSummary(bookGroups: KindleBookGroup[]): VaultWriteS
 
 	summary.bookOutcomes = [];
 	return summary;
+}
+
+function createDeferred<T>(): {
+	promise: Promise<T>;
+	resolve: (value: T | PromiseLike<T>) => void;
+	reject: (reason?: unknown) => void;
+} {
+	let resolve!: (value: T | PromiseLike<T>) => void;
+	let reject!: (reason?: unknown) => void;
+	const promise = new Promise<T>((resolver, rejecter) => {
+		resolve = resolver;
+		reject = rejecter;
+	});
+
+	return { promise, resolve, reject };
+}
+
+async function waitForMockCall(mock: { mock: { calls: unknown[][] } }): Promise<void> {
+	for (let attempt = 0; attempt < 20; attempt += 1) {
+		if (mock.mock.calls.length > 0) {
+			return;
+		}
+
+		await Promise.resolve();
+	}
+
+	throw new Error("Expected mock to be called.");
 }
 
 function createHighlight(overrides: Partial<KindleHighlight> = {}): KindleHighlight {

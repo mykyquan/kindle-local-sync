@@ -6,9 +6,13 @@ import { renderClippingMarkdown, SYNC_START_MARKER } from "./render/renderMarkdo
 import { CurrentClippingIdentityIndex } from "./sync/HighlightIdentity";
 
 let KindleLocalSyncPlugin: typeof import("./main").default;
+let SettingsPersistenceVerificationError: typeof import("./main").SettingsPersistenceVerificationError;
 
 beforeAll(async () => {
-	KindleLocalSyncPlugin = (await import("./main")).default;
+	const mainModule = await import("./main");
+
+	KindleLocalSyncPlugin = mainModule.default;
+	SettingsPersistenceVerificationError = mainModule.SettingsPersistenceVerificationError;
 });
 
 function createPlugin(vault?: Vault): InstanceType<typeof KindleLocalSyncPlugin> {
@@ -51,6 +55,46 @@ describe("unignoreHighlight", () => {
 		expect((plugin as unknown as { savedData: unknown }).savedData).toMatchObject({
 			ignoredHighlights: [],
 		});
+	});
+
+	it("keeps live ignored state unchanged when unignore is not durable", async () => {
+		const plugin = createPlugin();
+		const originalHighlight = createIgnoredHighlight("one");
+		const liveSettings = plugin.settings;
+
+		plugin.settings.ignoredHighlights = [originalHighlight];
+		setLoadedData(plugin, plugin.settings);
+		setSaveDataPersists(plugin, false);
+
+		await expect(plugin.unignoreHighlight(originalHighlight))
+			.rejects.toBeInstanceOf(SettingsPersistenceVerificationError);
+
+		expect(plugin.settings).toBe(liveSettings);
+		expect(plugin.settings.ignoredHighlights).toEqual([originalHighlight]);
+		expect(getDurableData(plugin)).toMatchObject({
+			ignoredHighlights: [originalHighlight],
+		});
+	});
+
+	it("keeps live ignored state unchanged when summary Ignore is not durable", async () => {
+		const highlight = createHighlight();
+		const plugin = createPlugin();
+		const liveSettings = plugin.settings;
+
+		setLoadedData(plugin, plugin.settings);
+		setSaveDataPersists(plugin, false);
+
+		await expect(plugin.ignoreSummaryHighlight({
+			id: "summary-id",
+			title: highlight.bookTitle,
+			author: highlight.author,
+			textPreview: highlight.content,
+		}, new CurrentClippingIdentityIndex([highlight])))
+			.rejects.toBeInstanceOf(SettingsPersistenceVerificationError);
+
+		expect(plugin.settings).toBe(liveSettings);
+		expect(plugin.settings.ignoredHighlights).toEqual([]);
+		expect(getDurableData(plugin)).toMatchObject({ ignoredHighlights: [] });
 	});
 });
 
@@ -126,4 +170,16 @@ function createHighlight(): KindleHighlight {
 		dateAdded: "Thursday, May 14, 2026 2:44 PM",
 		type: "Highlight",
 	};
+}
+
+function setLoadedData(plugin: InstanceType<typeof KindleLocalSyncPlugin>, data: unknown): void {
+	(plugin as unknown as { setLoadedData(value: unknown): void }).setLoadedData(data);
+}
+
+function setSaveDataPersists(plugin: InstanceType<typeof KindleLocalSyncPlugin>, persist: boolean): void {
+	(plugin as unknown as { setSaveDataPersists(value: boolean): void }).setSaveDataPersists(persist);
+}
+
+function getDurableData(plugin: InstanceType<typeof KindleLocalSyncPlugin>): unknown {
+	return (plugin as unknown as { getDurableData(): unknown }).getDurableData();
 }

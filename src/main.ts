@@ -63,9 +63,28 @@ interface ExistingSyncOptions {
 	commitState: () => Promise<void>;
 }
 
+export type SettingsPersistenceVerificationFailure =
+	| "invalid-proposed-snapshot"
+	| "read-failed"
+	| "missing-readback"
+	| "malformed-readback"
+	| "mismatched-readback";
+
+export class SettingsPersistenceVerificationError extends Error {
+	constructor(
+		readonly code: SettingsPersistenceVerificationFailure,
+		readonly readError?: unknown
+	) {
+		super(`Kindle sync settings persistence could not be verified (${code}).`);
+		this.name = "SettingsPersistenceVerificationError";
+	}
+}
+
 export default class KindleLocalSyncPlugin extends Plugin {
 	settings: KindleSyncSettings = migrateSettings(null);
 	private hasSavedPluginData = false;
+	private hasTrustedSyncState = false;
+	private settingsMutationQueue: Promise<void> = Promise.resolve();
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -98,7 +117,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		let syncPhase = "detect";
 
 		try {
-			if (!this.hasSavedPluginData && await hasExistingHighlightNotes(this.app, this.settings.highlightsFolder)) {
+			if (!this.hasTrustedSyncState && await hasExistingHighlightNotes(this.app, this.settings.highlightsFolder)) {
 				new ExistingNotesWithoutDataModal(this.app, this).open();
 				return;
 			}
@@ -140,10 +159,19 @@ export default class KindleLocalSyncPlugin extends Plugin {
 
 		this.hasSavedPluginData = loadedData != null;
 		this.settings = migrateSettings(loadedData ?? null);
+		this.hasTrustedSyncState = containsTrustedSyncState(this.settings);
 	}
 
 	async saveSettings(): Promise<void> {
-		await this.saveData(this.settings);
+		const requestedSettings = this.cloneSettingsSnapshot(this.settings);
+
+		await this.persistSettingsMutation((currentSettings) => ({
+			...this.cloneSettingsSnapshot(currentSettings),
+			clippingsPath: requestedSettings.clippingsPath,
+			highlightsFolder: requestedSettings.highlightsFolder,
+			strictLocalOnly: requestedSettings.strictLocalOnly,
+			skipIgnoredHighlights: requestedSettings.skipIgnoredHighlights,
+		}));
 	}
 
 	async completeFirstSync(
@@ -167,11 +195,15 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		}
 
 		const importedCount = countMatchingHighlights(importHighlights, importResult.safelyCompletedHighlights);
-
-		this.addIgnoredHighlights(ignoreHighlights, identityIndex);
-		this.settings.hasCompletedFirstSync = true;
-		this.hasSavedPluginData = true;
-		await this.saveSettings();
+		await this.persistSettingsMutation((currentSettings) =>
+			this.createCompletedSyncSettingsSnapshot(
+				currentSettings,
+				importResult.safelyCompletedHighlights,
+				importHighlights,
+				ignoreHighlights,
+				identityIndex
+			)
+		);
 		const ignoreCleanupResult = await this.cleanupPersistedIgnoredHighlightBlocks(
 			ignoreHighlights.map(createCleanupTarget)
 		);
@@ -229,11 +261,15 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		}
 
 		const importedCount = countMatchingHighlights(importHighlights, importResult.safelyCompletedHighlights);
-
-		this.addIgnoredHighlights(ignoreHighlights, identityIndex);
-		this.settings.hasCompletedFirstSync = true;
-		this.hasSavedPluginData = true;
-		await this.saveSettings();
+		await this.persistSettingsMutation((currentSettings) =>
+			this.createCompletedSyncSettingsSnapshot(
+				currentSettings,
+				importResult.safelyCompletedHighlights,
+				importHighlights,
+				ignoreHighlights,
+				identityIndex
+			)
+		);
 		const ignoreCleanupResult = await this.cleanupPersistedIgnoredHighlightBlocks(
 			ignoreHighlights.map(createCleanupTarget)
 		);
@@ -269,11 +305,11 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		};
 	}
 
-	async continueExistingNotesWithoutDataSync(): Promise<void> {
+	async continueExistingNotesWithoutDataSync(): Promise<boolean> {
 		const highlights = await this.readDetectedHighlights();
 
 		if (!highlights) {
-			return;
+			return false;
 		}
 
 		const identityIndex = new CurrentClippingIdentityIndex(highlights);
@@ -287,13 +323,16 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		await this.syncExistingHighlights(highlights, bookGroups, identityIndex, {
 			state: stagedState,
 			commitState: async () => {
-				this.settings.hasCompletedFirstSync = true;
-				this.settings.importedHighlights = stagedState.importedHighlights;
-				this.settings.ignoredHighlights = stagedState.ignoredHighlights;
-				this.hasSavedPluginData = true;
-				await this.saveSettings();
+				await this.persistSettingsMutation((currentSettings) => ({
+					...this.cloneSettingsSnapshot(currentSettings),
+					hasCompletedFirstSync: true,
+					importedHighlights: stagedState.importedHighlights.map((record) => ({ ...record })),
+					ignoredHighlights: stagedState.ignoredHighlights.map((record) => ({ ...record })),
+				}));
 			},
 		});
+
+		return true;
 	}
 
 	async reviewExistingNotesWithoutDataAsFirstSync(): Promise<void> {
@@ -303,9 +342,10 @@ export default class KindleLocalSyncPlugin extends Plugin {
 			return;
 		}
 
-		this.settings.hasCompletedFirstSync = false;
-		this.hasSavedPluginData = true;
-		await this.saveSettings();
+		await this.persistSettingsMutation((currentSettings) => ({
+			...this.cloneSettingsSnapshot(currentSettings),
+			hasCompletedFirstSync: false,
+		}));
 		new FirstSyncPreviewModal(this.app, this, groupHighlightsByBook(highlights), {
 			title: "Review All Detected Highlights",
 		}).open();
@@ -337,13 +377,15 @@ export default class KindleLocalSyncPlugin extends Plugin {
 			safelyCompletedHighlights.some((candidate) => hasSameHighlightIdentity(candidate, highlight))
 		);
 
-		// Automatic legacy trust must not backfill records; only a safely completed explicit Import persists authorship.
-		if (safelyCompletedExplicitHighlights.length > 0) {
-			this.addImportedHighlights(safelyCompletedExplicitHighlights, identityIndex);
-		}
-
 		if (persist) {
-			await this.saveSettings();
+			// Automatic legacy trust must not backfill records; only a safely completed explicit Import persists authorship.
+			await this.persistSettingsMutation((currentSettings) =>
+				this.createImportedSettingsSnapshot(
+					currentSettings,
+					safelyCompletedExplicitHighlights,
+					identityIndex
+				)
+			);
 		}
 
 		return {
@@ -357,8 +399,9 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		highlights: KindleHighlight[],
 		identityIndex: CurrentClippingIdentityIndex
 	): Promise<IgnoreOperationResult> {
-		this.addIgnoredHighlights(highlights, identityIndex);
-		await this.saveSettings();
+		await this.persistSettingsMutation((currentSettings) =>
+			this.createIgnoredSettingsSnapshot(currentSettings, highlights, identityIndex)
+		);
 		const cleanupResult = await this.cleanupPersistedIgnoredHighlightBlocks(
 			highlights.map(createCleanupTarget)
 		);
@@ -376,8 +419,9 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		highlight: SyncSummaryHighlightItem,
 		identityIndex: CurrentClippingIdentityIndex
 	): Promise<IgnoreOperationResult> {
-		this.addIgnoredSummaryHighlights([highlight], identityIndex);
-		await this.saveSettings();
+		await this.persistSettingsMutation((currentSettings) =>
+			this.createIgnoredSummarySettingsSnapshot(currentSettings, [highlight], identityIndex)
+		);
 		const cleanupResult = await this.cleanupPersistedIgnoredHighlightBlocks([
 			createSummaryCleanupTarget(highlight),
 		]);
@@ -389,43 +433,58 @@ export default class KindleLocalSyncPlugin extends Plugin {
 	}
 
 	async unignoreHighlight(highlight: IgnoredHighlight): Promise<void> {
-		this.settings.ignoredHighlights = this.settings.ignoredHighlights.filter((candidate) => candidate !== highlight);
-		await this.saveSettings();
-	}
-
-	private addImportedHighlights(
-		highlights: KindleHighlight[],
-		identityIndex: CurrentClippingIdentityIndex
-	): void {
-		this.settings.importedHighlights = appendImportedHighlightRecords(
-			this.settings.importedHighlights,
-			highlights,
-			identityIndex
+		await this.persistSettingsMutation((currentSettings) =>
+			this.createUnignoredSettingsSnapshot(currentSettings, highlight)
 		);
 	}
 
-	private async preserveExplicitIgnoresAfterInvalidContract(
-		error: unknown,
-		highlights: KindleHighlight[],
+	private createCompletedSyncSettingsSnapshot(
+		settings: KindleSyncSettings,
+		safelyCompletedHighlights: KindleHighlight[],
+		explicitImportHighlights: KindleHighlight[],
+		ignoreHighlights: KindleHighlight[],
 		identityIndex: CurrentClippingIdentityIndex
-	): Promise<void> {
-		if (!(error instanceof InvalidVaultWriteContractError) || highlights.length === 0) {
-			return;
-		}
+	): KindleSyncSettings {
+		const safelyCompletedExplicitHighlights = explicitImportHighlights.filter((highlight) =>
+			safelyCompletedHighlights.some((candidate) => hasSameHighlightIdentity(candidate, highlight))
+		);
+		const importedSettings = this.createImportedSettingsSnapshot(
+			settings,
+			safelyCompletedExplicitHighlights,
+			identityIndex
+		);
 
-		// Import authorization failed, but the user's independent exact-book Ignore decision remains valid.
-		const result = await this.ignoreHighlights(highlights, identityIndex);
-
-		this.hasSavedPluginData = true;
-		error.retainIgnoreCleanupResult(result.cleanupResult);
+		return {
+			...this.createIgnoredSettingsSnapshot(importedSettings, ignoreHighlights, identityIndex),
+			hasCompletedFirstSync: true,
+		};
 	}
 
-	private addIgnoredHighlights(
+	private createImportedSettingsSnapshot(
+		settings: KindleSyncSettings,
 		highlights: KindleHighlight[],
 		identityIndex: CurrentClippingIdentityIndex
-	): void {
+	): KindleSyncSettings {
+		const snapshot = this.cloneSettingsSnapshot(settings);
+
+		return {
+			...snapshot,
+			importedHighlights: appendImportedHighlightRecords(
+				snapshot.importedHighlights,
+				highlights,
+				identityIndex
+			),
+		};
+	}
+
+	private createIgnoredSettingsSnapshot(
+		settings: KindleSyncSettings,
+		highlights: KindleHighlight[],
+		identityIndex: CurrentClippingIdentityIndex
+	): KindleSyncSettings {
+		const snapshot = this.cloneSettingsSnapshot(settings);
 		const existingIdentities = createAuthoredStoredHighlightIdentityKeySet(
-			this.settings.ignoredHighlights,
+			snapshot.ignoredHighlights,
 			identityIndex
 		);
 		const ignoredAt = new Date().toISOString();
@@ -449,18 +508,81 @@ export default class KindleLocalSyncPlugin extends Plugin {
 			});
 		}
 
-		this.settings.ignoredHighlights = [
-			...this.settings.ignoredHighlights,
-			...records,
-		];
+		return {
+			...snapshot,
+			ignoredHighlights: [
+				...snapshot.ignoredHighlights,
+				...records,
+			],
+		};
 	}
 
-	private addIgnoredSummaryHighlights(
+	private cloneSettingsSnapshot(settings: KindleSyncSettings): KindleSyncSettings {
+		return {
+			...settings,
+			importedHighlights: settings.importedHighlights.map((record) => ({ ...record })),
+			ignoredHighlights: settings.ignoredHighlights.map((record) => ({ ...record })),
+		};
+	}
+
+	private async persistSettingsMutation(
+		createProposedSettings: (currentSettings: KindleSyncSettings) => KindleSyncSettings
+	): Promise<KindleSyncSettings> {
+		const operation = this.settingsMutationQueue.then(async () => {
+			const proposedSettings = normalizeProposedSettings(
+				createProposedSettings(this.settings)
+			);
+
+			await this.saveData(proposedSettings);
+
+			let persistedData: unknown;
+
+			try {
+				persistedData = await this.loadData();
+			} catch (error) {
+				throw new SettingsPersistenceVerificationError("read-failed", error);
+			}
+
+			const persistedSettings = normalizePersistedSettingsReadback(persistedData);
+
+			if (canonicalizeJson(persistedSettings) !== canonicalizeJson(proposedSettings)) {
+				throw new SettingsPersistenceVerificationError("mismatched-readback");
+			}
+
+			// Live trust changes only after a fresh durable read confirms the complete proposed snapshot.
+			this.settings = proposedSettings;
+			this.hasSavedPluginData = true;
+			this.hasTrustedSyncState = containsTrustedSyncState(proposedSettings);
+			return proposedSettings;
+		});
+
+		this.settingsMutationQueue = operation.then(() => undefined, () => undefined);
+		return operation;
+	}
+
+	private async preserveExplicitIgnoresAfterInvalidContract(
+		error: unknown,
+		highlights: KindleHighlight[],
+		identityIndex: CurrentClippingIdentityIndex
+	): Promise<void> {
+		if (!(error instanceof InvalidVaultWriteContractError) || highlights.length === 0) {
+			return;
+		}
+
+		// Import authorization failed, but the user's independent exact-book Ignore decision remains valid.
+		const result = await this.ignoreHighlights(highlights, identityIndex);
+
+		error.retainIgnoreCleanupResult(result.cleanupResult);
+	}
+
+	private createIgnoredSummarySettingsSnapshot(
+		settings: KindleSyncSettings,
 		highlights: SyncSummaryHighlightItem[],
 		identityIndex: CurrentClippingIdentityIndex
-	): void {
+	): KindleSyncSettings {
+		const snapshot = this.cloneSettingsSnapshot(settings);
 		const existingIdentities = createAuthoredStoredHighlightIdentityKeySet(
-			this.settings.ignoredHighlights,
+			snapshot.ignoredHighlights,
 			identityIndex
 		);
 		const ignoredAt = new Date().toISOString();
@@ -484,10 +606,33 @@ export default class KindleLocalSyncPlugin extends Plugin {
 			});
 		}
 
-		this.settings.ignoredHighlights = [
-			...this.settings.ignoredHighlights,
-			...records,
-		];
+		return {
+			...snapshot,
+			ignoredHighlights: [
+				...snapshot.ignoredHighlights,
+				...records,
+			],
+		};
+	}
+
+	private createUnignoredSettingsSnapshot(
+		settings: KindleSyncSettings,
+		highlight: IgnoredHighlight
+	): KindleSyncSettings {
+		const snapshot = this.cloneSettingsSnapshot(settings);
+		let removed = false;
+
+		return {
+			...snapshot,
+			ignoredHighlights: snapshot.ignoredHighlights.filter((candidate) => {
+				if (!removed && haveSameIgnoredRecord(candidate, highlight)) {
+					removed = true;
+					return false;
+				}
+
+				return true;
+			}),
+		};
 	}
 
 	private async cleanupIgnoredHighlightBlocks(
@@ -835,4 +980,133 @@ function countMatchingHighlights(
 	return uniqueHighlights.filter((highlight) =>
 		matchingHighlights.some((candidate) => hasSameHighlightIdentity(candidate, highlight))
 	).length;
+}
+
+function containsTrustedSyncState(settings: KindleSyncSettings): boolean {
+	// A verified config-only file can restore the custom path without proving prior sync decisions.
+	return settings.hasCompletedFirstSync
+		|| settings.importedHighlights.length > 0
+		|| settings.ignoredHighlights.length > 0;
+}
+
+function normalizeProposedSettings(settings: unknown): KindleSyncSettings {
+	let normalizedSettings: unknown;
+
+	try {
+		normalizedSettings = normalizeJsonRoundTrip(settings);
+	} catch (error) {
+		throw new SettingsPersistenceVerificationError("invalid-proposed-snapshot", error);
+	}
+
+	if (!isKindleSyncSettings(normalizedSettings)) {
+		throw new SettingsPersistenceVerificationError("invalid-proposed-snapshot");
+	}
+
+	return normalizedSettings;
+}
+
+function normalizePersistedSettingsReadback(data: unknown): KindleSyncSettings {
+	if (data == null) {
+		throw new SettingsPersistenceVerificationError("missing-readback");
+	}
+
+	let normalizedSettings: unknown;
+
+	try {
+		normalizedSettings = normalizeJsonRoundTrip(data);
+	} catch (error) {
+		throw new SettingsPersistenceVerificationError("malformed-readback", error);
+	}
+
+	if (!isKindleSyncSettings(normalizedSettings)) {
+		throw new SettingsPersistenceVerificationError("malformed-readback");
+	}
+
+	return normalizedSettings;
+}
+
+function normalizeJsonRoundTrip(value: unknown): unknown {
+	const serialized = JSON.stringify(value);
+
+	if (serialized === undefined) {
+		throw new TypeError("Settings cannot be represented as JSON.");
+	}
+
+	return JSON.parse(serialized) as unknown;
+}
+
+function canonicalizeJson(value: unknown): string {
+	return JSON.stringify(sortJsonValue(value));
+}
+
+function sortJsonValue(value: unknown): unknown {
+	if (Array.isArray(value)) {
+		return value.map(sortJsonValue);
+	}
+
+	if (!isRecord(value)) {
+		return value;
+	}
+
+	const sorted: Record<string, unknown> = {};
+
+	for (const key of Object.keys(value).sort()) {
+		sorted[key] = sortJsonValue(value[key]);
+	}
+
+	return sorted;
+}
+
+function isKindleSyncSettings(value: unknown): value is KindleSyncSettings {
+	return isRecord(value)
+		&& typeof value.clippingsPath === "string"
+		&& typeof value.highlightsFolder === "string"
+		&& typeof value.strictLocalOnly === "boolean"
+		&& typeof value.skipIgnoredHighlights === "boolean"
+		&& typeof value.hasCompletedFirstSync === "boolean"
+		&& Array.isArray(value.importedHighlights)
+		&& value.importedHighlights.every(isImportedHighlightRecord)
+		&& Array.isArray(value.ignoredHighlights)
+		&& value.ignoredHighlights.every(isIgnoredHighlightRecord);
+}
+
+function isImportedHighlightRecord(value: unknown): value is ImportedHighlightRecord {
+	return isStoredHighlightRecord(value)
+		&& typeof value.importedAt === "string";
+}
+
+function isIgnoredHighlightRecord(value: unknown): value is IgnoredHighlight {
+	return isStoredHighlightRecord(value)
+		&& typeof value.ignoredAt === "string"
+		&& isOptionalString(value.lang);
+}
+
+function isStoredHighlightRecord(value: unknown): value is Record<string, unknown> & {
+	id: string;
+	title: string;
+	author?: string;
+	textPreview: string;
+} {
+	return isRecord(value)
+		&& typeof value.id === "string"
+		&& typeof value.title === "string"
+		&& isOptionalString(value.author)
+		&& typeof value.textPreview === "string";
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+	return value === undefined || typeof value === "string";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function haveSameIgnoredRecord(first: IgnoredHighlight, second: IgnoredHighlight): boolean {
+	try {
+		return canonicalizeJson(normalizeJsonRoundTrip(first))
+			=== canonicalizeJson(normalizeJsonRoundTrip(second));
+	} catch {
+		return false;
+	}
 }

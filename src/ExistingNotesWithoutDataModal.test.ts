@@ -1,6 +1,10 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../__mocks__/obsidian";
-import { createClippingId } from "./render/renderMarkdown";
+import {
+	createClippingId,
+	SYNC_END_MARKER,
+	SYNC_START_MARKER,
+} from "./render/renderMarkdown";
 
 const mocks = vi.hoisted(() => {
 	const highlight = {
@@ -96,9 +100,11 @@ beforeEach(() => {
 });
 
 describe("existing notes without data.json", () => {
-	it("does not show first sync preview immediately when existing notes are found", async () => {
+	it("still opens reconnect after the real settings-save path creates config-only data", async () => {
 		const plugin = createPlugin(createVaultWithExistingNotes());
 
+		plugin.settings.clippingsPath = "/Users/test/QA Input/My Clippings.txt";
+		await plugin.saveSettings();
 		await plugin.syncHighlights();
 
 		expect(mocks.firstSyncPreviewOpen).not.toHaveBeenCalled();
@@ -280,15 +286,26 @@ function createTransitionPlugin() {
 function captureSaveCalls(plugin: InstanceType<typeof KindleLocalSyncPlugin>): unknown[] {
 	const saveCalls: unknown[] = [];
 	const pluginWithSaveData = plugin as unknown as { saveData: (data: unknown) => Promise<void> };
+	const saveData = pluginWithSaveData.saveData.bind(plugin);
 
 	pluginWithSaveData.saveData = vi.fn(async (data: unknown) => {
 		saveCalls.push(JSON.parse(JSON.stringify(data)) as unknown);
+		await saveData(data);
 	});
 
 	return saveCalls;
 }
 
 function createVaultWithExistingNotes() {
+	const file = {
+		extension: "md",
+		content: [
+			SYNC_START_MARKER,
+			`<!-- kindle-local-sync-id: ${createClippingId(mocks.highlight)} -->`,
+			SYNC_END_MARKER,
+		].join("\n"),
+	};
+
 	return {
 		getAbstractFileByPath: (path: string) => {
 			if (path !== "Kindle Highlights") {
@@ -296,9 +313,10 @@ function createVaultWithExistingNotes() {
 			}
 
 			return {
-				children: [{ extension: "md" }],
+				children: [file],
 			};
 		},
+		read: async () => file.content,
 	};
 }
 

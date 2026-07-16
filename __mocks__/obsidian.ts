@@ -114,10 +114,12 @@ export class App {
 }
 
 export class Notice {
+	static messages: string[] = [];
 	message: string;
 
 	constructor(message: string) {
 		this.message = message;
+		Notice.messages.push(message);
 	}
 }
 
@@ -223,6 +225,10 @@ export function setIcon(element: MockElement, iconName: string): void {
 export class Plugin {
 	app: App;
 	private loadedData: unknown = null;
+	private durableData: unknown = null;
+	private loadDataError: unknown = null;
+	private useExplicitLoadDataResult = false;
+	private persistSaveData = true;
 	savedData: unknown = null;
 	commands: unknown[] = [];
 
@@ -231,15 +237,49 @@ export class Plugin {
 	}
 
 	async loadData(): Promise<unknown> {
-		return this.loadedData;
+		if (this.loadDataError) {
+			throw this.loadDataError;
+		}
+
+		return cloneData(this.loadedData);
 	}
 
 	async saveData(data: unknown): Promise<void> {
-		this.savedData = data;
+		this.savedData = cloneData(data);
+
+		if (this.persistSaveData) {
+			this.durableData = cloneData(data);
+			if (!this.useExplicitLoadDataResult) {
+				this.loadedData = cloneData(this.durableData);
+			}
+		}
 	}
 
 	setLoadedData(data: unknown): void {
-		this.loadedData = data;
+		this.durableData = cloneData(data);
+		this.loadedData = cloneData(data);
+		this.useExplicitLoadDataResult = false;
+	}
+
+	setDurableData(data: unknown): void {
+		this.durableData = cloneData(data);
+	}
+
+	getDurableData(): unknown {
+		return cloneData(this.durableData);
+	}
+
+	setLoadDataResult(data: unknown): void {
+		this.loadedData = cloneData(data);
+		this.useExplicitLoadDataResult = true;
+	}
+
+	setLoadDataError(error: unknown): void {
+		this.loadDataError = error;
+	}
+
+	setSaveDataPersists(persist: boolean): void {
+		this.persistSaveData = persist;
 	}
 
 	addRibbonIcon(): void {
@@ -251,6 +291,14 @@ export class Plugin {
 
 	addSettingTab(): void {
 	}
+}
+
+function cloneData<T>(data: T): T {
+	if (data === undefined) {
+		return data;
+	}
+
+	return JSON.parse(JSON.stringify(data)) as T;
 }
 
 export class PluginSettingTab {

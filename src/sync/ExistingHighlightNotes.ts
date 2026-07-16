@@ -1,4 +1,5 @@
 import type { App, TFile } from "obsidian";
+import { analyzeManagedRegion } from "./ManagedRegion";
 
 export async function hasExistingHighlightNotes(app: App, folderPath: string): Promise<boolean> {
 	try {
@@ -8,7 +9,25 @@ export async function hasExistingHighlightNotes(app: App, folderPath: string): P
 			return false;
 		}
 
-		return folder.children.some(isMarkdownFile);
+		for (const file of folder.children) {
+			if (!isMarkdownFile(file)) {
+				continue;
+			}
+
+			try {
+				const markdown = await app.vault.read(file);
+				const managedRegion = analyzeManagedRegion(markdown);
+
+				// Only IDs inside an unambiguous managed region can prove prior plugin ownership.
+				if (managedRegion.kind === "valid-with-ids") {
+					return true;
+				}
+			} catch {
+				// One unreadable note is not evidence of trusted sync state.
+			}
+		}
+
+		return false;
 	} catch {
 		return false;
 	}
