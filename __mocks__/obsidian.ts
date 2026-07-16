@@ -14,6 +14,7 @@ export class MockElement {
 	iconName = "";
 	focusCalls = 0;
 	attributes = new Map<string, string>();
+	disabled = false;
 	private clickHandler: ClickHandler | null = null;
 	private inputHandler: InputHandler | null = null;
 
@@ -54,6 +55,10 @@ export class MockElement {
 		this.attributes.set(name, value);
 	}
 
+	removeAttribute(name: string): void {
+		this.attributes.delete(name);
+	}
+
 	onClick(handler: ClickHandler): void {
 		this.clickHandler = handler;
 	}
@@ -65,6 +70,9 @@ export class MockElement {
 	}
 
 	async click(): Promise<void> {
+		if (this.disabled) {
+			return;
+		}
 		await this.clickHandler?.();
 	}
 
@@ -209,6 +217,11 @@ export class ButtonComponent {
 
 	setCta(): this {
 		this.buttonEl.addClass("mod-cta");
+		return this;
+	}
+
+	setDisabled(disabled: boolean): this {
+		this.buttonEl.disabled = disabled;
 		return this;
 	}
 

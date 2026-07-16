@@ -176,37 +176,53 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 		modal.onOpen();
 
 		expect(buttonTexts(modal.contentEl)).toEqual([
-			"Reconnect existing notes",
+			"Continue with existing notes",
 			"Cancel",
 		]);
 	});
 
-	it("shows the improved option titles", () => {
+	it("shows the approved title, intro, and explanation copy", () => {
 		const modal = createModal(createTransitionPlugin());
 
 		modal.onOpen();
 
-		expect(readText(modal.contentEl)).toContain("Reconnect existing notes");
-		expect(readText(modal.contentEl)).toContain("Cancel");
+		expect(readText(modal.contentEl)).toContain("Existing Kindle notes found");
+		expect(readText(modal.contentEl)).toContain(
+			"You can continue with these notes instead of starting over."
+		);
+		expect(readText(modal.contentEl)).toContain(
+			"Your notes will stay in place. Kindle Local Sync will recognize the highlights already there and only ask you to review the ones it doesn’t find."
+		);
+		expect(readText(modal.contentEl)).toContain(
+			"If you removed a highlight from a note but it is still in your Kindle file, choose Ignore during review to keep it from returning."
+		);
 	});
 
-	it("shows descriptions for each option", () => {
+	it("uses one heading-free Liquid Glass card with one compact action row", () => {
 		const modal = createModal(createTransitionPlugin());
 
 		modal.onOpen();
 
-		expect(readText(modal.contentEl)).toContain(
-			"This vault already has Kindle notes. Kindle Local Sync can reconnect to them and continue from there."
-		);
-		expect(readText(modal.contentEl)).toContain(
-			"We'll keep your existing notes, recognize the highlights we can match, and only ask you to review anything new or missing from those notes."
-		);
-		expect(readText(modal.contentEl)).toContain(
-			"Your existing notes will not be deleted. If a highlight is still in your Kindle file but no longer in your notes, you can review it and ignore it so it does not come back."
-		);
-		expect(readText(modal.contentEl)).toContain(
-			"Close without changing your notes or sync settings."
-		);
+		const content = modal.contentEl as unknown as TestElement;
+		const cards = elementsByClass(content, "kls-glass-card");
+		const actions = elementsByClass(content, "kls-reconnect-actions");
+		const reconnectButton = findButtonByText(content, "Continue with existing notes");
+		const cancelButton = findButtonByText(content, "Cancel");
+
+		expect(content.classes.has("kls-glass-scope")).toBe(true);
+		expect(content.classes.has("kls-reconnect-modal")).toBe(true);
+		expect(cards).toHaveLength(1);
+		expect(cards[0]?.classes.has("kls-reconnect-card")).toBe(true);
+		expect(cards[0]?.children.some((child) => child.tagName === "h3")).toBe(false);
+		expect(actions).toHaveLength(1);
+		expect(actions[0]?.classes.has("kls-button-row")).toBe(true);
+		expect(buttonTexts(actions[0])).toEqual(["Continue with existing notes", "Cancel"]);
+		expect(reconnectButton.classes.has("kls-action-button")).toBe(true);
+		expect(reconnectButton.classes.has("kls-pill-button")).toBe(true);
+		expect(reconnectButton.classes.has("kls-glass-strong")).toBe(true);
+		expect(cancelButton.classes.has("kls-action-button")).toBe(true);
+		expect(cancelButton.classes.has("kls-pill-button")).toBe(true);
+		expect(cancelButton.classes.has("kls-glass-subtle")).toBe(true);
 	});
 
 	it("does not show old first-sync-only or confusing wording", () => {
@@ -221,33 +237,27 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 		expect(readText(modal.contentEl)).not.toContain("Review everything before syncing");
 		expect(readText(modal.contentEl)).not.toContain("Review everything");
 		expect(readText(modal.contentEl)).not.toContain("Review all detected highlights");
+		expect(readText(modal.contentEl).toLowerCase()).not.toContain("reconnect");
 	});
 
-	it("visually nests option descriptions under their titles", () => {
+	it("keeps both explanations together inside the content card", () => {
 		const modal = createModal(createTransitionPlugin());
 
 		modal.onOpen();
 
-		expect(elementsByClass(modal.contentEl, "kls-option-description")).toHaveLength(2);
-	});
-
-	it("shows the Reconnect existing notes explanation", () => {
-		const modal = createModal(createTransitionPlugin());
-
-		modal.onOpen();
-
+		expect(elementsByClass(modal.contentEl, "kls-reconnect-description")).toHaveLength(1);
 		expect(paragraphTexts(modal.contentEl)).toEqual(expect.arrayContaining([
-			"We'll keep your existing notes, recognize the highlights we can match, and only ask you to review anything new or missing from those notes.",
-			"Your existing notes will not be deleted. If a highlight is still in your Kindle file but no longer in your notes, you can review it and ignore it so it does not come back.",
+			"Your notes will stay in place. Kindle Local Sync will recognize the highlights already there and only ask you to review the ones it doesn’t find.",
+			"If you removed a highlight from a note but it is still in your Kindle file, choose Ignore during review to keep it from returning.",
 		]));
 	});
 
-	it("keeps Reconnect existing notes behavior unchanged", async () => {
+	it("keeps the internal reconnect callback unchanged", async () => {
 		const plugin = createTransitionPlugin();
 		const modal = createModal(plugin);
 
 		modal.onOpen();
-		await findButtonByText(modal.contentEl, "Reconnect existing notes").click();
+		await findButtonByText(modal.contentEl, "Continue with existing notes").click();
 
 		expect(plugin.continueExistingNotesWithoutDataSync).toHaveBeenCalledTimes(1);
 		expect(plugin.reviewExistingNotesWithoutDataAsFirstSync).not.toHaveBeenCalled();
@@ -262,6 +272,142 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 
 		expect(plugin.continueExistingNotesWithoutDataSync).not.toHaveBeenCalled();
 		expect(plugin.reviewExistingNotesWithoutDataAsFirstSync).not.toHaveBeenCalled();
+	});
+
+	it("keeps native close and Escape-style close requests available while idle", () => {
+		const modal = createModal(createTransitionPlugin());
+		const onClose = vi.spyOn(modal, "onClose");
+
+		modal.onOpen();
+		modal.close();
+
+		expect(onClose).toHaveBeenCalledTimes(1);
+	});
+
+	it("stays open, exposes busy state, and prevents duplicate reconnect requests while pending", async () => {
+		const plugin = createTransitionPlugin();
+		const reconnect = createDeferred<boolean>();
+		const modal = createModal(plugin);
+		const onClose = vi.spyOn(modal, "onClose");
+
+		plugin.continueExistingNotesWithoutDataSync.mockReturnValueOnce(reconnect.promise);
+		modal.onOpen();
+		const reconnectButton = findButtonByText(modal.contentEl, "Continue with existing notes");
+		const cancelButton = findButtonByText(modal.contentEl, "Cancel");
+		const firstClick = reconnectButton.click();
+
+		await Promise.resolve();
+		expect(onClose).not.toHaveBeenCalled();
+		modal.close();
+		expect(onClose).not.toHaveBeenCalled();
+		expect(reconnectButton.disabled).toBe(true);
+		expect(cancelButton.disabled).toBe(true);
+		expect(reconnectButton.attributes.get("aria-busy")).toBe("true");
+		expect((modal.contentEl as unknown as TestElement).attributes.get("aria-busy")).toBe("true");
+		await reconnectButton.click();
+		expect(plugin.continueExistingNotesWithoutDataSync).toHaveBeenCalledTimes(1);
+
+		reconnect.resolve(true);
+		await firstClick;
+		expect(onClose).toHaveBeenCalledTimes(1);
+	});
+
+	it("stays open when reconnect does not reach a completed transition", async () => {
+		const plugin = createTransitionPlugin();
+		const modal = createModal(plugin);
+		const onClose = vi.spyOn(modal, "onClose");
+
+		plugin.continueExistingNotesWithoutDataSync.mockResolvedValueOnce(false);
+		modal.onOpen();
+		await findButtonByText(modal.contentEl, "Continue with existing notes").click();
+
+		expect(onClose).not.toHaveBeenCalled();
+		expect(findButtonByText(modal.contentEl, "Continue with existing notes").disabled).toBe(false);
+		expect((modal.contentEl as unknown as TestElement).attributes.has("aria-busy")).toBe(false);
+	});
+
+	it("shows an accessible failure in place and retries without reopening", async () => {
+		const plugin = createTransitionPlugin();
+		const modal = createModal(plugin);
+		const onClose = vi.spyOn(modal, "onClose");
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.continueExistingNotesWithoutDataSync.mockRejectedValueOnce(new Error("Disk write failed."));
+		modal.onOpen();
+		await findButtonByText(modal.contentEl, "Continue with existing notes").click();
+
+		const failure = elementByClass(modal.contentEl, "kls-operation-failure");
+		const content = modal.contentEl as unknown as TestElement;
+		const card = elementByClass(content, "kls-reconnect-card");
+		const retryButton = findButtonByText(modal.contentEl, "Try again");
+		const cancelButton = findButtonByText(modal.contentEl, "Cancel");
+
+		expect(onClose).not.toHaveBeenCalled();
+		expect(content.children.indexOf(failure)).toBeLessThan(content.children.indexOf(card));
+		expect(elementsByClass(content, "kls-glass-card")).toHaveLength(1);
+		expect(buttonTexts(card)).toEqual(["Try again", "Cancel"]);
+		expect(failure.classes.has("kls-reconnect-failure")).toBe(true);
+		expect(failure.attributes.get("role")).toBe("alert");
+		expect(failure.attributes.get("tabindex")).toBe("-1");
+		expect(failure.focusCalls).toBe(1);
+		expect(readText(failure)).toContain("Couldn’t continue with these notes");
+		expect(readText(failure)).toContain(
+			"We couldn’t save this step. Some note changes may already have been made, so try again to finish."
+		);
+		expect(readText(failure)).not.toContain("unchanged");
+		expect(readText(content).toLowerCase()).not.toContain("reconnect");
+		expect(retryButton.classes.has("kls-action-button")).toBe(true);
+		expect(retryButton.classes.has("kls-pill-button")).toBe(true);
+		expect(retryButton.classes.has("kls-glass-strong")).toBe(true);
+		expect(cancelButton.classes.has("kls-glass-subtle")).toBe(true);
+
+		await retryButton.click();
+		expect(plugin.continueExistingNotesWithoutDataSync).toHaveBeenCalledTimes(2);
+		expect(onClose).toHaveBeenCalledTimes(1);
+		consoleError.mockRestore();
+	});
+
+	it("keeps Cancel available after failure without starting another reconnect", async () => {
+		const plugin = createTransitionPlugin();
+		const modal = createModal(plugin);
+		const onClose = vi.spyOn(modal, "onClose");
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.continueExistingNotesWithoutDataSync.mockRejectedValueOnce(new Error("Disk write failed."));
+		modal.onOpen();
+		await findButtonByText(modal.contentEl, "Continue with existing notes").click();
+		await findButtonByText(modal.contentEl, "Cancel").click();
+
+		expect(plugin.continueExistingNotesWithoutDataSync).toHaveBeenCalledTimes(1);
+		expect(onClose).toHaveBeenCalledTimes(1);
+		consoleError.mockRestore();
+	});
+
+	it("prevents repeated retry requests while the reconnect retry is pending", async () => {
+		const plugin = createTransitionPlugin();
+		const modal = createModal(plugin);
+		const retry = createDeferred<boolean>();
+		const onClose = vi.spyOn(modal, "onClose");
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.continueExistingNotesWithoutDataSync
+			.mockRejectedValueOnce(new Error("Disk write failed."))
+			.mockReturnValueOnce(retry.promise);
+		modal.onOpen();
+		await findButtonByText(modal.contentEl, "Continue with existing notes").click();
+		const retryButton = findButtonByText(modal.contentEl, "Try again");
+		const retryClick = retryButton.click();
+
+		await Promise.resolve();
+		expect(retryButton.disabled).toBe(true);
+		await retryButton.click();
+		expect(plugin.continueExistingNotesWithoutDataSync).toHaveBeenCalledTimes(2);
+		expect(onClose).not.toHaveBeenCalled();
+
+		retry.resolve(true);
+		await retryClick;
+		expect(onClose).toHaveBeenCalledTimes(1);
+		consoleError.mockRestore();
 	});
 });
 
@@ -278,7 +424,7 @@ function createModal(plugin: ReturnType<typeof createTransitionPlugin>) {
 
 function createTransitionPlugin() {
 	return {
-		continueExistingNotesWithoutDataSync: vi.fn(async () => {}),
+		continueExistingNotesWithoutDataSync: vi.fn(async (): Promise<boolean> => true),
 		reviewExistingNotesWithoutDataAsFirstSync: vi.fn(async () => {}),
 	};
 }
@@ -324,9 +470,24 @@ interface TestElement {
 	tagName: string;
 	children: TestElement[];
 	classes: Set<string>;
+	attributes: Map<string, string>;
+	disabled: boolean;
+	focusCalls: number;
 	text: () => string;
 	findByText: (text: string) => TestElement | null;
 	click: () => Promise<void>;
+}
+
+function createDeferred<T>(): {
+	promise: Promise<T>;
+	resolve: (value: T | PromiseLike<T>) => void;
+} {
+	let resolve!: (value: T | PromiseLike<T>) => void;
+	const promise = new Promise<T>((resolver) => {
+		resolve = resolver;
+	});
+
+	return { promise, resolve };
 }
 
 function readText(element: unknown): string {
@@ -398,6 +559,16 @@ function elementsByClass(element: unknown, className: string): TestElement[] {
 	collectElementsByClass(element as TestElement, className, matches);
 
 	return matches;
+}
+
+function elementByClass(element: unknown, className: string): TestElement {
+	const match = elementsByClass(element, className)[0];
+
+	if (!match) {
+		throw new Error(`Could not find class: ${className}`);
+	}
+
+	return match;
 }
 
 function collectParagraphTexts(element: TestElement, paragraphs: string[]): void {

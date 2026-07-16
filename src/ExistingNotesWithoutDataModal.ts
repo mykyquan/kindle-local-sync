@@ -1,9 +1,15 @@
 /* eslint-disable obsidianmd/ui/sentence-case */
 import { App, ButtonComponent, Modal } from "obsidian";
 import type KindleLocalSyncPlugin from "./main";
+import { createReviewActionButton } from "./ui/ReviewActionButton";
 
 export class ExistingNotesWithoutDataModal extends Modal {
 	private readonly plugin: KindleLocalSyncPlugin;
+	private isReconnectPending = false;
+	private reconnectFailed = false;
+	private shouldFocusFailure = false;
+	private reconnectButton: ButtonComponent | null = null;
+	private cancelButton: ButtonComponent | null = null;
 
 	constructor(app: App, plugin: KindleLocalSyncPlugin) {
 		super(app);
@@ -11,49 +17,119 @@ export class ExistingNotesWithoutDataModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.contentEl.addClass("kls-glass-scope");
+		this.contentEl.addClass("kls-reconnect-modal");
+		this.render();
+	}
+
+	close(): void {
+		if (this.isReconnectPending) {
+			return;
+		}
+
+		super.close();
+	}
+
+	private render(): void {
 		this.contentEl.empty();
 		this.contentEl.createEl("h2", { text: "Existing Kindle notes found" });
-		this.contentEl.createEl("p", {
-			text: "This vault already has Kindle notes. Kindle Local Sync can reconnect to them and continue from there.",
+		const intro = this.contentEl.createEl("p", {
+			text: "You can continue with these notes instead of starting over.",
+		});
+		intro.addClass("kls-reconnect-intro");
+		this.renderReconnectFailure();
+
+		const contentCard = this.createContentCard();
+		const actions = contentCard.createDiv();
+
+		actions.addClass("kls-button-row");
+		actions.addClass("kls-reconnect-actions");
+
+		this.reconnectButton = createReviewActionButton(
+			actions,
+			this.reconnectFailed ? "Try again" : "Continue with existing notes",
+			"strong"
+		);
+		this.reconnectButton.onClick(async () => {
+			await this.reconnect();
 		});
 
-		const continueOption = this.createOptionSection(
-			"Reconnect existing notes",
-			[
-				"We'll keep your existing notes, recognize the highlights we can match, and only ask you to review anything new or missing from those notes.",
-				"Your existing notes will not be deleted. If a highlight is still in your Kindle file but no longer in your notes, you can review it and ignore it so it does not come back.",
-			]
-		);
-
-		new ButtonComponent(continueOption)
-			.setButtonText("Reconnect existing notes")
-			.setCta()
-			.onClick(async () => {
-				this.close();
-				await this.plugin.continueExistingNotesWithoutDataSync();
-			});
-
-		const cancelOption = this.createOptionSection(
-			"Cancel",
-			"Close without changing your notes or sync settings."
-		);
-
-		new ButtonComponent(cancelOption)
-			.setButtonText("Cancel")
+		this.cancelButton = createReviewActionButton(actions, "Cancel", "subtle")
 			.onClick(() => this.close());
 	}
 
-	private createOptionSection(title: string, description: string | string[]): HTMLElement {
-		const section = this.contentEl.createDiv();
-		section.createEl("h3", { text: title });
-		const descriptionEl = section.createDiv();
-
-		descriptionEl.addClass("kls-option-description");
-
-		for (const paragraph of Array.isArray(description) ? description : [description]) {
-			descriptionEl.createEl("p", { text: paragraph });
+	private async reconnect(): Promise<void> {
+		if (this.isReconnectPending || !this.reconnectButton) {
+			return;
 		}
 
-		return section;
+		this.setReconnectPending(true);
+		try {
+			const reconnectCompleted = await this.plugin.continueExistingNotesWithoutDataSync();
+			this.setReconnectPending(false);
+			if (!reconnectCompleted) {
+				return;
+			}
+			super.close();
+		} catch (error) {
+			console.error("Kindle note reconnect was not completed.", error);
+			this.setReconnectPending(false);
+			this.reconnectFailed = true;
+			this.shouldFocusFailure = true;
+			this.render();
+		}
+	}
+
+	private setReconnectPending(pending: boolean): void {
+		this.isReconnectPending = pending;
+		this.reconnectButton?.setDisabled(pending);
+		this.cancelButton?.setDisabled(pending);
+		if (pending) {
+			this.reconnectButton?.buttonEl.setAttribute("aria-busy", "true");
+			this.contentEl.setAttribute("aria-busy", "true");
+			return;
+		}
+
+		this.reconnectButton?.buttonEl.removeAttribute("aria-busy");
+		this.contentEl.removeAttribute("aria-busy");
+	}
+
+	private renderReconnectFailure(): void {
+		if (!this.reconnectFailed) {
+			return;
+		}
+
+		const failureEl = this.contentEl.createDiv();
+
+		failureEl.addClass("kls-operation-failure");
+		failureEl.addClass("kls-reconnect-failure");
+		failureEl.setAttribute("role", "alert");
+		failureEl.setAttribute("tabindex", "-1");
+		failureEl.createEl("h3", { text: "Couldn’t continue with these notes" });
+		failureEl.createEl("p", {
+			text: "We couldn’t save this step. Some note changes may already have been made, so try again to finish.",
+		});
+
+		if (this.shouldFocusFailure) {
+			this.shouldFocusFailure = false;
+			failureEl.focus({ preventScroll: true });
+		}
+	}
+
+	private createContentCard(): HTMLElement {
+		const card = this.contentEl.createDiv();
+		const description = card.createDiv();
+
+		card.addClass("kls-glass-card");
+		card.addClass("kls-reconnect-card");
+		description.addClass("kls-reconnect-description");
+		description.createEl("p", {
+			text: "Your notes will stay in place. Kindle Local Sync will recognize the highlights already there and only ask you to review the ones it doesn’t find.",
+		});
+		description.createEl("p", {
+			text: "If you removed a highlight from a note but it is still in your Kindle file, choose Ignore during review to keep it from returning.",
+		});
+
+		return card;
 	}
 }

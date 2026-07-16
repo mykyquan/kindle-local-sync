@@ -711,3 +711,159 @@ If your plugin does not need CSS, delete this file.
 	margin-top: 0.4em;
 	margin-bottom: 0.4em;
 }
+
+/* Existing Notes uses an isolated Liquid Glass surface so other modal presentations stay unchanged. */
+.modal:has(.kls-reconnect-modal) {
+	box-sizing: border-box;
+	width: min(720px, calc(100vw - 32px));
+	max-width: calc(100vw - 32px);
+}
+
+.kls-reconnect-modal {
+	display: grid;
+	align-content: start;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	max-height: min(84vh, 860px);
+	gap: 0.85em;
+	overflow-x: hidden;
+	overflow-y: auto;
+}
+
+.kls-reconnect-modal > h2,
+.kls-reconnect-intro,
+.kls-reconnect-card,
+.kls-reconnect-failure {
+	margin: 0;
+}
+
+.kls-reconnect-intro,
+.kls-reconnect-description {
+	color: var(--text-muted);
+	line-height: 1.45;
+}
+
+.kls-reconnect-description p:first-child {
+	margin-top: 0;
+}
+
+.kls-reconnect-description p:last-child {
+	margin-bottom: 0;
+}
+
+.kls-reconnect-card {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	padding: 0.9em 1em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 22px;
+	background: var(--interactive-normal);
+	box-shadow: var(--kls-glass-shadow);
+}
+
+.kls-reconnect-actions {
+	justify-content: flex-start;
+	width: 100%;
+	margin-top: 0.75em;
+}
+
+.kls-reconnect-actions .kls-action-button {
+	width: fit-content;
+}
+
+.kls-reconnect-modal .kls-pill-button {
+	min-height: 2.75rem;
+	padding: 0.45em 0.8em;
+	border-radius: 999px;
+	font-size: var(--font-ui-small);
+	line-height: 1.2;
+}
+
+.kls-reconnect-modal .kls-pill-button:disabled,
+.kls-reconnect-modal .kls-pill-button[aria-disabled="true"],
+.kls-reconnect-modal .kls-pill-button[aria-busy="true"] {
+	opacity: var(--disabled-opacity, 0.55);
+	cursor: not-allowed;
+}
+
+.kls-operation-failure {
+	box-sizing: border-box;
+	width: 100%;
+	margin: 0.85em 0;
+	padding: 0.8em 0.95em;
+	border: 1px solid var(--background-modifier-error);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	line-height: 1.4;
+}
+
+.kls-operation-failure h3,
+.kls-operation-failure p {
+	margin-top: 0;
+}
+
+.kls-operation-failure h3 {
+	color: var(--text-error);
+}
+
+.kls-operation-failure p:last-child {
+	margin-bottom: 0;
+}
+
+.kls-reconnect-failure {
+	border-radius: 22px;
+	box-shadow: var(--kls-glass-shadow);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.kls-reconnect-card {
+		background: color-mix(in srgb, var(--interactive-normal) 82%, transparent);
+		-webkit-backdrop-filter: blur(var(--kls-glass-blur)) saturate(1.05);
+		backdrop-filter: blur(var(--kls-glass-blur)) saturate(1.05);
+	}
+}
+
+@media (prefers-reduced-transparency: reduce) {
+	.kls-reconnect-card {
+		background: var(--background-secondary);
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
+
+	.kls-reconnect-failure {
+		box-shadow: none;
+	}
+}
+
+@media (forced-colors: active) {
+	.kls-reconnect-card,
+	.kls-reconnect-failure {
+		border-color: CanvasText;
+		background: Canvas;
+		color: CanvasText;
+		box-shadow: none;
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
+}
+
+@media (max-width: 480px) {
+	.kls-reconnect-modal {
+		gap: 0.7em;
+	}
+
+	.kls-reconnect-actions {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.kls-reconnect-actions .kls-action-button {
+		width: 100%;
+		max-width: 100%;
+	}
+}
