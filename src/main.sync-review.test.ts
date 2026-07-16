@@ -6,6 +6,7 @@ import type { IgnoredHighlight, ImportedHighlightRecord, KindleSyncSettings } fr
 import type { SyncSummaryHighlightItem } from "./SyncSummaryTypes";
 import { CurrentClippingIdentityIndex } from "./sync/HighlightIdentity";
 import type { IgnoredHighlightCleanupSummary } from "./sync/IgnoredHighlightCleanup";
+import type { SyncClassification } from "./sync/SyncClassifier";
 import { createVaultWritePlan, type VaultWriteSummary } from "./sync/VaultWriter";
 import { InvalidVaultWriteContractError } from "./sync/VaultWriteContract";
 import type {
@@ -33,6 +34,8 @@ interface ReviewModalCapture {
 }
 
 interface SyncSummaryCapture {
+	classification: SyncClassification;
+	automaticHighlights: KindleHighlight[];
 	importedCount: number;
 	protectedBooks?: ProtectedBooksPresentation;
 	ignoreResults?: IgnoreResultsPresentation;
@@ -179,6 +182,118 @@ describe("sync review gate", () => {
 		expect(writtenHighlightIds()).toEqual([createClippingId(highlight)]);
 		expect(plugin.settings.importedHighlights.map((record) => record.id)).toEqual([createClippingId(highlight)]);
 		expect(mocks.syncSummaryInstances.at(-1)?.importedCount).toBe(0);
+		expect(mocks.syncSummaryInstances.at(-1)?.classification.duplicateHighlights).toEqual([highlight]);
+		expect(mocks.syncSummaryInstances.at(-1)?.classification.possibleReappearedHighlights).toEqual([]);
+	});
+
+	it("surfaces one removed managed highlight without automatically restoring it", async () => {
+		const present = createHighlight();
+		const removed = createHighlight({
+			location: "160",
+			content: "Removed managed highlight.",
+		});
+		const presentId = createClippingId(present);
+		const plugin = await createPlugin(createSettings({
+			importedHighlights: [createImportedRecord(present), createImportedRecord(removed)],
+		}));
+
+		mocks.parseClippings.mockReturnValue([present, removed]);
+		mocks.highlightExistsInNote.mockImplementation(async (id: string) => id === presentId);
+		await plugin.syncHighlights();
+
+		const summary = mocks.syncSummaryInstances.at(-1);
+
+		expect(summary?.classification.duplicateHighlights).toEqual([present]);
+		expect(summary?.classification.possibleReappearedHighlights).toEqual([removed]);
+		expect(summary?.automaticHighlights).toEqual([present]);
+		expect(writtenHighlightIds()).toEqual([presentId]);
+	});
+
+	it("surfaces every imported source highlight when the entire managed region is absent", async () => {
+		const first = createHighlight();
+		const second = createHighlight({
+			location: "160",
+			content: "Second managed highlight.",
+		});
+		const highlights = [first, second];
+		const plugin = await createPlugin(createSettings({
+			importedHighlights: highlights.map(createImportedRecord),
+		}));
+
+		mocks.parseClippings.mockReturnValue(highlights);
+		mocks.highlightExistsInNote.mockResolvedValue(false);
+		await plugin.syncHighlights();
+
+		const summary = mocks.syncSummaryInstances.at(-1);
+
+		expect(summary?.classification.possibleReappearedHighlights).toEqual(highlights);
+		expect(summary?.automaticHighlights).toEqual([]);
+		expect(writtenHighlightIds()).toEqual([]);
+	});
+
+	it("keeps a skipped missing managed highlight eligible on the next sync", async () => {
+		const highlight = createHighlight();
+		const importedRecord = createImportedRecord(highlight);
+		const plugin = await createPlugin(createSettings({ importedHighlights: [importedRecord] }));
+
+		mocks.parseClippings.mockReturnValue([highlight]);
+		mocks.highlightExistsInNote.mockResolvedValue(false);
+		await plugin.syncHighlights();
+		// Skip This Time is intentionally modal-local and does not mutate persisted state.
+		await plugin.syncHighlights();
+
+		expect(mocks.syncSummaryInstances).toHaveLength(2);
+		expect(mocks.syncSummaryInstances[0]?.classification.possibleReappearedHighlights).toEqual([highlight]);
+		expect(mocks.syncSummaryInstances[1]?.classification.possibleReappearedHighlights).toEqual([highlight]);
+		expect(plugin.settings.importedHighlights).toEqual([importedRecord]);
+		expect(plugin.settings.ignoredHighlights).toEqual([]);
+		expect(writtenHighlightIds()).toEqual([]);
+	});
+
+	it("restores a missing managed highlight only after explicit Import Again approval", async () => {
+		const highlight = createHighlight();
+		const plugin = await createPlugin(createSettings({
+			importedHighlights: [createImportedRecord(highlight)],
+		}));
+		const identityIndex = createIdentityIndex([highlight]);
+
+		mocks.parseClippings.mockReturnValue([highlight]);
+		mocks.highlightExistsInNote.mockResolvedValue(false);
+		await plugin.syncHighlights();
+
+		expect(mocks.syncSummaryInstances.at(-1)?.classification.possibleReappearedHighlights).toEqual([highlight]);
+		expect(writtenHighlightIds()).toEqual([]);
+
+		await plugin.importHighlights([highlight], identityIndex, true, [highlight]);
+
+		expect(writtenHighlightIds()).toEqual([createClippingId(highlight)]);
+	});
+
+	it("persists Ignore for a missing managed highlight and suppresses it on future syncs", async () => {
+		const highlight = createHighlight();
+		const plugin = await createPlugin(createSettings({
+			importedHighlights: [createImportedRecord(highlight)],
+		}));
+		const identityIndex = createIdentityIndex([highlight]);
+
+		mocks.parseClippings.mockReturnValue([highlight]);
+		mocks.highlightExistsInNote.mockResolvedValue(false);
+		await plugin.syncHighlights();
+		expect(mocks.syncSummaryInstances.at(-1)?.classification.possibleReappearedHighlights).toEqual([highlight]);
+
+		await plugin.ignoreHighlights([highlight], identityIndex);
+		mocks.syncSummaryInstances.length = 0;
+		mocks.writeBookNotesToVault.mockClear();
+		await plugin.syncHighlights();
+
+		expect(plugin.settings.ignoredHighlights).toMatchObject([{
+			id: createClippingId(highlight),
+			title: highlight.bookTitle,
+			author: highlight.author,
+		}]);
+		expect(mocks.syncSummaryInstances.at(-1)?.classification.ignoredHighlights).toEqual([highlight]);
+		expect(mocks.syncSummaryInstances.at(-1)?.classification.possibleReappearedHighlights).toEqual([]);
+		expect(writtenHighlightIds()).toEqual([]);
 	});
 
 	it("uses unique legacy trust for automatic sync without backfilling an authored record", async () => {

@@ -2,9 +2,8 @@ import type { TFile, Vault } from "obsidian";
 import { KindleHighlight } from "../parser/parseClippings";
 import { createClippingId, KindleBookGroup } from "../render/renderMarkdown";
 import { createKindleHighlightIdentityKey } from "./HighlightIdentity";
+import { analyzeManagedRegion } from "./ManagedRegion";
 import { allocateBookNotePaths } from "./VaultWriter";
-
-const ID_MARKER_PREFIX = "<!-- kindle-local-sync-id:";
 
 export function createVaultHighlightLookup(
 	vault: Vault,
@@ -43,7 +42,15 @@ export function createVaultHighlightLookup(
 			return false;
 		}
 
-		return markdown.includes(`${ID_MARKER_PREFIX} ${id} -->`);
+		const managedRegion = analyzeManagedRegion(markdown);
+
+		if (managedRegion.kind === "unsafe") {
+			// An unreadable ownership boundary is not evidence that a reviewed highlight is missing.
+			throw new Error(`Cannot reconcile an unsafe managed region: ${managedRegion.reason}.`);
+		}
+
+		return managedRegion.kind === "valid-with-ids"
+			&& managedRegion.highlightIds.includes(id);
 	};
 }
 

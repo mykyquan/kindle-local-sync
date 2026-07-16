@@ -124,13 +124,19 @@ export function replaceOrAppendSyncRegion(existingMarkdown: string, syncRegion: 
 		return `${existingMarkdown.slice(0, startIndex)}${syncRegion}${existingMarkdown.slice(afterEndIndex)}`;
 	}
 
-	const trimmedMarkdown = existingMarkdown.trimEnd();
-
-	if (!trimmedMarkdown) {
+	if (existingMarkdown.length === 0) {
 		return `${syncRegion}\n`;
 	}
 
-	return `${trimmedMarkdown}\n\n## Kindle Highlights & Notes\n\n${syncRegion}\n`;
+	// With no managed markers, every existing byte is user-authored and must remain untouched.
+	const lineBreak = existingMarkdown.includes("\r\n") ? "\r\n" : "\n";
+	const appendSeparator = existingMarkdown.endsWith(`${lineBreak}${lineBreak}`)
+		? ""
+		: existingMarkdown.endsWith(lineBreak)
+			? lineBreak
+			: `${lineBreak}${lineBreak}`;
+
+	return `${existingMarkdown}${appendSeparator}## Kindle Highlights & Notes\n\n${syncRegion}\n`;
 }
 
 function renderClippingContent(clipping: KindleHighlight): string {

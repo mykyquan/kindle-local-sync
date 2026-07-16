@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Vault } from "obsidian";
 import { KindleHighlight } from "../parser/parseClippings";
-import { createClippingId, KindleBookGroup } from "../render/renderMarkdown";
+import {
+	createClippingId,
+	KindleBookGroup,
+	SYNC_END_MARKER,
+	SYNC_START_MARKER,
+} from "../render/renderMarkdown";
 import { createVaultHighlightLookup } from "./VaultHighlightLookup";
 import { allocateBookNotePaths, createVaultWritePlan } from "./VaultWriter";
 
@@ -34,6 +39,106 @@ class MockVault {
 }
 
 describe("createVaultHighlightLookup", () => {
+	it("finds an imported highlight only when its ID remains inside the managed region", async () => {
+		const highlight = createHighlight();
+		const groups = [createGroup(highlight)];
+		const [notePath] = allocateBookNotePaths("Kindle Highlights", groups);
+		const vault = new MockVault();
+
+		if (!notePath) {
+			throw new Error("Expected an allocated note path.");
+		}
+
+		vault.addFile(notePath, renderManagedMarkers([createClippingId(highlight)]));
+		const lookup = createVaultHighlightLookup(vault as unknown as Vault, "Kindle Highlights", groups);
+
+		expect(await lookup(createClippingId(highlight), highlight)).toBe(true);
+	});
+
+	it("reports one removed highlight as absent while another managed ID remains", async () => {
+		const present = createHighlight();
+		const removed = createHighlight({
+			location: "160",
+			content: "Removed managed highlight.",
+		});
+		const groups = [{
+			bookTitle: present.bookTitle,
+			author: present.author,
+			clippings: [present, removed],
+		}];
+		const [notePath] = allocateBookNotePaths("Kindle Highlights", groups);
+		const vault = new MockVault();
+
+		if (!notePath) {
+			throw new Error("Expected an allocated note path.");
+		}
+
+		vault.addFile(notePath, renderManagedMarkers([createClippingId(present)]));
+		const lookup = createVaultHighlightLookup(vault as unknown as Vault, "Kindle Highlights", groups);
+
+		expect(await lookup(createClippingId(present), present)).toBe(true);
+		expect(await lookup(createClippingId(removed), removed)).toBe(false);
+	});
+
+	it("reports every highlight as absent when the entire managed region was removed", async () => {
+		const first = createHighlight();
+		const second = createHighlight({
+			location: "160",
+			content: "Second managed highlight.",
+		});
+		const groups = [{
+			bookTitle: first.bookTitle,
+			author: first.author,
+			clippings: [first, second],
+		}];
+		const [notePath] = allocateBookNotePaths("Kindle Highlights", groups);
+		const vault = new MockVault();
+
+		if (!notePath) {
+			throw new Error("Expected an allocated note path.");
+		}
+
+		vault.addFile(notePath, "Personal introduction.\n\nPersonal ending.\n");
+		const lookup = createVaultHighlightLookup(vault as unknown as Vault, "Kindle Highlights", groups);
+
+		expect(await lookup(createClippingId(first), first)).toBe(false);
+		expect(await lookup(createClippingId(second), second)).toBe(false);
+	});
+
+	it("does not trust an ID-shaped user comment outside the managed region", async () => {
+		const highlight = createHighlight();
+		const groups = [createGroup(highlight)];
+		const [notePath] = allocateBookNotePaths("Kindle Highlights", groups);
+		const vault = new MockVault();
+
+		if (!notePath) {
+			throw new Error("Expected an allocated note path.");
+		}
+
+		vault.addFile(notePath, renderMarker(createClippingId(highlight)));
+		const lookup = createVaultHighlightLookup(vault as unknown as Vault, "Kindle Highlights", groups);
+
+		expect(await lookup(createClippingId(highlight), highlight)).toBe(false);
+	});
+
+	it("fails closed when managed-region ownership is unsafe", async () => {
+		const highlight = createHighlight();
+		const groups = [createGroup(highlight)];
+		const [notePath] = allocateBookNotePaths("Kindle Highlights", groups);
+		const vault = new MockVault();
+
+		if (!notePath) {
+			throw new Error("Expected an allocated note path.");
+		}
+
+		vault.addFile(notePath, `${SYNC_START_MARKER}\n${renderMarker(createClippingId(highlight))}\n`);
+		const lookup = createVaultHighlightLookup(vault as unknown as Vault, "Kindle Highlights", groups);
+
+		await expect(lookup(createClippingId(highlight), highlight)).rejects.toThrow(
+			"Cannot reconcile an unsafe managed region"
+		);
+	});
+
 	it("looks up real colliding IDs in their exact book notes", async () => {
 		const bookA = createCollisionHighlight("Collision 1h0o65e 20hu");
 		const bookB = createCollisionHighlight("Collision 1y0rlvz 2269");
@@ -47,7 +152,7 @@ describe("createVaultHighlightLookup", () => {
 		}
 
 		expect(createClippingId(bookA)).toBe(createClippingId(bookB));
-		vault.addFile(bookAPath, renderMarker(createClippingId(bookA)));
+		vault.addFile(bookAPath, renderManagedMarkers([createClippingId(bookA)]));
 		const lookup = createVaultHighlightLookup(
 			vault as unknown as Vault,
 			"Kindle Highlights",
@@ -75,7 +180,7 @@ describe("createVaultHighlightLookup", () => {
 				throw new Error("Expected an allocated book path.");
 			}
 
-			vault.addFile(path, renderMarker(createClippingId(highlight)));
+			vault.addFile(path, renderManagedMarkers([createClippingId(highlight)]));
 		}
 
 		const lookup = createVaultHighlightLookup(
@@ -91,6 +196,14 @@ describe("createVaultHighlightLookup", () => {
 
 function renderMarker(id: string): string {
 	return `<!-- kindle-local-sync-id: ${id} -->`;
+}
+
+function renderManagedMarkers(ids: string[]): string {
+	return [
+		SYNC_START_MARKER,
+		...ids.map(renderMarker),
+		SYNC_END_MARKER,
+	].join("\n");
 }
 
 function createGroup(highlight: KindleHighlight): KindleBookGroup {

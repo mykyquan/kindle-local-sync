@@ -46,6 +46,37 @@ describe("classifyHighlightsForSync", () => {
 		expect(classification.possibleReappearedHighlights).toEqual([highlight]);
 	});
 
+	it("keeps a previously imported highlight as a duplicate while its managed ID is present", async () => {
+		const highlight = createHighlight();
+		const classification = await classifyHighlightsForSync([highlight], {
+			ignoredHighlights: [],
+			importedHighlights: [createImportedRecord(highlight)],
+			identityIndex: new CurrentClippingIdentityIndex([highlight]),
+			highlightExistsInNote: () => true,
+		});
+
+		expect(classification.duplicateHighlights).toEqual([highlight]);
+		expect(classification.possibleReappearedHighlights).toEqual([]);
+	});
+
+	it("classifies all previously imported source highlights as missing when their IDs are absent", async () => {
+		const first = createHighlight();
+		const second = createHighlight({
+			location: "160",
+			content: "Second managed highlight.",
+		});
+		const highlights = [first, second];
+		const classification = await classifyHighlightsForSync(highlights, {
+			ignoredHighlights: [],
+			importedHighlights: highlights.map(createImportedRecord),
+			identityIndex: new CurrentClippingIdentityIndex(highlights),
+			highlightExistsInNote: () => false,
+		});
+
+		expect(classification.possibleReappearedHighlights).toEqual(highlights);
+		expect(classification.duplicateHighlights).toEqual([]);
+	});
+
 	it("falls back safely when note lookup fails", async () => {
 		const highlight = createHighlight();
 		const classification = await classifyHighlightsForSync([highlight], {

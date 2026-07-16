@@ -387,6 +387,30 @@ describe("writeBookNotesToVault", () => {
 		});
 	});
 
+	it("restores a deleted managed region without changing any existing user-authored byte", async () => {
+		const vault = new MockVault();
+		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
+		const existingMarkdown = "# Atomic Habits\r\n\r\nPersonal introduction.\r\n\r\nPersonal ending.  \r\n \t";
+
+		await vault.createFolder("Kindle Highlights");
+		await vault.create(notePath, existingMarkdown);
+
+		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [{
+			bookTitle: "Atomic Habits",
+			author: "James Clear",
+			clippings: [atomicHighlight],
+		}]);
+		const updatedMarkdown = vault.readFile(notePath) ?? "";
+
+		expect(updatedMarkdown.slice(0, existingMarkdown.length)).toBe(existingMarkdown);
+		expect(updatedMarkdown).toContain(createClippingId(atomicHighlight));
+		expect(summary).toMatchObject({
+			filesUpdated: 1,
+			filesProtected: 0,
+			bookOutcomes: [{ status: "updated" }],
+		});
+	});
+
 	it("protects an existing managed highlight that is absent from the incoming group", async () => {
 		const vault = new MockVault();
 		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";

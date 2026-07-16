@@ -201,6 +201,21 @@ describe("replaceOrAppendSyncRegion", () => {
 		);
 	});
 
+	it("preserves marker-free user content byte-for-byte before appending a restored region", () => {
+		const newRegion = renderSyncRegion({
+			bookTitle: "Atomic Habits",
+			author: "James Clear",
+			clippings: [atomicHighlight],
+		});
+		const existingMarkdown = "Personal introduction.\r\n\r\nPersonal ending.  \r\n \t";
+		const updatedMarkdown = replaceOrAppendSyncRegion(existingMarkdown, newRegion);
+
+		expect(updatedMarkdown.slice(0, existingMarkdown.length)).toBe(existingMarkdown);
+		expect(updatedMarkdown).toBe(
+			`${existingMarkdown}\r\n\r\n## Kindle Highlights & Notes\n\n${newRegion}\n`
+		);
+	});
+
 	it("preserves a broken start marker as user content and appends a new region", () => {
 		const newRegion = renderSyncRegion({
 			bookTitle: "Atomic Habits",
