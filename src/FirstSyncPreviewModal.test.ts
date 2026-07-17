@@ -1,10 +1,11 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { App } from "../__mocks__/obsidian";
+import { App, Notice } from "../__mocks__/obsidian";
 import { KindleHighlight } from "./parser/parseClippings";
 import { createClippingId, KindleBookGroup } from "./render/renderMarkdown";
 import { CurrentClippingIdentityIndex } from "./sync/HighlightIdentity";
 import { SyncSummaryHighlightItem } from "./SyncSummaryTypes";
 import type { SyncCompletionResult } from "./FirstSyncPreviewModal";
+import { InvalidVaultWriteContractError } from "./sync/VaultWriteContract";
 
 let FirstSyncPreviewModal: typeof import("./FirstSyncPreviewModal").FirstSyncPreviewModal;
 
@@ -1669,6 +1670,462 @@ describe("FirstSyncPreviewModal control registry lifecycle", () => {
 	});
 });
 
+describe("FirstSyncPreviewModal completion failure", () => {
+	it("keeps decisions, search, filter, and scroll after an ordinary rejection", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+			createBookGroup("Digital Minimalism"),
+		]);
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const noticeCountBefore = Notice.messages.length;
+
+		plugin.completeFirstSync.mockRejectedValueOnce(new Error("Disk write failed."));
+		modal.onOpen();
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 3 — Atomic Habits"), "Import All").click();
+		await chooseIgnoreAll(
+			modal,
+			findSectionByHeading(modal.contentEl, "2 / 3 — Deep Work")
+		);
+		await findByText(findSectionByHeading(modal.contentEl, "3 / 3 — Digital Minimalism"), "Skip This Sync").click();
+		await searchBooks(modal, "Atomic");
+		await findByText(modal.contentEl, "Reviewed").click();
+		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 220);
+		setScrollTop(modal.contentEl, 220);
+
+		await buttonByTextAt(modal.contentEl, "Finish Sync", -1).click();
+
+		const failure = elementByClassAt(modal.contentEl, "kls-operation-failure", 0);
+
+		expect(failure.attributes.get("role")).toBe("alert");
+		expect(failure.attributes.get("tabindex")).toBe("-1");
+		expect(failure.focusCalls).toBe(1);
+		expect(readText(failure)).toContain("Sync not completed");
+		expect(readText(failure)).toContain(
+			"We couldn’t confirm the final sync result. Your selections are still available here."
+		);
+		expect(readText(failure)).toContain("Some note changes may have occurred.");
+		expect(readText(failure)).not.toContain("Your Ignore choices were saved");
+		expect(Notice.messages).toHaveLength(noticeCountBefore);
+		expect(elementsByTag(modal.contentEl, "input")[0]?.value).toBe("Atomic");
+		expect(findByText(modal.contentEl, "Reviewed").attributes.get("aria-pressed")).toBe("true");
+		expect(readText(modal.contentEl)).toContain("How choices work");
+		expect(scrollTop(modal.contentEl)).toBe(220);
+		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(220);
+
+		await findByText(modal.contentEl, "Return to review").click();
+		await searchBooks(modal, "");
+		const atomicHabits = findSectionByHeading(modal.contentEl, "1 / 3 — Atomic Habits");
+		const deepWork = findSectionByHeading(modal.contentEl, "2 / 3 — Deep Work");
+		const digitalMinimalism = findSectionByHeading(modal.contentEl, "3 / 3 — Digital Minimalism");
+
+		expect(readText(atomicHabits)).toContain("Import All");
+		expect(buttonByTextAt(atomicHabits, "Import All", 0).classes.has("kls-decision-button-active-import")).toBe(true);
+		expect(findByText(deepWork, "Ignore All").classes.has("kls-decision-button-active-ignore")).toBe(true);
+		expect(buttonByTextAt(digitalMinimalism, "Skip This Sync", 0).classes.has("kls-decision-button-active-skip")).toBe(true);
+		expect(elementsByClass(modal.contentEl, "kls-operation-failure")).toHaveLength(0);
+		consoleError.mockRestore();
+	});
+
+	it("states that Ignore choices were saved only for a typed invalid-contract failure", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+		const error = new InvalidVaultWriteContractError("outcome-count");
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		error.retainIgnoreCleanupResult(createEmptyCleanupResult());
+		plugin.completeFirstSync.mockRejectedValueOnce(error);
+		modal.onOpen();
+		await chooseIgnoreAll(modal);
+		await findByText(modal.contentEl, "Finish Sync").click();
+
+		const failure = elementByClassAt(modal.contentEl, "kls-operation-failure", 0);
+
+		expect(readText(failure)).toContain(
+			"Your Ignore choices were saved, but we couldn’t complete the rest of the sync. Your other selections are still available here."
+		);
+		expect(readText(failure)).not.toContain("writer contract");
+		consoleError.mockRestore();
+	});
+
+	it("uses ordinary uncertainty feedback for an invalid-contract error without retained Ignore results", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.completeFirstSync.mockRejectedValueOnce(new InvalidVaultWriteContractError("outcome-count"));
+		modal.onOpen();
+		await chooseIgnoreAll(modal);
+		await findByText(modal.contentEl, "Finish Sync").click();
+
+		const failure = elementByClassAt(modal.contentEl, "kls-operation-failure", 0);
+
+		expect(readText(failure)).toContain(
+			"We couldn’t confirm the final sync result. Your selections are still available here."
+		);
+		expect(readText(failure)).not.toContain("Your Ignore choices were saved");
+		consoleError.mockRestore();
+	});
+
+	it("retries successfully in place and closes only after completion", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+		const onClose = vi.spyOn(modal, "onClose");
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.completeFirstSync.mockRejectedValueOnce(new Error("Disk write failed."));
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All").click();
+		await findByText(modal.contentEl, "Finish Sync").click();
+
+		expect(onClose).not.toHaveBeenCalled();
+		await findByText(modal.contentEl, "Try again").click();
+
+		expect(plugin.completeFirstSync).toHaveBeenCalledTimes(2);
+		expect(onClose).toHaveBeenCalledTimes(1);
+		consoleError.mockRestore();
+	});
+
+	it("prevents repeated Finish requests while completion is pending", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+		const completion = createDeferred<SyncCompletionResult>();
+
+		plugin.completeFirstSync.mockReturnValueOnce(completion.promise);
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All").click();
+		const finish = findByText(modal.contentEl, "Finish Sync");
+		const firstClick = finish.click();
+
+		await Promise.resolve();
+		expect(finish.disabled).toBe(true);
+		expect(finish.attributes.get("aria-busy")).toBe("true");
+		expect((modal.contentEl as unknown as TestElement).attributes.get("aria-busy")).toBe("true");
+		await finish.click();
+		expect(plugin.completeFirstSync).toHaveBeenCalledTimes(1);
+
+		completion.resolve({
+			importedCount: 2,
+			ignoreCleanupResult: createEmptyCleanupResult(),
+			protectedSelectedHighlightCount: 0,
+		});
+		await firstClick;
+	});
+
+	it("makes stale Finish handlers and direct completion calls inert after First Sync succeeds", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All").click();
+		const staleFinish = findByText(modal.contentEl, "Finish Sync");
+
+		await staleFinish.click();
+		staleFinish.disabled = false;
+		await staleFinish.click();
+		await (modal as unknown as {
+			completeFirstSync(button: unknown): Promise<void>;
+		}).completeFirstSync(staleFinish);
+
+		expect(plugin.completeFirstSync).toHaveBeenCalledTimes(1);
+	});
+
+	it("makes a stale Finish handler inert after Review New Highlights succeeds", async () => {
+		const plugin = createPlugin();
+		const onComplete = vi.fn(async (): Promise<SyncCompletionResult> => ({
+			importedCount: 2,
+			ignoreCleanupResult: createEmptyCleanupResult(),
+			protectedSelectedHighlightCount: 0,
+		}));
+		const modal = createModal(plugin, [createBookGroup()], {
+			title: "Review New Highlights",
+			onComplete,
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All").click();
+		const staleFinish = findByText(modal.contentEl, "Finish Sync");
+
+		await staleFinish.click();
+		staleFinish.disabled = false;
+		await staleFinish.click();
+
+		expect(onComplete).toHaveBeenCalledTimes(1);
+		expect(plugin.completeFirstSync).not.toHaveBeenCalled();
+	});
+
+	it("locks book and highlight decisions across pending navigation and unlocks them after failure", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+		const completion = createDeferred<SyncCompletionResult>();
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.completeFirstSync.mockReturnValueOnce(completion.promise);
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All").click();
+		const staleIgnoreAll = findByText(modal.contentEl, "Ignore All");
+		const finishRequest = findByText(modal.contentEl, "Finish Sync").click();
+
+		await Promise.resolve();
+		expect(staleIgnoreAll.disabled).toBe(true);
+		staleIgnoreAll.disabled = false;
+		await staleIgnoreAll.click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		const highlightIgnore = findByText(modal.contentEl, "Ignore");
+		const highlightSkip = findByText(modal.contentEl, "Skip This Sync");
+
+		expectCurrentControlRegistries(modal, 6, 0);
+		expect(elementsByClass(modal.contentEl, "kls-decision-button").every((button) => button.disabled)).toBe(true);
+		expect(highlightIgnore.disabled).toBe(true);
+		expect(highlightSkip.disabled).toBe(true);
+		highlightIgnore.disabled = false;
+		highlightSkip.disabled = false;
+		await highlightIgnore.click();
+		await highlightSkip.click();
+		const selectedImport = findByText(modal.contentEl, "Import");
+
+		expect(selectedImport.classes.has("kls-decision-button-active-import")).toBe(true);
+		expect(selectedImport.attributes.get("aria-pressed")).toBe("true");
+		expect(readText(modal.contentEl)).not.toContain("Selected:");
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
+		const rerenderedFinish = findByText(modal.contentEl, "Finish Sync");
+
+		expectCurrentControlRegistries(modal, 3, 1);
+		expect(elementsByClass(modal.contentEl, "kls-decision-button").every((button) => button.disabled)).toBe(true);
+		expect(rerenderedFinish.disabled).toBe(true);
+		expect(rerenderedFinish.attributes.get("aria-busy")).toBe("true");
+		rerenderedFinish.disabled = false;
+		await rerenderedFinish.click();
+		expect(plugin.completeFirstSync).toHaveBeenCalledTimes(1);
+
+		completion.reject(new Error("Disk write failed."));
+		await finishRequest;
+		const unlockedIgnoreAll = findByText(modal.contentEl, "Ignore All");
+
+		expect(unlockedIgnoreAll.disabled).toBe(false);
+		await unlockedIgnoreAll.click();
+		const selectedIgnoreAll = findByText(modal.contentEl, "Ignore All");
+
+		expect(selectedIgnoreAll.classes.has("kls-decision-button-active-ignore")).toBe(true);
+		expect(selectedIgnoreAll.attributes.get("aria-pressed")).toBe("true");
+		consoleError.mockRestore();
+	});
+
+	it("does not accept stale decision clicks after completion succeeds", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+		const completion = createDeferred<SyncCompletionResult>();
+
+		plugin.completeFirstSync.mockReturnValueOnce(completion.promise);
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All").click();
+		const staleIgnoreAll = findByText(modal.contentEl, "Ignore All");
+		const finishRequest = findByText(modal.contentEl, "Finish Sync").click();
+
+		await Promise.resolve();
+		completion.resolve({
+			importedCount: 2,
+			ignoreCleanupResult: createEmptyCleanupResult(),
+			protectedSelectedHighlightCount: 0,
+		});
+		await finishRequest;
+		staleIgnoreAll.disabled = false;
+		await staleIgnoreAll.click();
+
+		expect(readText(modal.contentEl)).toContain("Import All");
+		expect(staleIgnoreAll.classes.has("kls-decision-button-active-ignore")).toBe(false);
+	});
+
+	it("returns a failed completion to the selected book detail with its scroll and choices intact", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+		const completion = createDeferred<SyncCompletionResult>();
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.completeFirstSync.mockReturnValueOnce(completion.promise);
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All").click();
+		const finishRequest = findByText(modal.contentEl, "Finish Sync").click();
+
+		await Promise.resolve();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		setScrollTop(elementsByClass(modal.contentEl, "kls-book-detail-highlights")[0], 175);
+		completion.reject(new Error("Disk write failed."));
+		await finishRequest;
+
+		expect(elementByClassAt(modal.contentEl, "kls-book-detail-count", 0).text()).toBe("2 highlights");
+		expect(elementByClassAt(modal.contentEl, "kls-book-title", 0).text()).toBe("Atomic Habits");
+		const importButton = findByText(modal.contentEl, "Import");
+
+		expect(importButton.classes.has("kls-decision-button-active-import")).toBe(true);
+		expect(importButton.attributes.get("aria-pressed")).toBe("true");
+		expect(readText(modal.contentEl)).not.toContain("Selected:");
+		expect(readText(modal.contentEl)).toContain("Sync not completed");
+		expect(scrollTop(elementsByClass(modal.contentEl, "kls-book-detail-highlights")[0])).toBe(175);
+		consoleError.mockRestore();
+	});
+
+	it("keeps dirty close confirmation coherent after failure", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+		const onClose = vi.spyOn(modal, "onClose");
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.completeFirstSync.mockRejectedValueOnce(new Error("Disk write failed."));
+		modal.onOpen();
+		await findByText(modal.contentEl, "Skip This Sync").click();
+		await findByText(modal.contentEl, "Finish Sync").click();
+		await findByText(modal.contentEl, "Cancel").click();
+
+		expect(onClose).not.toHaveBeenCalled();
+		expect(readText(modal.contentEl)).toContain("Discard your selections?");
+		consoleError.mockRestore();
+	});
+
+	it.each([
+		["Cancel", async (modal: InstanceType<typeof FirstSyncPreviewModal>) => {
+			await findByText(modal.contentEl, "Cancel").click();
+		}],
+		["modal X", async (modal: InstanceType<typeof FirstSyncPreviewModal>) => {
+			modal.close();
+		}],
+		["Escape", async (modal: InstanceType<typeof FirstSyncPreviewModal>) => {
+			modal.close();
+		}],
+	] as const)("closes without an unsaved warning when only confirmed saved Ignore choices remain via %s", async (_label, closeModal) => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+		const onClose = vi.spyOn(modal, "onClose");
+		const error = new InvalidVaultWriteContractError("outcome-count");
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		error.retainIgnoreCleanupResult(createEmptyCleanupResult());
+		plugin.completeFirstSync.mockRejectedValueOnce(error);
+		modal.onOpen();
+		await chooseIgnoreAll(modal);
+		await findByText(modal.contentEl, "Finish Sync").click();
+		await closeModal(modal);
+
+		expect(onClose).toHaveBeenCalledTimes(1);
+		expect(readText(modal.contentEl)).not.toContain("Discard your selections?");
+		consoleError.mockRestore();
+	});
+
+	it("keeps confirmed saved Ignore choices clean after Return to review", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+		const onClose = vi.spyOn(modal, "onClose");
+		const error = new InvalidVaultWriteContractError("outcome-count");
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		error.retainIgnoreCleanupResult(createEmptyCleanupResult());
+		plugin.completeFirstSync.mockRejectedValueOnce(error);
+		modal.onOpen();
+		await chooseIgnoreAll(modal);
+		await findByText(modal.contentEl, "Finish Sync").click();
+		await findByText(modal.contentEl, "Return to review").click();
+		await findByText(modal.contentEl, "Cancel").click();
+
+		expect(onClose).toHaveBeenCalledTimes(1);
+		expect(readText(modal.contentEl)).not.toContain("Discard your selections?");
+		consoleError.mockRestore();
+	});
+
+	it("uses mixed saved-state copy when saved Ignore choices coexist with an unsaved Import", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [
+			createBookGroup("Ignored Book"),
+			createBookGroup("Imported Book"),
+		]);
+		const error = new InvalidVaultWriteContractError("outcome-count");
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		error.retainIgnoreCleanupResult(createEmptyCleanupResult());
+		plugin.completeFirstSync.mockRejectedValueOnce(error);
+		modal.onOpen();
+		await chooseIgnoreAll(
+			modal,
+			findSectionByHeading(modal.contentEl, "1 / 2 — Ignored Book")
+		);
+		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Imported Book"), "Import All").click();
+		await findByText(modal.contentEl, "Finish Sync").click();
+		await findByText(modal.contentEl, "Cancel").click();
+
+		expect(readText(modal.contentEl)).toContain("Your remaining selections have not been saved.");
+		expect(readText(modal.contentEl)).not.toContain(
+			"Your Import, Skip, and Ignore choices have not been saved."
+		);
+		consoleError.mockRestore();
+	});
+
+	it("keeps additional Ignore changes dirty after returning to review", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [
+			createBookGroup("Saved Ignore"),
+			createBookGroup("Later Ignore"),
+		]);
+		const error = new InvalidVaultWriteContractError("outcome-count");
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		error.retainIgnoreCleanupResult(createEmptyCleanupResult());
+		plugin.completeFirstSync.mockRejectedValueOnce(error);
+		modal.onOpen();
+		await chooseIgnoreAll(
+			modal,
+			findSectionByHeading(modal.contentEl, "1 / 2 — Saved Ignore")
+		);
+		await findByText(modal.contentEl, "Finish Sync").click();
+		await findByText(modal.contentEl, "Finish Sync").click();
+		await findByText(modal.contentEl, "Return to review").click();
+		await chooseIgnoreAll(
+			modal,
+			findSectionByHeading(modal.contentEl, "2 / 2 — Later Ignore")
+		);
+		await findByText(modal.contentEl, "Cancel").click();
+
+		expect(readText(modal.contentEl)).toContain("Your remaining selections have not been saved.");
+		consoleError.mockRestore();
+	});
+
+	it("treats a confirmed saved Ignore changed again to Import as dirty", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+		const error = new InvalidVaultWriteContractError("outcome-count");
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		error.retainIgnoreCleanupResult(createEmptyCleanupResult());
+		plugin.completeFirstSync.mockRejectedValueOnce(error);
+		modal.onOpen();
+		await chooseIgnoreAll(modal);
+		await findByText(modal.contentEl, "Finish Sync").click();
+		await findByText(modal.contentEl, "Return to review").click();
+		await findByText(modal.contentEl, "Import All").click();
+		modal.close();
+
+		expect(readText(modal.contentEl)).toContain("Your remaining selections have not been saved.");
+		consoleError.mockRestore();
+	});
+
+	it("moves failure focus only once across Return to review and detail navigation", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.completeFirstSync.mockRejectedValueOnce(new Error("Disk write failed."));
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All").click();
+		await findByText(modal.contentEl, "Finish Sync").click();
+		expect(elementByClassAt(modal.contentEl, "kls-operation-failure", 0).focusCalls).toBe(1);
+
+		await findByText(modal.contentEl, "Review Highlights").click();
+		expect(elementByClassAt(modal.contentEl, "kls-operation-failure", 0).focusCalls).toBe(0);
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
+		expect(elementByClassAt(modal.contentEl, "kls-operation-failure", 0).focusCalls).toBe(0);
+		consoleError.mockRestore();
+	});
+});
+
 describe("FirstSyncPreviewModal finish confirmation", () => {
 	it("shows a confirmation when finishing with highlights not reviewed yet", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
@@ -2041,6 +2498,21 @@ function expectCurrentControlRegistries(
 	expect(decisionButtons).toEqual(elementsByClass(modal.contentEl, "kls-decision-button"));
 	expect(finishButtons).toEqual(buttonsByText(modal.contentEl, "Finish Sync"));
 	return { decisionButtons, finishButtons };
+}
+
+function createDeferred<T>(): {
+	promise: Promise<T>;
+	resolve: (value: T) => void;
+	reject: (reason?: unknown) => void;
+} {
+	let resolve!: (value: T) => void;
+	let reject!: (reason?: unknown) => void;
+	const promise = new Promise<T>((resolver, rejecter) => {
+		resolve = resolver;
+		reject = rejecter;
+	});
+
+	return { promise, resolve, reject };
 }
 
 function readText(element: unknown): string {

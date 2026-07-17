@@ -230,6 +230,12 @@ describe("review action styling", () => {
 		expect(styles).toContain("background: Canvas;");
 	});
 
+	it("keeps operation failure styling on a Kindle Local Sync class", () => {
+		expect(styles).toContain(".kls-operation-failure {");
+		expect(styles).toContain(".kls-operation-failure h3,");
+		expect(styles).not.toMatch(/(^|\n)\s*\.(?:error|failure|operation-failure)\s*\{/);
+	});
+
 	it("gives strong and subtle glass visibly different non-blur surfaces", () => {
 		expect(styles).toContain("--kls-glass-shadow-subtle:");
 		expect(styles).toContain("--kls-glass-shadow-strong:");

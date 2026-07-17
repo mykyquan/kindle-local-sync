@@ -10,6 +10,7 @@ import {
 	CurrentClippingIdentityIndex,
 } from "./sync/HighlightIdentity";
 import { IgnoredHighlightCleanupSummary } from "./sync/IgnoredHighlightCleanup";
+import { InvalidVaultWriteContractError } from "./sync/VaultWriteContract";
 import {
 	createReviewActionButton,
 	createReviewBackButton,
@@ -70,6 +71,10 @@ interface VisibleBookEntry {
 	status: BookStatus;
 }
 
+interface CompletionFailure {
+	ignoreChoicesSaved: boolean;
+}
+
 interface ChoiceHelpDisclosureOptions {
 	panelId: string;
 	triggerText: string;
@@ -89,6 +94,7 @@ export class FirstSyncPreviewModal extends Modal {
 	private readonly filterButtons = new Map<BookStatusFilter, ButtonComponent>();
 	private readonly decisionMutationButtons = new Set<ButtonComponent>();
 	private readonly finishSyncButtons = new Set<ButtonComponent>();
+	private readonly savedIgnoreChoiceIdentities = new Set<string>();
 	private scrollBodyEl: HTMLElement | null = null;
 	private highlightListEl: HTMLElement | null = null;
 	private bookListContentEl: HTMLElement | null = null;
@@ -104,6 +110,8 @@ export class FirstSyncPreviewModal extends Modal {
 	private isDiscardConfirmationOpen = false;
 	private hasCompletedSync = false;
 	private isCompletionPending = false;
+	private completionFailure: CompletionFailure | null = null;
+	private shouldFocusCompletionFailure = false;
 	private isBookListHelpOpen = false;
 	private isHighlightHelpOpen = false;
 
@@ -155,6 +163,7 @@ export class FirstSyncPreviewModal extends Modal {
 			text: `Found ${this.totalHighlights()} ${pluralize("highlight", this.totalHighlights())} from ${this.bookGroups.length} ${pluralize("book", this.bookGroups.length)}.`,
 		});
 		this.renderKindleWarning(bodyEl);
+		this.renderCompletionFailure(bodyEl);
 		this.renderStickyReviewSummary(bodyEl);
 
 		this.bookListContentEl = bodyEl.createDiv();
@@ -499,6 +508,7 @@ export class FirstSyncPreviewModal extends Modal {
 				});
 			},
 			renderBeforeHighlights: (detailEl) => {
+				this.renderCompletionFailure(detailEl);
 			},
 		});
 		this.highlightListEl = detail.highlightsEl;
@@ -557,6 +567,7 @@ export class FirstSyncPreviewModal extends Modal {
 		bodyEl.createEl("p", {
 			text: "Highlights not reviewed yet will be skipped only for this sync and may appear again next time.",
 		});
+		this.renderCompletionFailure(bodyEl);
 
 		const actions = this.createStickyActions();
 
@@ -823,10 +834,8 @@ export class FirstSyncPreviewModal extends Modal {
 		const ignoreHighlights = this.getHighlightsByChoice("ignore");
 		const skippedThisSyncHighlights = this.getSkippedThisSyncHighlights();
 
-		let result: SyncCompletionResult;
-
 		try {
-			result = this.options.onComplete
+			const result = this.options.onComplete
 				? await this.options.onComplete({
 					importHighlights,
 					ignoreHighlights,
@@ -838,13 +847,31 @@ export class FirstSyncPreviewModal extends Modal {
 					skippedThisSyncHighlights,
 					this.identityIndex
 				);
-		} finally {
-			this.setCompletionPending(button, false);
-		}
 
-		this.hasCompletedSync = true;
-		this.close();
-		new Notice(this.createCompletionNotice(result));
+			this.hasCompletedSync = true;
+			this.setCompletionPending(button, false);
+			this.close();
+			new Notice(this.createCompletionNotice(result));
+		} catch (error) {
+			console.error("Kindle sync was not completed.", error);
+			this.setCompletionPending(button, false);
+			const ignoreChoicesSaved = error instanceof InvalidVaultWriteContractError
+				&& error.preservedIgnoreCleanupResults.length > 0;
+
+			if (ignoreChoicesSaved) {
+				for (const highlight of ignoreHighlights) {
+					this.savedIgnoreChoiceIdentities.add(createKindleHighlightIdentityKey(highlight));
+				}
+			}
+			this.completionFailure = {
+				ignoreChoicesSaved,
+			};
+			this.shouldFocusCompletionFailure = true;
+			const scrollTop = this.getCurrentScrollTop();
+
+			this.activeReviewRenderer?.();
+			this.restoreScrollTopAfterRender(scrollTop);
+		}
 	}
 
 	private setCompletionPending(button: ButtonComponent, pending: boolean): void {
@@ -896,12 +923,56 @@ export class FirstSyncPreviewModal extends Modal {
 		button.buttonEl.removeAttribute("aria-busy");
 	}
 
-	private hasPendingDecisionChanges(): boolean {
-		if (this.choices.size !== this.initialChoices.size) {
-			return true;
+	private renderCompletionFailure(containerEl: HTMLElement): void {
+		if (!this.completionFailure) {
+			return;
 		}
 
-		for (const [identity, choice] of this.choices) {
+		const failureEl = containerEl.createDiv();
+
+		failureEl.addClass("kls-operation-failure");
+		failureEl.setAttribute("role", "alert");
+		failureEl.setAttribute("tabindex", "-1");
+		failureEl.createEl("h3", { text: "Sync not completed" });
+		failureEl.createEl("p", {
+			text: this.completionFailure.ignoreChoicesSaved
+				? "Your Ignore choices were saved, but we couldn’t complete the rest of the sync. Your other selections are still available here."
+				: "We couldn’t confirm the final sync result. Your selections are still available here.",
+		});
+		failureEl.createEl("p", {
+			text: "Some note changes may have occurred. Review your selections and try again.",
+		});
+		const actions = failureEl.createDiv();
+
+		actions.addClass("kls-button-row");
+		const retryButton = this.createActionButton(actions, "Try again", "strong").setCta();
+
+		retryButton.onClick(async () => {
+			await this.completeFirstSync(retryButton);
+		});
+		this.createActionButton(actions, "Return to review", "subtle")
+			.onClick(() => {
+				this.completionFailure = null;
+				this.shouldRestoreBookListScroll = true;
+				this.renderBookList();
+			});
+
+		if (this.shouldFocusCompletionFailure) {
+			this.shouldFocusCompletionFailure = false;
+			this.afterRender(() => failureEl.focus({ preventScroll: true }));
+		}
+	}
+
+	private hasPendingDecisionChanges(): boolean {
+		const identities = new Set([...this.initialChoices.keys(), ...this.choices.keys()]);
+
+		for (const identity of identities) {
+			const choice = this.choices.get(identity);
+
+			if (this.savedIgnoreChoiceIdentities.has(identity) && choice === "ignore") {
+				continue;
+			}
+
 			if (this.initialChoices.get(identity) !== choice) {
 				return true;
 			}
@@ -926,7 +997,9 @@ export class FirstSyncPreviewModal extends Modal {
 
 		bodyEl.createEl("h2", { text: "Discard your selections?" });
 		bodyEl.createEl("p", {
-			text: "Your Import, Skip, and Ignore choices have not been saved.",
+			text: this.savedIgnoreChoiceIdentities.size > 0
+				? "Your remaining selections have not been saved."
+				: "Your Import, Skip, and Ignore choices have not been saved.",
 		});
 		bodyEl.createEl("p", {
 			text: "If you leave now, you’ll need to review these highlights again next time.",
