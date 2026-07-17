@@ -900,6 +900,57 @@ describe("protected writer result propagation", () => {
 		expect(JSON.stringify(plugin.settings.importedHighlights)).toBe(before);
 	});
 
+	it("rejects a partial Import Again report and persists a later valid retry exactly once", async () => {
+		const first = createHighlight({ bookTitle: "Atomic Habits", author: "James Clear" });
+		const second = createHighlight({
+			bookTitle: "Deep Work",
+			author: "Cal Newport",
+			location: "160",
+			content: "Sustained focus creates valuable work.",
+		});
+		const historicalRecords = [createImportedRecord(first), createImportedRecord(second)];
+		const plugin = await createPlugin(createSettings({ importedHighlights: historicalRecords }));
+		const settingsBefore = JSON.stringify(plugin.settings);
+		const saveData = vi.spyOn(plugin, "saveData");
+
+		mocks.writeBookNotesToVault.mockImplementationOnce(
+			async (_vault: unknown, _folder: string, bookGroups: KindleBookGroup[]) => {
+				const partialSummary = createWriterSummary(bookGroups);
+
+				partialSummary.bookOutcomes.pop();
+				return partialSummary;
+			}
+		);
+
+		await expect(plugin.importHighlights(
+			[first, second],
+			createIdentityIndex([first, second]),
+			true,
+			[first, second]
+		)).rejects.toBeInstanceOf(InvalidVaultWriteContractError);
+
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+		expect(saveData).not.toHaveBeenCalled();
+		expect(mocks.syncSummaryInstances).toHaveLength(0);
+
+		const retryResult = await plugin.importHighlights(
+			[first, second],
+			createIdentityIndex([first, second]),
+			true,
+			[first, second]
+		);
+
+		expect(retryResult.safelyCompletedHighlights).toEqual([first, second]);
+		expect(retryResult.protectedHighlights).toEqual([]);
+		expect(mocks.writeBookNotesToVault).toHaveBeenCalledTimes(2);
+		expect(saveData).toHaveBeenCalledTimes(1);
+		expect(plugin.settings.importedHighlights).toEqual(historicalRecords);
+		expect(new Set(plugin.settings.importedHighlights.map((record) =>
+			`${record.title}\u0000${record.author}\u0000${record.id}`
+		)).size).toBe(2);
+		expect(persistenceControl(plugin).getDurableData()).toEqual(plugin.settings);
+	});
+
 	it("performs one final persist=false save with safe imports and explicit ignores", async () => {
 		const safeHighlight = createHighlight({ bookTitle: "Safe", author: "Author One" });
 		const ignoredHighlight = createHighlight({ bookTitle: "Ignored", author: "Author Two" });

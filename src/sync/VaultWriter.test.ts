@@ -11,6 +11,10 @@ import {
 	createVaultWritePlan,
 	writeBookNotesToVault,
 } from "./VaultWriter";
+import {
+	InvalidVaultWriteContractError,
+	validateAndPartitionVaultWriteSummary,
+} from "./VaultWriteContract";
 import type { Vault } from "obsidian";
 
 class MockTFile {
@@ -819,6 +823,83 @@ describe("writeBookNotesToVault", () => {
 			highlightsRendered: 2,
 			duplicatesSkipped: 0,
 		});
+	});
+
+	it("retries a completed but unverifiable recovery write without changing preserved content or duplicating highlights", async () => {
+		const vault = new MockVault();
+		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
+		const before = "# Atomic Habits\n\nPersonal introduction.\n\n";
+		const after = "\n\nPersonal follow-up notes.";
+		const existingMarkdown = renderManagedNote(
+			"Atomic Habits",
+			"James Clear",
+			[atomicHighlight],
+			before,
+			after
+		);
+		const recoveryHighlights = [atomicHighlight, atomicNote];
+		const bookGroups = [{
+			bookTitle: "Atomic Habits",
+			author: "James Clear",
+			clippings: recoveryHighlights,
+		}];
+
+		await vault.createFolder("Kindle Highlights");
+		await vault.create(notePath, existingMarkdown);
+
+		const completedWrite = await writeBookNotesToVault(
+			vault as unknown as Vault,
+			"Kindle Highlights",
+			bookGroups
+		);
+		const partialReport = {
+			...completedWrite,
+			bookOutcomes: completedWrite.bookOutcomes.map((outcome) => ({
+				...outcome,
+				highlightIds: outcome.highlightIds.slice(0, 1),
+			})),
+		};
+		const markdownAfterUnconfirmedWrite = vault.readFile(notePath) ?? "";
+
+		expect(() => validateAndPartitionVaultWriteSummary(
+			"Kindle Highlights",
+			recoveryHighlights,
+			partialReport
+		)).toThrow(InvalidVaultWriteContractError);
+		expect(markdownAfterUnconfirmedWrite).toContain(before);
+		expect(markdownAfterUnconfirmedWrite).toContain(after);
+		expect(markdownAfterUnconfirmedWrite).toContain(atomicHighlight.content);
+		expect(markdownAfterUnconfirmedWrite).toContain(atomicNote.content);
+		expect(markdownAfterUnconfirmedWrite.match(
+			new RegExp(createClippingId(atomicHighlight), "g")
+		)).toHaveLength(1);
+		expect(markdownAfterUnconfirmedWrite.match(
+			new RegExp(createClippingId(atomicNote), "g")
+		)).toHaveLength(1);
+
+		const retrySummary = await writeBookNotesToVault(
+			vault as unknown as Vault,
+			"Kindle Highlights",
+			bookGroups
+		);
+		const retryResult = validateAndPartitionVaultWriteSummary(
+			"Kindle Highlights",
+			recoveryHighlights,
+			retrySummary
+		);
+		const markdownAfterRetry = vault.readFile(notePath) ?? "";
+
+		expect(retrySummary).toMatchObject({
+			filesUpdated: 0,
+			filesUnchanged: 1,
+			bookOutcomes: [{ status: "confirmed" }],
+		});
+		expect(retryResult.safelyCompletedHighlights).toEqual(recoveryHighlights);
+		expect(retryResult.protectedHighlights).toEqual([]);
+		expect(markdownAfterRetry).toBe(markdownAfterUnconfirmedWrite);
+		expect(vault.modifies()).toBe(1);
+		expect(vault.createCount(notePath)).toBe(1);
+		expect(markdownAfterRetry.match(/kindle-local-sync-id:/g)).toHaveLength(2);
 	});
 
 	it("updates an existing adapter file when the Obsidian file lookup is stale", async () => {
