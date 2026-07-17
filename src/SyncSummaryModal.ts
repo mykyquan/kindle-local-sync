@@ -58,6 +58,8 @@ export class SyncSummaryModal extends Modal {
 	private importedCount: number;
 	private suspiciousHighlights: KindleHighlight[];
 	private readonly protectedSuspiciousHighlightIdentities = new Set<string>();
+	private readonly failedMissingImportIdentities = new Set<string>();
+	private readonly missingImportFailureFocusIdentities = new Set<string>();
 	private readonly pendingMissingImportIdentities = new Set<string>();
 	private readonly missingRecoveryControls = new Set<MissingRecoveryControl>();
 	private readonly recoveryMutationControls = new Set<RecoveryMutationControl>();
@@ -472,6 +474,8 @@ export class SyncSummaryModal extends Modal {
 
 			section.createEl("p", { text: formatMissingHighlights(highlights.length) })
 				.addClass("kls-book-review-summary");
+			this.renderMissingImportFailure(section, highlights);
+
 			const actions = section.createDiv();
 
 			actions.addClass("kls-button-row");
@@ -479,7 +483,9 @@ export class SyncSummaryModal extends Modal {
 			const importAllButton = this.registerMissingRecoveryControl(
 				this.createActionButton(
 					actions,
-						"Import All Again",
+					highlights.some((highlight) =>
+						this.failedMissingImportIdentities.has(createKindleHighlightIdentityKey(highlight))
+					) ? "Try Import All Again" : "Import All Again",
 					"strong"
 				).setCta(),
 				highlights,
@@ -607,6 +613,7 @@ export class SyncSummaryModal extends Modal {
 			if (
 				this.protectedSuspiciousHighlightIdentities.has(highlightIdentity)
 				&& !this.pendingMissingImportIdentities.has(highlightIdentity)
+				&& !this.failedMissingImportIdentities.has(highlightIdentity)
 			) {
 				const feedback = row.createEl("p", {
 					text: "This note was left unchanged. This highlight is still available to try again.",
@@ -617,6 +624,8 @@ export class SyncSummaryModal extends Modal {
 				feedback.setAttribute("aria-live", "polite");
 			}
 
+			this.renderMissingImportFailure(row, [highlight]);
+
 			const actions = row.createDiv();
 
 			actions.addClass("kls-button-row");
@@ -624,7 +633,7 @@ export class SyncSummaryModal extends Modal {
 			const importButton = this.registerMissingRecoveryControl(
 				this.createActionButton(
 					actions,
-					"Import Again",
+					this.failedMissingImportIdentities.has(highlightIdentity) ? "Try Import Again" : "Import Again",
 					"strong"
 				).setCta(),
 				[highlight],
@@ -704,8 +713,11 @@ export class SyncSummaryModal extends Modal {
 		for (const highlight of highlights) {
 			const identity = createKindleHighlightIdentityKey(highlight);
 
-			// A new validated attempt replaces any prior protected-result feedback for this identity.
+			// Feedback describes the most recent validated attempt only. A new attempt is uncertain
+			// until the writer returns, so stale protected feedback must not remain visible.
 			this.protectedSuspiciousHighlightIdentities.delete(identity);
+			this.failedMissingImportIdentities.delete(identity);
+			this.missingImportFailureFocusIdentities.delete(identity);
 		}
 		if (!this.beginRecoveryMutation(button)) {
 			return;
@@ -714,8 +726,21 @@ export class SyncSummaryModal extends Modal {
 		this.activeMissingReviewRenderer?.();
 		try {
 			await this.importMissingHighlights(highlights);
-		} finally {
+			for (const highlight of highlights) {
+				this.failedMissingImportIdentities.delete(createKindleHighlightIdentityKey(highlight));
+			}
 			this.setMissingImportPending(highlights, button, false);
+			this.endRecoveryMutation(button);
+			this.activeMissingReviewRenderer?.();
+		} catch (error) {
+			console.error("Kindle highlight import was not completed.", error);
+			this.setMissingImportPending(highlights, button, false);
+			for (const highlight of highlights) {
+				const identity = createKindleHighlightIdentityKey(highlight);
+
+				this.failedMissingImportIdentities.add(identity);
+				this.missingImportFailureFocusIdentities.add(identity);
+			}
 			this.endRecoveryMutation(button);
 			this.activeMissingReviewRenderer?.();
 		}
@@ -849,6 +874,39 @@ export class SyncSummaryModal extends Modal {
 		);
 	}
 
+	private renderMissingImportFailure(
+		containerEl: HTMLElement,
+		highlights: readonly KindleHighlight[]
+	): void {
+		const failedHighlights = highlights.filter((highlight) =>
+			this.failedMissingImportIdentities.has(createKindleHighlightIdentityKey(highlight))
+		);
+
+		if (failedHighlights.length === 0) {
+			return;
+		}
+
+		const failure = containerEl.createDiv();
+
+		failure.addClass("kls-operation-failure");
+		failure.setAttribute("role", "alert");
+		failure.setAttribute("tabindex", "-1");
+		failure.createEl("h3", { text: "Import not completed" });
+		failure.createEl("p", { text: formatMissingImportFailure(failedHighlights.length) });
+		const shouldFocus = failedHighlights.some((highlight) =>
+			this.missingImportFailureFocusIdentities.has(createKindleHighlightIdentityKey(highlight))
+		);
+
+		if (shouldFocus) {
+			// Consume only the identities represented by this alert so an older failure cannot
+			// take focus from the request that just failed in another book.
+			for (const highlight of failedHighlights) {
+				this.missingImportFailureFocusIdentities.delete(createKindleHighlightIdentityKey(highlight));
+			}
+			this.afterRender(() => failure.focus({ preventScroll: true }));
+		}
+	}
+
 	private async importMissingHighlights(highlights: KindleHighlight[]): Promise<void> {
 		if (highlights.length === 0) {
 			return;
@@ -896,6 +954,8 @@ export class SyncSummaryModal extends Modal {
 			const identity = createKindleHighlightIdentityKey(highlight);
 
 			this.protectedSuspiciousHighlightIdentities.delete(identity);
+			this.failedMissingImportIdentities.delete(identity);
+			this.missingImportFailureFocusIdentities.delete(identity);
 		}
 		this.suspiciousHighlights = this.suspiciousHighlights.filter((candidate) =>
 			!removedHighlights.has(candidate)
@@ -904,7 +964,8 @@ export class SyncSummaryModal extends Modal {
 
 	private hasCurrentProtectedWork(): boolean {
 		return this.protectedBooks.bookCount > 0
-			|| this.protectedSuspiciousHighlightIdentities.size > 0;
+			|| this.protectedSuspiciousHighlightIdentities.size > 0
+			|| this.failedMissingImportIdentities.size > 0;
 	}
 
 	private hasActionableIgnoreResults(): boolean {
@@ -1475,6 +1536,12 @@ function formatAffectedHighlights(count: number): string {
 
 function formatMissingHighlights(count: number): string {
 	return count === 1 ? "1 missing highlight" : `${count} missing highlights`;
+}
+
+function formatMissingImportFailure(count: number): string {
+	return count === 1
+		? "We couldn’t confirm the final import result. This highlight is still available here. Some note changes may have occurred."
+		: `We couldn’t confirm the final import result. These ${count} highlights are still available here. Some note changes may have occurred.`;
 }
 
 function formatSelectedHighlightsReturningForBook(count: number): string {

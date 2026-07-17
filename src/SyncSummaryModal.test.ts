@@ -1496,6 +1496,7 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 	it("keeps a recovery item and count unchanged when the writer contract is invalid", async () => {
 		const highlight = createHighlight();
 		const plugin = createPlugin();
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 		plugin.importHighlights.mockRejectedValueOnce(
 			new InvalidVaultWriteContractError("outcome-count")
 		);
@@ -1509,14 +1510,663 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Missing Highlights").click();
 		await findByText(modal.contentEl, "Review Highlights").click();
-		await expect(findByText(modal.contentEl, "Import Again").click())
-			.rejects.toBeInstanceOf(InvalidVaultWriteContractError);
+		await findByText(modal.contentEl, "Import Again").click();
 
-		expect(buttonTexts(modal.contentEl)).toContain("Import Again");
+		expect(buttonTexts(modal.contentEl)).toContain("Try Import Again");
+		expect(readText(modal.contentEl)).toContain("Import not completed");
 		await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
 		await findButtonByAriaLabel(modal.contentEl, "Back to Summary").click();
+		expect(readText(modal.contentEl)).toContain("Sync finished");
+		expect(readText(modal.contentEl)).not.toContain("Sync complete");
 		expect(readText(modal.contentEl)).not.toContain("new highlights imported");
 		expect(readText(modal.contentEl)).toContain("1 missing highlight needs review");
+		consoleError.mockRestore();
+	});
+
+	it("shows an accessible retryable Import Again failure and succeeds on retry", async () => {
+		const highlight = createHighlight();
+		const plugin = createPlugin();
+		const modal = createModal({
+			plugin,
+			classification: createClassification({
+				possibleReappearedHighlights: [highlight],
+			}),
+		});
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.importHighlights.mockRejectedValueOnce(new Error("Disk write failed."));
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		setScrollTop(modal.contentEl, 260);
+		await findByText(modal.contentEl, "Import Again").click();
+
+		const failure = elementByClass(modal.contentEl, "kls-operation-failure");
+
+		expect(failure.attributes.get("role")).toBe("alert");
+		expect(failure.attributes.get("tabindex")).toBe("-1");
+		expect(failure.children[0]?.tagName).toBe("h3");
+		expect(failure.focusCalls).toBe(1);
+		expect(readText(failure)).toContain("Import not completed");
+		expect(readText(failure)).toContain(
+			"We couldn’t confirm the final import result. This highlight is still available here. Some note changes may have occurred."
+		);
+		expect(readText(failure)).not.toContain("left unchanged");
+		expect(buttonTexts(modal.contentEl)).toContain("Try Import Again");
+		expect(readText(modal.contentEl)).toContain("1 missing highlight");
+		expect(scrollTop(modal.contentEl)).toBe(260);
+
+		await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Summary").click();
+		expect(readText(modal.contentEl)).toContain("Sync finished");
+		expect(readText(modal.contentEl)).not.toContain("Sync complete");
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		await findByText(modal.contentEl, "Try Import Again").click();
+
+		expect(plugin.importHighlights).toHaveBeenCalledTimes(2);
+		expect(readText(modal.contentEl)).toContain("No missing highlights left in this book.");
+		expect(readText(modal.contentEl)).not.toContain("Import not completed");
+		await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Summary").click();
+		expect(readText(modal.contentEl)).toContain("Sync complete");
+		expect(readText(modal.contentEl)).not.toContain("Sync finished");
+		expect(readText(modal.contentEl)).toContain("1 new highlight imported");
+		expect(readText(modal.contentEl)).not.toContain("2 new highlights imported");
+		consoleError.mockRestore();
+	});
+
+	it("prevents duplicate Import Again requests while one import is pending", async () => {
+		const highlight = createHighlight();
+		const plugin = createPlugin();
+		const pendingImport = createDeferred<HighlightImportResult>();
+		const modal = createModal({
+			plugin,
+			classification: createClassification({
+				possibleReappearedHighlights: [highlight],
+			}),
+		});
+
+		plugin.importHighlights.mockReturnValueOnce(pendingImport.promise);
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		const importButton = findByText(modal.contentEl, "Import Again");
+		const firstClick = importButton.click();
+
+		await Promise.resolve();
+		expect(importButton.disabled).toBe(true);
+		expect(importButton.attributes.get("aria-busy")).toBe("true");
+		expect((modal.contentEl as unknown as TestElement).attributes.get("aria-busy")).toBe("true");
+		await importButton.click();
+		expect(plugin.importHighlights).toHaveBeenCalledTimes(1);
+
+		pendingImport.resolve(createImportResult([highlight]));
+		await firstClick;
+		expect(readText(modal.contentEl)).toContain("No missing highlights left in this book.");
+	});
+
+	it.each(["Skip This Time", "Ignore Going Forward"])(
+		"blocks %s for the same highlight while Import Again is pending",
+		async (actionLabel) => {
+			const highlight = createHighlight();
+			const plugin = createPlugin();
+			const pendingImport = createDeferred<HighlightImportResult>();
+			const modal = createModal({
+				plugin,
+				classification: createClassification({
+					possibleReappearedHighlights: [highlight],
+				}),
+			});
+
+			plugin.importHighlights.mockReturnValueOnce(pendingImport.promise);
+			modal.onOpen();
+			await findByText(modal.contentEl, "Review Missing Highlights").click();
+			await findByText(modal.contentEl, "Review Highlights").click();
+			const importButton = findByText(modal.contentEl, "Import Again");
+			const importRequest = importButton.click();
+
+			await Promise.resolve();
+			const conflictingAction = findByText(modal.contentEl, actionLabel);
+
+			expect(conflictingAction.disabled).toBe(true);
+			conflictingAction.disabled = false;
+			await conflictingAction.click();
+			expect(plugin.ignoreHighlights).not.toHaveBeenCalled();
+			expect(readText(modal.contentEl)).toContain(highlight.content);
+			expect(readText(modal.contentEl)).toContain("1 missing highlight");
+
+			pendingImport.resolve(createImportResult([highlight]));
+			await importRequest;
+			expect(readText(modal.contentEl)).toContain("No missing highlights left in this book.");
+		}
+	);
+
+	it("retains pending identity locks through Back and reopening", async () => {
+		const highlight = createHighlight();
+		const plugin = createPlugin();
+		const pendingImport = createDeferred<HighlightImportResult>();
+		const modal = createModal({
+			plugin,
+			classification: createClassification({
+				possibleReappearedHighlights: [highlight],
+			}),
+		});
+
+		plugin.importHighlights.mockReturnValueOnce(pendingImport.promise);
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		const importRequest = findByText(modal.contentEl, "Import Again").click();
+
+		await Promise.resolve();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
+		expect(findByText(modal.contentEl, "Import All Again").disabled).toBe(true);
+		expect(findByText(modal.contentEl, "Ignore All Going Forward").disabled).toBe(true);
+		expect(findByText(modal.contentEl, "Skip All This Time").disabled).toBe(true);
+		await findByText(modal.contentEl, "Review Highlights").click();
+		expect(findByText(modal.contentEl, "Import Again").disabled).toBe(true);
+		expect(findByText(modal.contentEl, "Ignore Going Forward").disabled).toBe(true);
+		expect(findByText(modal.contentEl, "Skip This Time").disabled).toBe(true);
+
+		pendingImport.resolve(createImportResult([highlight]));
+		await importRequest;
+		expect(readText(modal.contentEl)).toContain("No missing highlights left in this book.");
+	});
+
+	it("prevents Import All Again from overlapping a pending per-highlight request", async () => {
+		const highlight = createHighlight();
+		const plugin = createPlugin();
+		const pendingImport = createDeferred<HighlightImportResult>();
+		const modal = createModal({
+			plugin,
+			classification: createClassification({
+				possibleReappearedHighlights: [highlight],
+			}),
+		});
+
+		plugin.importHighlights.mockReturnValueOnce(pendingImport.promise);
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		const importRequest = findByText(modal.contentEl, "Import Again").click();
+
+		await Promise.resolve();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
+		const importAll = findByText(modal.contentEl, "Import All Again");
+
+		expect(importAll.disabled).toBe(true);
+		importAll.disabled = false;
+		await importAll.click();
+		expect(plugin.importHighlights).toHaveBeenCalledTimes(1);
+
+		pendingImport.resolve(createImportResult([highlight]));
+		await importRequest;
+	});
+
+	it.each([
+		["ordinary writer rejection", new Error("Disk write failed.")],
+		["invalid writer contract", new InvalidVaultWriteContractError("outcome-count")],
+		["settings persistence rejection", new Error("Settings save failed.")],
+	] as const)("keeps every bulk recovery item after %s", async (_label, error) => {
+		const first = createHighlight();
+		const second = createHighlight({
+			location: "160",
+			content: "Second missing highlight.",
+		});
+		const plugin = createPlugin();
+		const modal = createModal({
+			plugin,
+			classification: createClassification({
+				possibleReappearedHighlights: [first, second],
+			}),
+		});
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.importHighlights.mockRejectedValueOnce(error);
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Import All Again").click();
+
+		const failure = elementByClass(modal.contentEl, "kls-operation-failure");
+
+		expect(failure.attributes.get("role")).toBe("alert");
+		expect(failure.focusCalls).toBe(1);
+		expect(readText(failure)).toContain(
+			"We couldn’t confirm the final import result. These 2 highlights are still available here. Some note changes may have occurred."
+		);
+		expect(readText(failure)).not.toContain("left unchanged");
+		expect(readText(modal.contentEl)).toContain("2 missing highlights");
+		expect(buttonTexts(modal.contentEl)).toContain("Try Import All Again");
+		expect(plugin.importHighlights).toHaveBeenCalledTimes(1);
+		consoleError.mockRestore();
+	});
+
+	it("prevents duplicate bulk requests and removes items only after a successful retry", async () => {
+		const first = createHighlight();
+		const second = createHighlight({
+			location: "160",
+			content: "Second missing highlight.",
+		});
+		const plugin = createPlugin();
+		const retry = createDeferred<HighlightImportResult>();
+		const modal = createModal({
+			plugin,
+			classification: createClassification({
+				possibleReappearedHighlights: [first, second],
+			}),
+		});
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.importHighlights
+			.mockRejectedValueOnce(new Error("Disk write failed."))
+			.mockReturnValueOnce(retry.promise);
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Import All Again").click();
+		const retryButton = findByText(modal.contentEl, "Try Import All Again");
+		const retryRequest = retryButton.click();
+
+		await Promise.resolve();
+		expect(retryButton.disabled).toBe(true);
+		expect(retryButton.attributes.get("aria-busy")).toBe("true");
+		await retryButton.click();
+		expect(plugin.importHighlights).toHaveBeenCalledTimes(2);
+		expect(readText(modal.contentEl)).toContain("2 missing highlights");
+
+		retry.resolve(createImportResult([first, second]));
+		await retryRequest;
+		expect(readText(modal.contentEl)).toContain("No missing highlights left to review.");
+		consoleError.mockRestore();
+	});
+
+	it.each([
+		["ordinary writer rejection", new Error("Disk write failed.")],
+		["invalid writer contract", new InvalidVaultWriteContractError("outcome-count")],
+	] as const)("clears stale protected feedback before a retry ends in %s", async (_label, error) => {
+		const highlight = createHighlight();
+		const plugin = createPlugin();
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.importHighlights
+			.mockResolvedValueOnce(createImportResult([highlight], ["protected"]))
+			.mockRejectedValueOnce(error);
+		const modal = createModal({
+			plugin,
+			classification: createClassification({ possibleReappearedHighlights: [highlight] }),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		await findByText(modal.contentEl, "Import Again").click();
+		expect(readText(modal.contentEl)).toContain("This note was left unchanged.");
+
+		await findByText(modal.contentEl, "Import Again").click();
+
+		expect(readText(modal.contentEl)).toContain("Import not completed");
+		expect(readText(modal.contentEl)).not.toContain("This note was left unchanged.");
+		consoleError.mockRestore();
+	});
+
+	it("suppresses protected feedback while a retry is pending and restores it after a validated protected result", async () => {
+		const highlight = createHighlight();
+		const plugin = createPlugin();
+		const retry = createDeferred<HighlightImportResult>();
+
+		plugin.importHighlights
+			.mockResolvedValueOnce(createImportResult([highlight], ["protected"]))
+			.mockReturnValueOnce(retry.promise);
+		const modal = createModal({
+			plugin,
+			classification: createClassification({ possibleReappearedHighlights: [highlight] }),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		await findByText(modal.contentEl, "Import Again").click();
+		const retryRequest = findByText(modal.contentEl, "Import Again").click();
+
+		await Promise.resolve();
+		expect(readText(modal.contentEl)).not.toContain("This note was left unchanged.");
+		expect(findByText(modal.contentEl, "Import Again").disabled).toBe(true);
+
+		retry.resolve(createImportResult([highlight], ["protected"]));
+		await retryRequest;
+		expect(readText(modal.contentEl)).toContain(
+			"This note was left unchanged. This highlight is still available to try again."
+		);
+	});
+
+	it("keeps protected feedback for unrelated identities while another retry is pending", async () => {
+		const first = createHighlight();
+		const second = createHighlight({ bookTitle: "Deep Work", author: "Cal Newport" });
+		const plugin = createPlugin();
+		const retry = createDeferred<HighlightImportResult>();
+
+		plugin.importHighlights
+			.mockResolvedValueOnce(createImportResult([first], ["protected"]))
+			.mockResolvedValueOnce(createImportResult([second], ["protected"]))
+			.mockReturnValueOnce(retry.promise);
+		const modal = createModal({
+			plugin,
+			classification: createClassification({ possibleReappearedHighlights: [first, second] }),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(bookCardByTitle(modal.contentEl, first.bookTitle), "Review Highlights").click();
+		await findByText(modal.contentEl, "Import Again").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
+		await findByText(bookCardByTitle(modal.contentEl, second.bookTitle), "Review Highlights").click();
+		await findByText(modal.contentEl, "Import Again").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
+		await findByText(bookCardByTitle(modal.contentEl, first.bookTitle), "Review Highlights").click();
+		const retryRequest = findByText(modal.contentEl, "Import Again").click();
+
+		await Promise.resolve();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
+		await findByText(bookCardByTitle(modal.contentEl, second.bookTitle), "Review Highlights").click();
+		expect(readText(modal.contentEl)).toContain("This note was left unchanged.");
+
+		retry.resolve(createImportResult([first], ["protected"]));
+		await retryRequest;
+	});
+
+	it("serializes rapid individual imports within one exact book and unlocks after settlement", async () => {
+		const first = createHighlight();
+		const second = createHighlight({ location: "160", content: "Second missing highlight." });
+		const plugin = createPlugin();
+		const firstImport = createDeferred<HighlightImportResult>();
+
+		plugin.importHighlights.mockReturnValueOnce(firstImport.promise);
+		const modal = createModal({
+			plugin,
+			classification: createClassification({ possibleReappearedHighlights: [first, second] }),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		const originalImportButtons = buttonsByText(modal.contentEl, "Import Again");
+		const firstRequest = originalImportButtons[0]!.click();
+
+		await Promise.resolve();
+		expect(originalImportButtons[1]!.disabled).toBe(true);
+		originalImportButtons[1]!.disabled = false;
+		await originalImportButtons[1]!.click();
+		expect(plugin.importHighlights).toHaveBeenCalledTimes(1);
+
+		firstImport.resolve(createImportResult([first]));
+		await firstRequest;
+		await findByText(modal.contentEl, "Import Again").click();
+		expect(plugin.importHighlights).toHaveBeenCalledTimes(2);
+	});
+
+	it("serializes rapid individual imports across different exact books", async () => {
+		const first = createHighlight();
+		const second = createHighlight({ bookTitle: "Deep Work", author: "Cal Newport" });
+		const plugin = createPlugin();
+		const firstImport = createDeferred<HighlightImportResult>();
+
+		plugin.importHighlights.mockReturnValueOnce(firstImport.promise);
+		const modal = createModal({
+			plugin,
+			classification: createClassification({ possibleReappearedHighlights: [first, second] }),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(bookCardByTitle(modal.contentEl, first.bookTitle), "Review Highlights").click();
+		const firstRequest = findByText(modal.contentEl, "Import Again").click();
+
+		await Promise.resolve();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
+		await findByText(bookCardByTitle(modal.contentEl, second.bookTitle), "Review Highlights").click();
+		const secondImport = findByText(modal.contentEl, "Import Again");
+
+		expect(secondImport.disabled).toBe(true);
+		secondImport.disabled = false;
+		await secondImport.click();
+		expect(plugin.importHighlights).toHaveBeenCalledTimes(1);
+
+		firstImport.resolve(createImportResult([first]));
+		await firstRequest;
+	});
+
+	it.each(["Ignore Going Forward", "Skip This Time"])(
+		"blocks %s in another book while an import is pending",
+		async (actionLabel) => {
+			const first = createHighlight();
+			const second = createHighlight({ bookTitle: "Deep Work", author: "Cal Newport" });
+			const plugin = createPlugin();
+			const firstImport = createDeferred<HighlightImportResult>();
+
+			plugin.importHighlights.mockReturnValueOnce(firstImport.promise);
+			const modal = createModal({
+				plugin,
+				classification: createClassification({ possibleReappearedHighlights: [first, second] }),
+			});
+
+			modal.onOpen();
+			await findByText(modal.contentEl, "Review Missing Highlights").click();
+			await findByText(bookCardByTitle(modal.contentEl, first.bookTitle), "Review Highlights").click();
+			const firstRequest = findByText(modal.contentEl, "Import Again").click();
+
+			await Promise.resolve();
+			await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
+			await findByText(bookCardByTitle(modal.contentEl, second.bookTitle), "Review Highlights").click();
+			const conflictingAction = findByText(modal.contentEl, actionLabel);
+
+			expect(conflictingAction.disabled).toBe(true);
+			conflictingAction.disabled = false;
+			await conflictingAction.click();
+			expect(plugin.ignoreHighlights).not.toHaveBeenCalled();
+			expect(readText(modal.contentEl)).toContain(second.content);
+
+			firstImport.resolve(createImportResult([first]));
+			await firstRequest;
+		}
+	);
+
+	it("prevents an individual import from starting while Import All Again is pending", async () => {
+		const first = createHighlight();
+		const second = createHighlight({ location: "160", content: "Second missing highlight." });
+		const plugin = createPlugin();
+		const bulkImport = createDeferred<HighlightImportResult>();
+
+		plugin.importHighlights.mockReturnValueOnce(bulkImport.promise);
+		const modal = createModal({
+			plugin,
+			classification: createClassification({ possibleReappearedHighlights: [first, second] }),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		const bulkRequest = findByText(modal.contentEl, "Import All Again").click();
+
+		await Promise.resolve();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		const individualImport = buttonsByText(modal.contentEl, "Import Again")[0]!;
+
+		expect(individualImport.disabled).toBe(true);
+		individualImport.disabled = false;
+		await individualImport.click();
+		expect(plugin.importHighlights).toHaveBeenCalledTimes(1);
+
+		bulkImport.resolve(createImportResult([first, second]));
+		await bulkRequest;
+	});
+
+	it("unlocks recovery mutations after failure", async () => {
+		const first = createHighlight();
+		const second = createHighlight({ bookTitle: "Deep Work", author: "Cal Newport" });
+		const plugin = createPlugin();
+		const failedImport = createDeferred<HighlightImportResult>();
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.importHighlights.mockReturnValueOnce(failedImport.promise);
+		const modal = createModal({
+			plugin,
+			classification: createClassification({ possibleReappearedHighlights: [first, second] }),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(bookCardByTitle(modal.contentEl, first.bookTitle), "Review Highlights").click();
+		const firstRequest = findByText(modal.contentEl, "Import Again").click();
+
+		failedImport.reject(new Error("Disk write failed."));
+		await firstRequest;
+		await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
+		await findByText(bookCardByTitle(modal.contentEl, second.bookTitle), "Review Highlights").click();
+		expect(findByText(modal.contentEl, "Import Again").disabled).toBe(false);
+		await findByText(modal.contentEl, "Import Again").click();
+		expect(plugin.importHighlights).toHaveBeenCalledTimes(2);
+		consoleError.mockRestore();
+	});
+
+	it("clears only the ignored identity's failure state", async () => {
+		const first = createHighlight();
+		const second = createHighlight({ location: "160", content: "Second missing highlight." });
+		const plugin = createPlugin();
+		const modal = createModal({
+			plugin,
+			classification: createClassification({ possibleReappearedHighlights: [first, second] }),
+		});
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.importHighlights.mockRejectedValueOnce(new Error("Disk write failed."));
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Import All Again").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		expect(elementsByClass(modal.contentEl, "kls-operation-failure")).toHaveLength(2);
+
+		await buttonsByText(modal.contentEl, "Ignore Going Forward")[0]!.click();
+
+		expect(plugin.ignoreHighlights).toHaveBeenCalledTimes(1);
+		expect(plugin.ignoreHighlights).toHaveBeenCalledWith([first], expect.anything());
+		expect(readText(modal.contentEl)).not.toContain(first.content);
+		expect(readText(modal.contentEl)).toContain(second.content);
+		expect(elementsByClass(modal.contentEl, "kls-operation-failure")).toHaveLength(1);
+		expect(readText(modal.contentEl)).toContain("Try Import Again");
+		consoleError.mockRestore();
+	});
+
+	it("clears only the skipped identity's failure state", async () => {
+		const first = createHighlight();
+		const second = createHighlight({ location: "160", content: "Second missing highlight." });
+		const plugin = createPlugin();
+		const modal = createModal({
+			plugin,
+			classification: createClassification({ possibleReappearedHighlights: [first, second] }),
+		});
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.importHighlights.mockRejectedValueOnce(new Error("Disk write failed."));
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Import All Again").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		expect(elementsByClass(modal.contentEl, "kls-operation-failure")).toHaveLength(2);
+
+		await buttonsByText(modal.contentEl, "Skip This Time")[0]!.click();
+
+		expect(plugin.ignoreHighlights).not.toHaveBeenCalled();
+		expect(readText(modal.contentEl)).not.toContain(first.content);
+		expect(readText(modal.contentEl)).toContain(second.content);
+		expect(elementsByClass(modal.contentEl, "kls-operation-failure")).toHaveLength(1);
+		expect(readText(modal.contentEl)).toContain("Try Import Again");
+		consoleError.mockRestore();
+	});
+
+	it("removes only validated completed highlights from a partial bulk result", async () => {
+		const first = createHighlight();
+		const second = createHighlight({ location: "160", content: "Second missing highlight." });
+		const plugin = createPlugin();
+		const partialResult = createImportResult([first, second]);
+
+		partialResult.safelyCompletedHighlights = [first];
+		partialResult.protectedHighlights = [second];
+		plugin.importHighlights.mockResolvedValueOnce(partialResult);
+		const modal = createModal({
+			plugin,
+			classification: createClassification({ possibleReappearedHighlights: [first, second] }),
+		});
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Import All Again").click();
+
+		expect(readText(modal.contentEl)).toContain("1 missing highlight");
+		await findByText(modal.contentEl, "Review Highlights").click();
+		expect(readText(modal.contentEl)).not.toContain(first.content);
+		expect(readText(modal.contentEl)).toContain(second.content);
+		expect(readText(modal.contentEl)).toContain("This note was left unchanged.");
+	});
+
+	it("focuses a failed recovery only once after Back and reopening", async () => {
+		const highlight = createHighlight();
+		const plugin = createPlugin();
+		const modal = createModal({
+			plugin,
+			classification: createClassification({
+				possibleReappearedHighlights: [highlight],
+			}),
+		});
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.importHighlights.mockRejectedValueOnce(new Error("Disk write failed."));
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		await findByText(modal.contentEl, "Import Again").click();
+		expect(elementByClass(modal.contentEl, "kls-operation-failure").focusCalls).toBe(1);
+
+		await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
+		expect(elementByClass(modal.contentEl, "kls-operation-failure").focusCalls).toBe(0);
+		await findByText(modal.contentEl, "Review Highlights").click();
+		expect(elementByClass(modal.contentEl, "kls-operation-failure").focusCalls).toBe(0);
+		consoleError.mockRestore();
+	});
+
+	it("focuses each newly failed book without refocusing an older failure", async () => {
+		const first = createHighlight();
+		const second = createHighlight({ bookTitle: "Deep Work", author: "Cal Newport" });
+		const plugin = createPlugin();
+		const modal = createModal({
+			plugin,
+			classification: createClassification({ possibleReappearedHighlights: [first, second] }),
+		});
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		plugin.importHighlights
+			.mockRejectedValueOnce(new Error("First disk write failed."))
+			.mockRejectedValueOnce(new Error("Second disk write failed."));
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(bookCardByTitle(modal.contentEl, first.bookTitle), "Import All Again").click();
+		expect(elementByClass(
+			bookCardByTitle(modal.contentEl, first.bookTitle),
+			"kls-operation-failure"
+		).focusCalls).toBe(1);
+
+		await findByText(bookCardByTitle(modal.contentEl, second.bookTitle), "Import All Again").click();
+		const firstFailure = elementByClass(
+			bookCardByTitle(modal.contentEl, first.bookTitle),
+			"kls-operation-failure"
+		);
+		const secondFailure = elementByClass(
+			bookCardByTitle(modal.contentEl, second.bookTitle),
+			"kls-operation-failure"
+		);
+
+		expect(firstFailure.focusCalls).toBe(0);
+		expect(secondFailure.focusCalls).toBe(1);
+		expect(plugin.importHighlights).toHaveBeenCalledTimes(2);
+		consoleError.mockRestore();
 	});
 
 	it("explains why previously imported highlights need recovery review", async () => {
@@ -1933,6 +2583,21 @@ interface TestElement {
 	attributes: Map<string, string>;
 	disabled: boolean;
 	focusCalls: number;
+}
+
+function createDeferred<T>(): {
+	promise: Promise<T>;
+	resolve: (value: T | PromiseLike<T>) => void;
+	reject: (reason?: unknown) => void;
+} {
+	let resolve!: (value: T | PromiseLike<T>) => void;
+	let reject!: (reason?: unknown) => void;
+	const promise = new Promise<T>((resolver, rejecter) => {
+		resolve = resolver;
+		reject = rejecter;
+	});
+
+	return { promise, resolve, reject };
 }
 
 function readText(element: unknown): string {
