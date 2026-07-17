@@ -369,11 +369,16 @@ describe("FirstSyncPreviewModal UI polish", () => {
 		expect(listStructure).toEqual({
 			panelClasses: ["kls-choice-help-panel"],
 			panelChildren: ["p", "dl", "p"],
-			definitionChildren: ["dt", "dd", "dt", "dd", "dt", "dd", "dt", "dd", "dt", "dd"],
+			definitionChildren: [
+				"dt", "dd", "dt", "dd", "dt", "dd", "dt", "dd", "dt", "dd", "dt", "dd",
+			],
 		});
 		expect(detailContent).toEqual({
-			terms: ["Import All", "Ignore All", "Skip This Sync", "Review Highlights", "Finish Sync"],
+			terms: [
+				"Import All Books", "Import All", "Ignore All", "Skip This Sync", "Review Highlights", "Finish Sync",
+			],
 			descriptions: [
+				"Selects every book in this review. Choices made here change to Import.",
 				"Choose Import for every highlight in this book.",
 				"Keep every highlight out of future syncs until you remove it from Ignored Highlights.",
 				"Skip this book once — its highlights may return next sync.",
@@ -1105,7 +1110,17 @@ describe("FirstSyncPreviewModal sticky actions", () => {
 		const stickyActions = elementsByClass(modal.contentEl, "kls-sticky-actions");
 
 		expect(stickyActions).toHaveLength(1);
-		expect(buttonTexts(stickyActions[0])).toEqual(["Finish Sync", "Cancel"]);
+		expect(buttonTexts(stickyActions[0])).toEqual(["Import All Books", "Finish Sync", "Cancel"]);
+		expect(stickyActions[0]?.classes.has("kls-first-sync-review-actions")).toBe(true);
+		const bulkActions = elementByClassAt(stickyActions[0], "kls-first-sync-bulk-actions", 0);
+		const completionActions = elementByClassAt(stickyActions[0], "kls-first-sync-completion-actions", 0);
+
+		expect(buttonTexts(bulkActions)).toEqual(["Import All Books"]);
+		expect(buttonTexts(completionActions)).toEqual(["Finish Sync", "Cancel"]);
+		expect(stickyActions[0]?.children[0]).toBe(bulkActions);
+		expect(stickyActions[0]?.children[1]).toBe(completionActions);
+		expect(findByText(bulkActions, "Import All Books").classes.has("kls-glass-subtle")).toBe(true);
+		expect(findByText(completionActions, "Finish Sync").classes.has("kls-glass-strong")).toBe(true);
 	});
 
 	it("places Back above the detail title and keeps only Cancel in sticky actions", async () => {
@@ -1166,6 +1181,239 @@ describe("FirstSyncPreviewModal sticky actions", () => {
 			[],
 			expect.any(CurrentClippingIdentityIndex)
 		);
+	});
+});
+
+describe("FirstSyncPreviewModal Import All Books", () => {
+	it("adds only the finalized help entry without changing the existing disclosure behavior or copy", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		const trigger = findByText(modal.contentEl, "How choices work");
+		const panel = elementByClassAt(modal.contentEl, "kls-choice-help-panel", 0);
+
+		expect(trigger.attributes.get("aria-expanded")).toBe("false");
+		expect(panel.attributes.has("hidden")).toBe(true);
+		await trigger.click();
+		expect(trigger.attributes.get("aria-expanded")).toBe("true");
+		expect(panel.attributes.has("hidden")).toBe(false);
+		expect(helpContentSnapshot(modal.contentEl)).toEqual({
+			terms: [
+				"Import All Books", "Import All", "Ignore All", "Skip This Sync", "Review Highlights", "Finish Sync",
+			],
+			descriptions: [
+				"Selects every book in this review. Choices made here change to Import.",
+				"Choose Import for every highlight in this book.",
+				"Keep every highlight out of future syncs until you remove it from Ignored Highlights.",
+				"Skip this book once — its highlights may return next sync.",
+				"Choose Import, Skip, or Ignore one highlight at a time.",
+				"Save your choices and sync. Highlights still needing review are skipped this time.",
+			],
+			opening: "How choices work: Your choices are temporary until you select Finish Sync.",
+			status: "Reviewed: every highlight has a choice. Needs Review: at least one highlight still needs a choice.",
+		});
+		await trigger.click();
+		expect(trigger.attributes.get("aria-expanded")).toBe("false");
+		expect(panel.attributes.has("hidden")).toBe(true);
+	});
+
+	it("imports every reviewable highlight immediately when there are no current Skip or Ignore choices", async () => {
+		const plugin = createPlugin();
+		const groups = [createBookGroup("Atomic Habits"), createBookGroup("Deep Work")];
+		const modal = createModal(plugin, groups);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All Books").click();
+
+		expect(currentChoiceValues(modal)).toEqual(["import", "import", "import", "import"]);
+		expect(readText(modal.contentEl)).not.toContain("Import all books?");
+		expect(findByText(modal.contentEl, "Import All Books").disabled).toBe(true);
+		expect(plugin.completeFirstSync).not.toHaveBeenCalled();
+	});
+
+	it.each(["skip", "ignore", "mixed"] as const)(
+		"shows the finalized confirmation for %s current choices without changing them",
+		async (scenario) => {
+			const plugin = createPlugin();
+			const modal = createModal(plugin, [createBookGroup()]);
+
+			modal.onOpen();
+			await chooseImportAllConfirmationScenario(modal, scenario);
+			const before = currentChoiceEntries(modal);
+			await findByText(modal.contentEl, "Import All Books").click();
+
+			expect(readText(modal.contentEl)).toContain("Import all books?");
+			expect(paragraphTexts(modal.contentEl)).toEqual(expect.arrayContaining([
+				"Your current Skip and Ignore choices will change to Import. Highlights ignored in earlier syncs won’t be affected.",
+				"Nothing will be imported until you select Finish Sync.",
+			]));
+			expect(buttonTexts(elementsByClass(modal.contentEl, "kls-sticky-actions")[0])).toEqual([
+				"Import All Books", "Keep Current Choices",
+			]);
+			const importAll = findByText(modal.contentEl, "Import All Books");
+			const keepCurrent = findByText(modal.contentEl, "Keep Current Choices");
+
+			expect(importAll.classes.has("kls-glass-subtle")).toBe(true);
+			expect(importAll.classes.has("mod-cta")).toBe(false);
+			expect(keepCurrent.classes.has("kls-glass-strong")).toBe(true);
+			expect(keepCurrent.classes.has("mod-cta")).toBe(true);
+			expect(keepCurrent.focusCalls).toBe(1);
+			expect(currentChoiceEntries(modal)).toEqual(before);
+			expect(plugin.completeFirstSync).not.toHaveBeenCalled();
+		}
+	);
+
+	it.each(["button", "escape"] as const)(
+		"keeps every choice and restores trigger focus when confirmation is canceled by %s",
+		async (cancelMethod) => {
+			const modal = createModal(createPlugin(), [createBookGroup()]);
+
+			modal.onOpen();
+			await chooseImportAllConfirmationScenario(modal, "mixed");
+			const before = currentChoiceEntries(modal);
+			await findByText(modal.contentEl, "Import All Books").click();
+			if (cancelMethod === "button") {
+				await findByText(modal.contentEl, "Keep Current Choices").click();
+			} else {
+				modal.close();
+			}
+
+			expect(currentChoiceEntries(modal)).toEqual(before);
+			expect(readText(modal.contentEl)).not.toContain("Import all books?");
+			expect(readText(modal.contentEl)).not.toContain("Discard your selections?");
+			expect(findByText(modal.contentEl, "Import All Books").focusCalls).toBe(1);
+		}
+	);
+
+	it("changes every current modal choice to Import only after confirmation", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup(), createBookGroup("Deep Work")]);
+
+		modal.onOpen();
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Skip This Sync").click();
+		await chooseIgnoreAll(modal, findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"));
+		await findByText(modal.contentEl, "Import All Books").click();
+		expect(currentChoiceValues(modal)).toEqual(["skip", "skip", "ignore", "ignore"]);
+
+		await findByText(modal.contentEl, "Import All Books").click();
+
+		expect(currentChoiceValues(modal)).toEqual(["import", "import", "import", "import"]);
+		expect(findByText(modal.contentEl, "Import All Books").disabled).toBe(true);
+		expect(plugin.completeFirstSync).not.toHaveBeenCalled();
+	});
+
+	it("includes books hidden by search and filter while preserving help, query, filter, and scroll", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup(), createBookGroup("Deep Work")]);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "How choices work").click();
+		await searchBooks(modal, "Atomic");
+		await findByText(modal.contentEl, "Reviewed").click();
+		const body = elementByClassAt(modal.contentEl, "kls-modal-scroll-body", 0);
+
+		expect(bookHeadings(modal)).toEqual([]);
+		setScrollTop(body, 190);
+		setScrollTop(modal.contentEl, 190);
+		await findByText(modal.contentEl, "Import All Books").click();
+
+		expect(currentChoiceValues(modal)).toEqual(["import", "import", "import", "import"]);
+		expect(elementsByTag(modal.contentEl, "input")[0]?.value).toBe("Atomic");
+		expect(findByText(modal.contentEl, "Reviewed").attributes.get("aria-pressed")).toBe("true");
+		expect(findByText(modal.contentEl, "How choices work").attributes.get("aria-expanded")).toBe("true");
+		expect(scrollTop(modal.contentEl)).toBe(190);
+		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(190);
+		expect(bookHeadings(modal)).toEqual(["1 / 2 — Atomic Habits"]);
+		expect(plugin.completeFirstSync).not.toHaveBeenCalled();
+	});
+
+	it("does not mutate previously persisted Ignore records", async () => {
+		const plugin = createPlugin();
+		const persistedIgnore = { id: "saved-id", title: "Saved Book", textPreview: "Saved", ignoredAt: "earlier" };
+		plugin.settings = { ignoredHighlights: [persistedIgnore] };
+		const modal = createModal(plugin, [createBookGroup()]);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All Books").click();
+
+		expect(plugin.settings).toEqual({ ignoredHighlights: [persistedIgnore] });
+		expect(plugin.completeFirstSync).not.toHaveBeenCalled();
+	});
+
+	it("blocks Import All Books after a failure confirms Ignore records were already saved", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+		const error = new InvalidVaultWriteContractError("outcome-count");
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		error.retainIgnoreCleanupResult(createEmptyCleanupResult());
+		plugin.completeFirstSync.mockRejectedValueOnce(error);
+		modal.onOpen();
+		await chooseIgnoreAll(modal);
+		await findByText(modal.contentEl, "Finish Sync").click();
+		const before = currentChoiceEntries(modal);
+		const blockedButton = findByText(modal.contentEl, "Import All Books");
+
+		expect(blockedButton.disabled).toBe(true);
+		await blockedButton.click();
+		expect(currentChoiceEntries(modal)).toEqual(before);
+		expect(readText(modal.contentEl)).not.toContain("Import all books?");
+		await findByText(modal.contentEl, "Return to review").click();
+		expect(findByText(modal.contentEl, "Import All Books").disabled).toBe(true);
+		consoleError.mockRestore();
+	});
+
+	it("passes the final live choices to Finish Sync after later individual edits", async () => {
+		const plugin = createPlugin();
+		const atomic = createBookGroup();
+		const deepWork = createBookGroup("Deep Work");
+		const modal = createModal(plugin, [atomic, deepWork]);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All Books").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		await buttonByTextAt(modal.contentEl, "Skip This Sync", 0).click();
+		await buttonByTextAt(modal.contentEl, "Ignore", 1).click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
+		await findByText(modal.contentEl, "Finish Sync").click();
+
+		const [imports, ignores, skipped] = getCompleteFirstSyncArgs(plugin);
+
+		expect(imports).toEqual(deepWork.clippings);
+		expect(ignores).toEqual([atomic.clippings[1]]);
+		expect(skipped).toEqual([expect.objectContaining({
+			id: createClippingId(atomic.clippings[0]!),
+			returnReason: "skipped",
+		})]);
+	});
+
+	it("disables for no eligible items or all-Import state and re-enables after an individual change", async () => {
+		const emptyModal = createModal(createPlugin(), []);
+
+		emptyModal.onOpen();
+		expect(findByText(emptyModal.contentEl, "Import All Books").disabled).toBe(true);
+
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		const initialBulk = findByText(modal.contentEl, "Import All Books");
+		expect(initialBulk.disabled).toBe(false);
+		await initialBulk.click();
+		expect(findByText(modal.contentEl, "Import All Books").disabled).toBe(true);
+		await findByText(modal.contentEl, "Skip This Sync").click();
+		expect(findByText(modal.contentEl, "Import All Books").disabled).toBe(false);
+	});
+
+	it("keeps dirty-close protection after applying Import All Books", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+		const onClose = vi.spyOn(modal, "onClose");
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All Books").click();
+		await findByText(modal.contentEl, "Cancel").click();
+
+		expect(onClose).not.toHaveBeenCalled();
+		expect(readText(modal.contentEl)).toContain("Discard your selections?");
 	});
 });
 
@@ -1616,18 +1864,21 @@ describe("FirstSyncPreviewModal control registry lifecycle", () => {
 		]);
 
 		modal.onOpen();
-		const initialFinish = expectCurrentControlRegistries(modal, 6, 1).finishButtons[0];
+		const initialState = expectCurrentControlRegistries(modal, 7, 1);
+		const initialFinish = initialState.finishButtons[0];
+		const initialBulk = findByText(modal.contentEl, "Import All Books");
 
 		await searchBooks(modal, "Deep");
-		expect(expectCurrentControlRegistries(modal, 3, 1).finishButtons).toEqual([initialFinish]);
+		expect(expectCurrentControlRegistries(modal, 4, 1).finishButtons).toEqual([initialFinish]);
+		expect(findByText(modal.contentEl, "Import All Books")).toBe(initialBulk);
 		await searchBooks(modal, "");
-		expect(expectCurrentControlRegistries(modal, 6, 1).finishButtons).toEqual([initialFinish]);
+		expect(expectCurrentControlRegistries(modal, 7, 1).finishButtons).toEqual([initialFinish]);
 		await findByText(modal.contentEl, "Reviewed").click();
-		expect(expectCurrentControlRegistries(modal, 0, 1).finishButtons).toEqual([initialFinish]);
+		expect(expectCurrentControlRegistries(modal, 1, 1).finishButtons).toEqual([initialFinish]);
 		await findByText(modal.contentEl, "Needs Review").click();
-		expect(expectCurrentControlRegistries(modal, 6, 1).finishButtons).toEqual([initialFinish]);
+		expect(expectCurrentControlRegistries(modal, 7, 1).finishButtons).toEqual([initialFinish]);
 		await findByText(modal.contentEl, "All Books").click();
-		expect(expectCurrentControlRegistries(modal, 6, 1).finishButtons).toEqual([initialFinish]);
+		expect(expectCurrentControlRegistries(modal, 7, 1).finishButtons).toEqual([initialFinish]);
 	});
 
 	it("retains only the current controls after highlight decision renders", async () => {
@@ -1651,12 +1902,12 @@ describe("FirstSyncPreviewModal control registry lifecycle", () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
-		const listFinish = expectCurrentControlRegistries(modal, 3, 1).finishButtons[0];
+		const listFinish = expectCurrentControlRegistries(modal, 4, 1).finishButtons[0];
 
 		await findByText(modal.contentEl, "Review Highlights").click();
 		expectCurrentControlRegistries(modal, 6, 0);
 		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
-		const returnedListFinish = expectCurrentControlRegistries(modal, 3, 1).finishButtons[0];
+		const returnedListFinish = expectCurrentControlRegistries(modal, 4, 1).finishButtons[0];
 
 		expect(returnedListFinish).not.toBe(listFinish);
 		await findByText(modal.contentEl, "Finish Sync").click();
@@ -1664,7 +1915,7 @@ describe("FirstSyncPreviewModal control registry lifecycle", () => {
 
 		expect(confirmationFinish).not.toBe(returnedListFinish);
 		await findButtonByAriaLabel(modal.contentEl, "Back to Review").click();
-		const finalListFinish = expectCurrentControlRegistries(modal, 3, 1).finishButtons[0];
+		const finalListFinish = expectCurrentControlRegistries(modal, 4, 1).finishButtons[0];
 
 		expect(finalListFinish).not.toBe(confirmationFinish);
 	});
@@ -1891,7 +2142,7 @@ describe("FirstSyncPreviewModal completion failure", () => {
 		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 		const rerenderedFinish = findByText(modal.contentEl, "Finish Sync");
 
-		expectCurrentControlRegistries(modal, 3, 1);
+		expectCurrentControlRegistries(modal, 4, 1);
 		expect(elementsByClass(modal.contentEl, "kls-decision-button").every((button) => button.disabled)).toBe(true);
 		expect(rerenderedFinish.disabled).toBe(true);
 		expect(rerenderedFinish.attributes.get("aria-busy")).toBe("true");
@@ -2515,6 +2766,36 @@ function createDeferred<T>(): {
 	return { promise, resolve, reject };
 }
 
+async function chooseImportAllConfirmationScenario(
+	modal: InstanceType<typeof FirstSyncPreviewModal>,
+	scenario: "skip" | "ignore" | "mixed"
+): Promise<void> {
+	if (scenario === "skip") {
+		await findByText(modal.contentEl, "Skip This Sync").click();
+		return;
+	}
+
+	if (scenario === "ignore") {
+		await chooseIgnoreAll(modal);
+		return;
+	}
+
+	await findByText(modal.contentEl, "Review Highlights").click();
+	await buttonByTextAt(modal.contentEl, "Skip This Sync", 0).click();
+	await buttonByTextAt(modal.contentEl, "Ignore", 1).click();
+	await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
+}
+
+function currentChoiceEntries(modal: InstanceType<typeof FirstSyncPreviewModal>): Array<[string, string]> {
+	const choices = (modal as unknown as { choices: Map<string, string> }).choices;
+
+	return [...choices.entries()];
+}
+
+function currentChoiceValues(modal: InstanceType<typeof FirstSyncPreviewModal>): string[] {
+	return currentChoiceEntries(modal).map(([, choice]) => choice);
+}
+
 function readText(element: unknown): string {
 	return (element as TestElement).text();
 }
@@ -2553,7 +2834,9 @@ function helpStructureSnapshot(panel: TestElement): {
 
 function findByText(element: unknown, text: string): TestElement {
 	// Help definitions intentionally repeat action names, so action tests must resolve the interactive element.
-	if (["Finish Sync", "Ignore All", "Import All", "Review Highlights", "Skip This Sync"].includes(text)) {
+	if ([
+		"Finish Sync", "Ignore All", "Import All", "Import All Books", "Review Highlights", "Skip This Sync",
+	].includes(text)) {
 		const button = buttonsByText(element, text)[0];
 
 		if (button) {

@@ -94,6 +94,7 @@ export class FirstSyncPreviewModal extends Modal {
 	private readonly filterButtons = new Map<BookStatusFilter, ButtonComponent>();
 	private readonly decisionMutationButtons = new Set<ButtonComponent>();
 	private readonly finishSyncButtons = new Set<ButtonComponent>();
+	private readonly importAllBooksButtons = new Set<ButtonComponent>();
 	private readonly savedIgnoreChoiceIdentities = new Set<string>();
 	private scrollBodyEl: HTMLElement | null = null;
 	private highlightListEl: HTMLElement | null = null;
@@ -108,6 +109,7 @@ export class FirstSyncPreviewModal extends Modal {
 	private activeReviewRenderer: (() => void) | null = null;
 	private resumeAfterDiscardConfirmation: (() => void) | null = null;
 	private isDiscardConfirmationOpen = false;
+	private isImportAllBooksConfirmationOpen = false;
 	private hasCompletedSync = false;
 	private isCompletionPending = false;
 	private completionFailure: CompletionFailure | null = null;
@@ -135,6 +137,11 @@ export class FirstSyncPreviewModal extends Modal {
 
 	close(): void {
 		if (this.isCompletionPending) {
+			return;
+		}
+
+		if (this.isImportAllBooksConfirmationOpen) {
+			this.keepCurrentImportChoices();
 			return;
 		}
 
@@ -171,9 +178,17 @@ export class FirstSyncPreviewModal extends Modal {
 		this.renderVisibleBookCards();
 
 		const footer = this.createStickyActions();
+		const bulkActions = footer.createDiv();
+		const completionActions = footer.createDiv();
 
-		this.addFinishSyncButton(footer);
-		this.addCancelButton(footer);
+		footer.addClass("kls-first-sync-review-actions");
+		bulkActions.addClass("kls-button-row");
+		bulkActions.addClass("kls-first-sync-bulk-actions");
+		completionActions.addClass("kls-button-row");
+		completionActions.addClass("kls-first-sync-completion-actions");
+		this.addImportAllBooksButton(bulkActions);
+		this.addFinishSyncButton(completionActions);
+		this.addCancelButton(completionActions);
 
 		this.restoreBookListPosition();
 	}
@@ -199,6 +214,8 @@ export class FirstSyncPreviewModal extends Modal {
 		if (!bookListEl) {
 			return;
 		}
+
+		const importAllBooksButtons = [...this.importAllBooksButtons];
 
 		this.decisionMutationButtons.clear();
 		bookListEl.empty();
@@ -281,6 +298,12 @@ export class FirstSyncPreviewModal extends Modal {
 					this.scrollToTopAfterRender();
 				});
 
+		}
+
+		// The footer survives search/filter-only renders, so keep its live mutation control registered.
+		for (const button of importAllBooksButtons) {
+			this.decisionMutationButtons.add(button);
+			this.updateImportAllBooksButtonState(button);
 		}
 	}
 
@@ -415,6 +438,11 @@ export class FirstSyncPreviewModal extends Modal {
 		const choices = panelEl.createEl("dl");
 
 		choices.addClass("kls-choice-help");
+		this.renderChoiceHelpItem(
+			choices,
+			"Import All Books",
+			"Selects every book in this review. Choices made here change to Import."
+		);
 		this.renderChoiceHelpItem(choices, "Import All", "Choose Import for every highlight in this book.");
 		this.renderChoiceHelpItem(
 			choices,
@@ -588,6 +616,110 @@ export class FirstSyncPreviewModal extends Modal {
 		return true;
 	}
 
+	private addImportAllBooksButton(containerEl: HTMLElement): void {
+		const button = this.createActionButton(containerEl, "Import All Books", "subtle");
+
+		button.buttonEl.addClass("kls-decision-button");
+		button.buttonEl.addClass("kls-import-all-books-button");
+		this.importAllBooksButtons.add(button);
+		this.registerDecisionMutationButton(button);
+		this.updateImportAllBooksButtonState(button);
+		button.onClick(() => this.handleImportAllBooks());
+	}
+
+	private handleImportAllBooks(): void {
+		if (!this.canImportAllBooks()) {
+			return;
+		}
+
+		this.saveBookListPosition();
+		this.shouldRestoreBookListScroll = true;
+		if (this.hasCurrentSkipOrIgnoreChoices()) {
+			this.renderImportAllBooksConfirmation();
+			return;
+		}
+
+		this.applyImportAllBooks();
+	}
+
+	private renderImportAllBooksConfirmation(): void {
+		this.isImportAllBooksConfirmationOpen = true;
+		const bodyEl = this.createModalBody();
+
+		bodyEl.createEl("h2", { text: "Import all books?" });
+		bodyEl.createEl("p", {
+			text: "Your current Skip and Ignore choices will change to Import. Highlights ignored in earlier syncs won’t be affected.",
+		});
+		bodyEl.createEl("p", {
+			text: "Nothing will be imported until you select Finish Sync.",
+		});
+
+		const actions = this.createStickyActions();
+
+		this.createActionButton(actions, "Import All Books", "subtle")
+			.onClick(() => this.confirmImportAllBooks());
+		const keepCurrentButton = this.createActionButton(actions, "Keep Current Choices", "strong").setCta();
+
+		keepCurrentButton.onClick(() => this.keepCurrentImportChoices());
+		this.afterRender(() => keepCurrentButton.buttonEl.focus({ preventScroll: true }));
+	}
+
+	private confirmImportAllBooks(): void {
+		if (!this.isImportAllBooksConfirmationOpen || !this.canImportAllBooks()) {
+			return;
+		}
+
+		this.isImportAllBooksConfirmationOpen = false;
+		this.applyImportAllBooks();
+	}
+
+	private keepCurrentImportChoices(): void {
+		if (!this.isImportAllBooksConfirmationOpen) {
+			return;
+		}
+
+		this.isImportAllBooksConfirmationOpen = false;
+		this.shouldRestoreBookListScroll = true;
+		this.renderBookList();
+		const trigger = [...this.importAllBooksButtons][0];
+
+		if (trigger) {
+			this.afterRender(() => trigger.buttonEl.focus({ preventScroll: true }));
+		}
+	}
+
+	private applyImportAllBooks(): void {
+		if (!this.canImportAllBooks()) {
+			return;
+		}
+
+		// Work from the review model so books hidden by search or filters receive the same temporary choice.
+		for (const group of this.bookGroups) {
+			for (const highlight of group.clippings) {
+				this.choices.set(createKindleHighlightIdentityKey(highlight), "import");
+			}
+		}
+
+		this.shouldRestoreBookListScroll = true;
+		this.renderBookList();
+	}
+
+	private hasCurrentSkipOrIgnoreChoices(): boolean {
+		return [...this.choices.values()].some((choice) => choice === "skip" || choice === "ignore");
+	}
+
+	private canImportAllBooks(): boolean {
+		if (!this.canMutateDecisions() || this.savedIgnoreChoiceIdentities.size > 0) {
+			return false;
+		}
+
+		const highlights = this.bookGroups.flatMap((group) => group.clippings);
+
+		return highlights.length > 0 && highlights.some((highlight) =>
+			this.choices.get(createKindleHighlightIdentityKey(highlight)) !== "import"
+		);
+	}
+
 	private setHighlightChoice(identity: string, choice: FirstSyncChoice): boolean {
 		if (!this.canMutateDecisions()) {
 			return false;
@@ -747,6 +879,7 @@ export class FirstSyncPreviewModal extends Modal {
 	private createModalBody(): HTMLElement {
 		this.decisionMutationButtons.clear();
 		this.finishSyncButtons.clear();
+		this.importAllBooksButtons.clear();
 		this.contentEl.empty();
 		this.contentEl.addClass("kls-first-sync-modal");
 
@@ -903,6 +1036,14 @@ export class FirstSyncPreviewModal extends Modal {
 		for (const button of this.decisionMutationButtons) {
 			button.setDisabled(!this.canMutateDecisions());
 		}
+
+		for (const button of this.importAllBooksButtons) {
+			this.updateImportAllBooksButtonState(button);
+		}
+	}
+
+	private updateImportAllBooksButtonState(button: ButtonComponent): void {
+		button.setDisabled(!this.canImportAllBooks());
 	}
 
 	private updateFinishSyncButtonStates(): void {

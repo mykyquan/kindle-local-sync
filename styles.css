@@ -1311,6 +1311,51 @@ If your plugin does not need CSS, delete this file.
 	box-shadow: 0 -0.75em 1em var(--background-primary);
 }
 
+.kls-first-sync-modal .kls-first-sync-review-actions {
+	flex-direction: row;
+	flex-wrap: nowrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75em;
+}
+
+.kls-first-sync-modal .kls-first-sync-bulk-actions,
+.kls-first-sync-modal .kls-first-sync-completion-actions {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	min-width: 0;
+}
+
+.kls-first-sync-modal .kls-first-sync-bulk-actions {
+	flex: 0 1 auto;
+}
+
+.kls-first-sync-modal .kls-first-sync-completion-actions {
+	flex: 0 1 auto;
+	justify-content: flex-end;
+	margin-inline-start: auto;
+}
+
+@media (max-width: 640px) {
+	.kls-first-sync-modal .kls-first-sync-review-actions,
+	.kls-first-sync-modal .kls-first-sync-bulk-actions,
+	.kls-first-sync-modal .kls-first-sync-completion-actions {
+		flex-direction: column;
+		align-items: stretch;
+		width: 100%;
+	}
+
+	.kls-first-sync-modal .kls-first-sync-completion-actions {
+		margin-inline-start: 0;
+	}
+
+	.kls-first-sync-modal .kls-first-sync-review-actions .kls-action-button {
+		width: 100%;
+		max-width: 100%;
+	}
+}
+
 .kls-option-description {
 	margin-left: 1.25em;
 	padding-left: 0.75em;

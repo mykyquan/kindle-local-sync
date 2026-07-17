@@ -219,6 +219,18 @@ describe("review action styling", () => {
 		expect(styles).toContain("hyphens: none;");
 	});
 
+	it("keeps the First Sync bulk footer grouped on desktop and full-width only in its narrow scope", () => {
+		expect(firstSyncSource).toContain('footer.addClass("kls-first-sync-review-actions")');
+		expect(firstSyncSource).toContain('bulkActions.addClass("kls-first-sync-bulk-actions")');
+		expect(firstSyncSource).toContain('completionActions.addClass("kls-first-sync-completion-actions")');
+		expect(styles).toMatch(/\.kls-first-sync-modal \.kls-first-sync-review-actions \{[^}]*flex-direction: row;[^}]*flex-wrap: nowrap;[^}]*justify-content: space-between;/);
+		expect(styles).toMatch(/\.kls-first-sync-modal \.kls-first-sync-completion-actions \{[^}]*justify-content: flex-end;[^}]*margin-inline-start: auto;/);
+		expect(styles).toMatch(/@media \(max-width: 640px\)[\s\S]*?\.kls-first-sync-modal \.kls-first-sync-review-actions,[\s\S]*?flex-direction: column;[\s\S]*?width: 100%;/);
+		expect(styles).toMatch(/@media \(max-width: 640px\)[\s\S]*?\.kls-first-sync-modal \.kls-first-sync-review-actions \.kls-action-button \{[^}]*width: 100%;[^}]*max-width: 100%;/);
+		expect(styles).toMatch(/\.kls-sticky-actions \{[^}]*justify-content: flex-end;/);
+		expect(styles).not.toMatch(/(^|\n)\.kls-first-sync-review-actions\s*\{/);
+	});
+
 	it("keeps Needs Review glass legible in fallback modes", () => {
 		expect(styles).toMatch(/@media \(prefers-reduced-transparency: reduce\)[\s\S]*?\.kls-book-status-needs-review/);
 		expect(styles).toMatch(/@media \(forced-colors: active\)[\s\S]*?\.kls-book-status-needs-review/);
