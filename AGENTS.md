@@ -1,251 +1,155 @@
-# Obsidian community plugin
+# Kindle Local Sync — Codex Working Instructions
 
-## Project overview
+## Project purpose
 
-- Target: Obsidian Community Plugin (TypeScript → bundled JavaScript).
-- Entry point: `main.ts` compiled to `main.js` and loaded by Obsidian.
-- Required release artifacts: `main.js`, `manifest.json`, and optional `styles.css`.
+Kindle Local Sync is a privacy-first Obsidian plugin that reads Kindle highlights from a local `My Clippings.txt` file and imports approved highlights into Markdown notes.
 
-## Environment & tooling
+The plugin must remain local-first. Do not add cloud sync, analytics, tracking, telemetry, or external data transmission unless explicitly requested.
 
-- Node.js: use current LTS (Node 18+ recommended).
-- **Package manager: npm** (required for this sample - `package.json` defines npm scripts and dependencies).
-- **Bundler: esbuild** (required for this sample - `esbuild.config.mjs` and build scripts depend on it). Alternative bundlers like Rollup or webpack are acceptable for other projects if they bundle all external dependencies into `main.js`.
-- Types: `obsidian` type definitions.
+## User safety principles
 
-**Note**: This sample project has specific technical dependencies on npm and esbuild. If you're creating a plugin from scratch, you can choose different tools, but you'll need to replace the build configuration accordingly.
+Data safety is more important than implementation convenience.
 
-### Install
+- Never silently delete, overwrite, or discard user-authored content.
+- Content outside the managed markers must always be preserved.
+- The managed region is bounded by:
+  - `<!-- kindle-local-sync:start -->`
+  - `<!-- kindle-local-sync:end -->`
+- Clearly distinguish existing users from new users.
+- Existing users may already have Kindle highlight Markdown notes even when plugin data is missing.
+- Existing notes and highlights must remain unless the user explicitly ignores or removes them.
+- Existing users should normally review only new, missing, or unmatched highlights.
+- New users must approve highlights before they are imported for the first time.
+- Treat changes to sync, migration, note detection, managed-region replacement, ignored highlights, and ID generation as high-risk changes.
 
-```bash
-npm install
-```
+## Working boundaries
 
-### Dev (watch)
+Unless the current prompt explicitly authorizes it:
 
-```bash
-npm run dev
-```
+- Do not commit.
+- Do not push.
+- Do not merge branches.
+- Do not create pull requests.
+- Do not publish or release the plugin.
+- Do not change unrelated files.
+- Do not perform broad refactors.
+- Do not rename public APIs or user-facing concepts.
+- Do not change existing behavior merely to make the code cleaner.
+- Do not rebuild, stage, force-add, or commit `main.js` or other ignored/generated artifacts unless the user explicitly authorizes that exact action.
+- When production-build verification is required but the real repository bundle must remain unchanged, use a clean disposable clone or worktree and verify there.
+- A successful build does not authorize copying generated output back into the repository.
+- `PROGRESS.md` and all QA vaults or QA evidence are local-only and must not be staged or committed unless the user explicitly changes that policy.
+- Preserve existing user changes in the working tree.
 
-### Production build
+If the requested task conflicts with current behavior, data-safety rules, or documented project decisions, stop and explain the conflict before implementing it.
 
-```bash
-npm run build
-```
+## Investigation before implementation
 
-## Linting
+Before changing code:
 
-- To use eslint install eslint from terminal: `npm install -g eslint`
-- To use eslint to analyze this project use this command: `eslint main.ts`
-- eslint will then create a report with suggestions for code improvement by file and line number.
-- If your source code is in a folder, such as `src`, you can use eslint with this command to analyze all files in that folder: `eslint ./src/`
+1. Inspect the relevant implementation and tests.
+2. Trace the complete call path when sync behavior or stored data is involved.
+3. Identify affected files and behavior.
+4. Check whether the requested change could delete or rewrite existing Markdown content.
+5. State any important assumption before relying on it.
 
-## File & folder conventions
+Do not claim a bug is fixed until the relevant path has been tested.
 
-- **Organize code into multiple files**: Split functionality across separate modules rather than putting everything in `main.ts`.
-- Source lives in `src/`. Keep `main.ts` small and focused on plugin lifecycle (loading, unloading, registering commands).
-- **Example file structure**:
-  ```
-  src/
-    main.ts           # Plugin entry point, lifecycle management
-    settings.ts       # Settings interface and defaults
-    commands/         # Command implementations
-      command1.ts
-      command2.ts
-    ui/              # UI components, modals, views
-      modal.ts
-      view.ts
-    utils/           # Utility functions, helpers
-      helpers.ts
-      constants.ts
-    types.ts         # TypeScript interfaces and types
-  ```
-- **Do not commit build artifacts**: Never commit `node_modules/`, `main.js`, or other generated files to version control.
-- Keep the plugin small. Avoid large dependencies. Prefer browser-compatible packages.
-- Generated output should be placed at the plugin root or `dist/` depending on your build setup. Release artifacts must end up at the top level of the plugin folder in the vault (`main.js`, `manifest.json`, `styles.css`).
+## Code quality
 
-## Manifest rules (`manifest.json`)
+- Follow the existing TypeScript style and project architecture.
+- Prefer small, focused changes.
+- Avoid duplicated logic.
+- Use descriptive names.
+- Keep functions focused on one responsibility.
+- Do not introduce abstractions unless they reduce real complexity.
+- Handle edge cases explicitly.
+- Preserve backward compatibility unless a breaking change is explicitly approved.
+- Do not use `any` merely to bypass TypeScript errors.
+- Do not suppress lint rules without explaining why.
 
-- Must include (non-exhaustive):  
-  - `id` (plugin ID; for local dev it should match the folder name)  
-  - `name`  
-  - `version` (Semantic Versioning `x.y.z`)  
-  - `minAppVersion`  
-  - `description`  
-  - `isDesktopOnly` (boolean)  
-  - Optional: `author`, `authorUrl`, `fundingUrl` (string or map)
-- Never change `id` after release. Treat it as stable API.
-- Keep `minAppVersion` accurate when using newer APIs.
-- Canonical requirements are coded here: https://github.com/obsidianmd/obsidian-releases/blob/master/.github/workflows/validate-plugin-entry.yml
+## Code comments
 
-## Testing
+Add comments where they help a future developer understand intent, risk, or non-obvious behavior.
 
-- Manual install for testing: copy `main.js`, `manifest.json`, `styles.css` (if any) to:
-  ```
-  <Vault>/.obsidian/plugins/<plugin-id>/
-  ```
-- Reload Obsidian and enable the plugin in **Settings → Community plugins**.
+Comment requirements:
 
-## Commands & settings
+- Write code comments in clear English.
+- Add comments for non-obvious sync rules, data-safety boundaries, migration behavior, managed-region behavior, and unusual edge cases.
+- Explain why a decision exists, not merely what the next line does.
+- Add concise JSDoc to important public methods or complex functions when their contract is not obvious.
+- Update or remove comments when the related behavior changes.
+- Do not comment every line.
+- Do not add comments that simply repeat the code.
+- Do not leave misleading, speculative, or outdated comments.
+- Use TODO comments only when they include a specific reason or follow-up action.
 
-- Any user-facing commands should be added via `this.addCommand(...)`.
-- If the plugin has configuration, provide a settings tab and sensible defaults.
-- Persist settings using `this.loadData()` / `this.saveData()`.
-- Use stable command IDs; avoid renaming once released.
+Example of a useful comment:
 
-## Versioning & releases
+// Preserve user-authored text outside the managed region when replacing synced highlights.
 
-- Bump `version` in `manifest.json` (SemVer) and update `versions.json` to map plugin version → minimum app version.
-- Create a GitHub release whose tag exactly matches `manifest.json`'s `version`. Do not use a leading `v`.
-- Attach `manifest.json`, `main.js`, and `styles.css` (if present) to the release as individual assets.
-- After the initial release, follow the process to add/update your plugin in the community catalog as required.
+Example of an unnecessary comment:
 
-## Security, privacy, and compliance
+// Increment the index by one.
+index++;
 
-Follow Obsidian's **Developer Policies** and **Plugin Guidelines**. In particular:
+## Testing requirements
 
-- Default to local/offline operation. Only make network requests when essential to the feature.
-- No hidden telemetry. If you collect optional analytics or call third-party services, require explicit opt-in and document clearly in `README.md` and in settings.
-- Never execute remote code, fetch and eval scripts, or auto-update plugin code outside of normal releases.
-- Minimize scope: read/write only what's necessary inside the vault. Do not access files outside the vault.
-- Clearly disclose any external services used, data sent, and risks.
-- Respect user privacy. Do not collect vault contents, filenames, or personal information unless absolutely necessary and explicitly consented.
-- Avoid deceptive patterns, ads, or spammy notifications.
-- Register and clean up all DOM, app, and interval listeners using the provided `register*` helpers so the plugin unloads safely.
+For behavior changes:
 
-## UX & copy guidelines (for UI text, commands, settings)
+- Add or update focused tests.
+- Include regression tests for confirmed bugs.
+- Test both the successful path and relevant edge cases.
+- For data-writing changes, test preservation of content outside managed markers.
+- For existing-user flows, test notes with and without plugin data.
+- For review decisions, test Import, Skip this sync, and Ignore separately when applicable.
+- Avoid weakening assertions only to make a failing test pass.
 
-- Prefer sentence case for headings, buttons, and titles.
-- Use clear, action-oriented imperatives in step-by-step copy.
-- Use **bold** to indicate literal UI labels. Prefer "select" for interactions.
-- Use arrow notation for navigation: **Settings → Community plugins**.
-- Keep in-app strings short, consistent, and free of jargon.
+Run the repository’s relevant verification commands, normally including:
 
-## Performance
+- Focused tests: `npx vitest run src/SyncSummaryModal.test.ts` (substitute the relevant tracked test file when another focused suite applies).
+- Full tests: `npm test`.
+- TypeScript checking: `npx tsc --noEmit --skipLibCheck`.
+- Lint: `npm run lint`.
+- Production build: `npm run build`.
+- Git diff checking: `git diff --check`.
 
-- Keep startup light. Defer heavy work until needed.
-- Avoid long-running tasks during `onload`; use lazy initialization.
-- Batch disk access and avoid excessive vault scans.
-- Debounce/throttle expensive operations in response to file system events.
+If a command cannot be run or fails for an unrelated reason, report that clearly. Do not describe verification as passed unless it actually passed.
 
-## Coding conventions
+## User-facing copy
 
-- TypeScript with `"strict": true` preferred.
-- **Keep `main.ts` minimal**: Focus only on plugin lifecycle (onload, onunload, addCommand calls). Delegate all feature logic to separate modules.
-- **Split large files**: If any file exceeds ~200-300 lines, consider breaking it into smaller, focused modules.
-- **Use clear module boundaries**: Each file should have a single, well-defined responsibility.
-- Bundle everything into `main.js` (no unbundled runtime deps).
-- Avoid Node/Electron APIs if you want mobile compatibility; set `isDesktopOnly` accordingly.
-- Prefer `async/await` over promise chains; handle errors gracefully.
+- Use concise, beginner-friendly language.
+- Avoid unnecessarily technical or alarming wording.
+- Clearly explain what will be kept, added, skipped, ignored, or removed.
+- Do not imply that existing users must approve all previous highlights again.
+- Keep terminology consistent across the UI, README, and localized documentation.
+- When English user-facing text changes, check whether Vietnamese, Simplified Chinese, and Traditional Chinese versions also need updates.
 
-## Mobile
+## Scope control
 
-- Where feasible, test on iOS and Android.
-- Don't assume desktop-only behavior unless `isDesktopOnly` is `true`.
-- Avoid large in-memory structures; be mindful of memory and storage constraints.
+Before editing, list the files expected to change.
 
-## Agent do/don't
+After editing, report:
 
-**Do**
-- Add commands with stable IDs (don't rename once released).
-- Provide defaults and validation in settings.
-- Write idempotent code paths so reload/unload doesn't leak listeners or intervals.
-- Use `this.register*` helpers for everything that needs cleanup.
+- files changed
+- behavior changed
+- behavior intentionally unchanged
+- comments added or updated
+- tests added or updated
+- exact verification results
+- remaining risks or manual checks
 
-**Don't**
-- Introduce network calls without an obvious user-facing reason and documentation.
-- Ship features that require cloud services without clear disclosure and explicit opt-in.
-- Store or transmit vault contents unless essential and consented.
+Do not include unrelated cleanup in the same task.
 
-## Common tasks
+## Communication style
 
-### Organize code across multiple files
+Explain findings in a beginner-friendly but technically accurate way.
 
-**main.ts** (minimal, lifecycle only):
-```ts
-import { Plugin } from "obsidian";
-import { MySettings, DEFAULT_SETTINGS } from "./settings";
-import { registerCommands } from "./commands";
+When identifying a problem, separate:
 
-export default class MyPlugin extends Plugin {
-  settings: MySettings;
+- confirmed behavior
+- likely behavior
+- assumptions
+- recommendations
 
-  async onload() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-    registerCommands(this);
-  }
-}
-```
-
-**settings.ts**:
-```ts
-export interface MySettings {
-  enabled: boolean;
-  apiKey: string;
-}
-
-export const DEFAULT_SETTINGS: MySettings = {
-  enabled: true,
-  apiKey: "",
-};
-```
-
-**commands/index.ts**:
-```ts
-import { Plugin } from "obsidian";
-import { doSomething } from "./my-command";
-
-export function registerCommands(plugin: Plugin) {
-  plugin.addCommand({
-    id: "do-something",
-    name: "Do something",
-    callback: () => doSomething(plugin),
-  });
-}
-```
-
-### Add a command
-
-```ts
-this.addCommand({
-  id: "your-command-id",
-  name: "Do the thing",
-  callback: () => this.doTheThing(),
-});
-```
-
-### Persist settings
-
-```ts
-interface MySettings { enabled: boolean }
-const DEFAULT_SETTINGS: MySettings = { enabled: true };
-
-async onload() {
-  this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-  await this.saveData(this.settings);
-}
-```
-
-### Register listeners safely
-
-```ts
-this.registerEvent(this.app.workspace.on("file-open", f => { /* ... */ }));
-this.registerDomEvent(window, "resize", () => { /* ... */ });
-this.registerInterval(window.setInterval(() => { /* ... */ }, 1000));
-```
-
-## Troubleshooting
-
-- Plugin doesn't load after build: ensure `main.js` and `manifest.json` are at the top level of the plugin folder under `<Vault>/.obsidian/plugins/<plugin-id>/`. 
-- Build issues: if `main.js` is missing, run `npm run build` or `npm run dev` to compile your TypeScript source code.
-- Commands not appearing: verify `addCommand` runs after `onload` and IDs are unique.
-- Settings not persisting: ensure `loadData`/`saveData` are awaited and you re-render the UI after changes.
-- Mobile-only issues: confirm you're not using desktop-only APIs; check `isDesktopOnly` and adjust.
-
-## References
-
-- Obsidian sample plugin: https://github.com/obsidianmd/obsidian-sample-plugin
-- API documentation: https://docs.obsidian.md
-- Developer policies: https://docs.obsidian.md/Developer+policies
-- Plugin guidelines: https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines
-- Style guide: https://help.obsidian.md/style-guide
+When discussing a risky change, explain the concrete user scenario in which data could be affected.
