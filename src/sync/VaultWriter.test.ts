@@ -214,21 +214,21 @@ function normalizeMockPath(path: string): string {
 		.replace(/\/+$/, "");
 }
 
-const atomicHighlight = createHighlight({
-	bookTitle: "Atomic Habits",
-	author: "James Clear",
+const orchardHighlight = createHighlight({
+	bookTitle: "The Clockwork Orchard",
+	author: "Mira Vale",
 	location: "154",
-	content: "Small habits make a big difference.",
-	dateAdded: "Thursday, May 14, 2026 2:44 PM",
+	content: "Clockwork apples chime at midnight.",
+	dateAdded: "Monday, October 5, 2099 9:41 AM",
 	type: "Highlight",
 });
 
-const atomicNote = createHighlight({
-	bookTitle: "Atomic Habits",
-	author: "James Clear",
+const orchardNote = createHighlight({
+	bookTitle: "The Clockwork Orchard",
+	author: "Mira Vale",
 	location: "160",
-	content: "Review this idea later.",
-	dateAdded: "Thursday, May 14, 2026 2:45 PM",
+	content: "Revisit the orchard map later.",
+	dateAdded: "Monday, October 5, 2099 9:42 AM",
 	type: "Note",
 });
 
@@ -238,9 +238,9 @@ describe("writeBookNotesToVault", () => {
 
 		await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight],
 			},
 		]);
 
@@ -249,29 +249,29 @@ describe("writeBookNotesToVault", () => {
 
 	it("creates one new Markdown file per book and returns accurate create counts", async () => {
 		const vault = new MockVault();
-		const deepWorkHighlight = createHighlight({
-			bookTitle: "Deep Work",
-			author: "Cal Newport",
+		const lumenBayHighlight = createHighlight({
+			bookTitle: "Night Trains to Lumen Bay",
+			author: "Owen Hart",
 			location: "220",
-			content: "Schedule focus time.",
+			content: "Reserve a window seat before moonrise.",
 		});
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight],
 			},
 			{
-				bookTitle: "Deep Work",
-				author: "Cal Newport",
-				clippings: [deepWorkHighlight],
+				bookTitle: "Night Trains to Lumen Bay",
+				author: "Owen Hart",
+				clippings: [lumenBayHighlight],
 			},
 		]);
 
 		expect(vault.filePaths()).toEqual([
-			"Kindle Highlights/Atomic Habits - James Clear.md",
-			"Kindle Highlights/Deep Work - Cal Newport.md",
+			"Kindle Highlights/Night Trains to Lumen Bay - Owen Hart.md",
+			"Kindle Highlights/The Clockwork Orchard - Mira Vale.md",
 		]);
 		expect(summary).toEqual({
 			books: 2,
@@ -283,17 +283,17 @@ describe("writeBookNotesToVault", () => {
 			duplicatesSkipped: 0,
 			bookOutcomes: [
 				{
-					bookTitle: "Atomic Habits",
-					author: "James Clear",
-					notePath: "Kindle Highlights/Atomic Habits - James Clear.md",
-					highlightIds: [createClippingId(atomicHighlight)],
+					bookTitle: "The Clockwork Orchard",
+					author: "Mira Vale",
+					notePath: "Kindle Highlights/The Clockwork Orchard - Mira Vale.md",
+					highlightIds: [createClippingId(orchardHighlight)],
 					status: "created",
 				},
 				{
-					bookTitle: "Deep Work",
-					author: "Cal Newport",
-					notePath: "Kindle Highlights/Deep Work - Cal Newport.md",
-					highlightIds: [createClippingId(deepWorkHighlight)],
+					bookTitle: "Night Trains to Lumen Bay",
+					author: "Owen Hart",
+					notePath: "Kindle Highlights/Night Trains to Lumen Bay - Owen Hart.md",
+					highlightIds: [createClippingId(lumenBayHighlight)],
 					status: "created",
 				},
 			],
@@ -305,17 +305,17 @@ describe("writeBookNotesToVault", () => {
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight],
 			},
 		]);
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
 		const fileContent = vault.readFile(notePath) ?? "";
 
 		expect(vault.filePaths()).toEqual([notePath]);
 		expect(vault.createCount(notePath)).toBe(1);
-		expect(fileContent).toContain("> Small habits make a big difference.");
+		expect(fileContent).toContain("> Clockwork apples chime at midnight.");
 		expect(summary).toMatchObject({
 			filesCreated: 1,
 			filesUpdated: 0,
@@ -327,12 +327,12 @@ describe("writeBookNotesToVault", () => {
 		const vault = new MockVault();
 		const bookGroups = [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight],
 			},
 		];
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
 
 		await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", bookGroups);
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", bookGroups);
@@ -349,13 +349,13 @@ describe("writeBookNotesToVault", () => {
 
 	it("adds a new highlight while preserving adjacent personal content outside the managed region", async () => {
 		const vault = new MockVault();
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
-		const before = "# Atomic Habits\n\nPersonal content immediately before.";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
+		const before = "# The Clockwork Orchard\n\nPersonal content immediately before.";
 		const after = "Personal content immediately after.";
 		const existingMarkdown = renderManagedNote(
-			"Atomic Habits",
-			"James Clear",
-			[atomicHighlight],
+			"The Clockwork Orchard",
+			"Mira Vale",
+			[orchardHighlight],
 			before,
 			after
 		);
@@ -364,22 +364,22 @@ describe("writeBookNotesToVault", () => {
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight, atomicNote],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight, orchardNote],
 			},
 		]);
 		const fileContent = vault.readFile(notePath) ?? "";
 		const expectedMarkdown = renderManagedNote(
-			"Atomic Habits",
-			"James Clear",
-			[atomicHighlight, atomicNote],
+			"The Clockwork Orchard",
+			"Mira Vale",
+			[orchardHighlight, orchardNote],
 			before,
 			after
 		);
 
 		expect(fileContent).toBe(expectedMarkdown);
-		expect(fileContent.match(new RegExp(createClippingId(atomicHighlight), "g"))).toHaveLength(1);
+		expect(fileContent.match(new RegExp(createClippingId(orchardHighlight), "g"))).toHaveLength(1);
 		expect(fileContent).toContain("Personal content immediately before.");
 		expect(fileContent).toContain("Personal content immediately after.");
 		expect(summary).toMatchObject({
@@ -393,21 +393,21 @@ describe("writeBookNotesToVault", () => {
 
 	it("restores a deleted managed region without changing any existing user-authored byte", async () => {
 		const vault = new MockVault();
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
-		const existingMarkdown = "# Atomic Habits\r\n\r\nPersonal introduction.\r\n\r\nPersonal ending.  \r\n \t";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
+		const existingMarkdown = "# The Clockwork Orchard\r\n\r\nPersonal introduction.\r\n\r\nPersonal ending.  \r\n \t";
 
 		await vault.createFolder("Kindle Highlights");
 		await vault.create(notePath, existingMarkdown);
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [{
-			bookTitle: "Atomic Habits",
-			author: "James Clear",
-			clippings: [atomicHighlight],
+			bookTitle: "The Clockwork Orchard",
+			author: "Mira Vale",
+			clippings: [orchardHighlight],
 		}]);
 		const updatedMarkdown = vault.readFile(notePath) ?? "";
 
 		expect(updatedMarkdown.slice(0, existingMarkdown.length)).toBe(existingMarkdown);
-		expect(updatedMarkdown).toContain(createClippingId(atomicHighlight));
+		expect(updatedMarkdown).toContain(createClippingId(orchardHighlight));
 		expect(summary).toMatchObject({
 			filesUpdated: 1,
 			filesProtected: 0,
@@ -417,17 +417,17 @@ describe("writeBookNotesToVault", () => {
 
 	it("protects an existing managed highlight that is absent from the incoming group", async () => {
 		const vault = new MockVault();
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
 		const existingHighlightC = createHighlight({
 			location: "170",
 			content: "Existing highlight C must remain.",
-			dateAdded: "Friday, May 15, 2026 9:10 AM",
+			dateAdded: "Tuesday, October 6, 2099 10:10 AM",
 		});
 		const existingMarkdown = renderManagedNote(
-			"Atomic Habits",
-			"James Clear",
-			[atomicHighlight, existingHighlightC],
-			"# Atomic Habits\n\n",
+			"The Clockwork Orchard",
+			"Mira Vale",
+			[orchardHighlight, existingHighlightC],
+			"# The Clockwork Orchard\n\n",
 			"\n"
 		);
 		await vault.createFolder("Kindle Highlights");
@@ -435,15 +435,15 @@ describe("writeBookNotesToVault", () => {
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight, atomicNote],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight, orchardNote],
 			},
 		]);
 
 		expect(vault.readFile(notePath)).toBe(existingMarkdown);
 		expect(vault.readFile(notePath)).toContain("Existing highlight C must remain.");
-		expect(vault.readFile(notePath)).not.toContain("Review this idea later.");
+		expect(vault.readFile(notePath)).not.toContain("Revisit the orchard map later.");
 		expect(vault.modifies()).toBe(0);
 		expect(summary).toMatchObject({
 			filesCreated: 0,
@@ -453,68 +453,68 @@ describe("writeBookNotesToVault", () => {
 			bookOutcomes: [{
 				status: "protected",
 				reason: "existing-highlights-not-retained",
-				highlightIds: [createClippingId(atomicHighlight), createClippingId(atomicNote)],
+				highlightIds: [createClippingId(orchardHighlight), createClippingId(orchardNote)],
 			}],
 		});
 	});
 
 	it("creates a new book with every incoming highlight", async () => {
 		const vault = new MockVault();
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
 
 		await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight, atomicNote],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight, orchardNote],
 			},
 		]);
 
 		const fileContent = vault.readFile(notePath) ?? "";
 		expect(vault.createCount(notePath)).toBe(1);
-		expect(fileContent).toContain("Small habits make a big difference.");
-		expect(fileContent).toContain("Review this idea later.");
+		expect(fileContent).toContain("Clockwork apples chime at midnight.");
+		expect(fileContent).toContain("Revisit the orchard map later.");
 		expect(fileContent.match(/kindle-local-sync-id:/g)).toHaveLength(2);
 	});
 
 	it("leaves an existing book unchanged when no outgoing group targets it", async () => {
 		const vault = new MockVault();
-		const atomicPath = "Kindle Highlights/Atomic Habits - James Clear.md";
+		const orchardPath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
 		const existingHighlightC = createHighlight({
 			location: "170",
 			content: "Existing highlight C must remain.",
 		});
 		const existingMarkdown = renderManagedNote(
-			"Atomic Habits",
-			"James Clear",
-			[atomicHighlight, existingHighlightC]
+			"The Clockwork Orchard",
+			"Mira Vale",
+			[orchardHighlight, existingHighlightC]
 		);
-		const deepWorkHighlight = createHighlight({
-			bookTitle: "Deep Work",
-			author: "Cal Newport",
+		const lumenBayHighlight = createHighlight({
+			bookTitle: "Night Trains to Lumen Bay",
+			author: "Owen Hart",
 			location: "220",
-			content: "Schedule focus time.",
+			content: "Reserve a window seat before moonrise.",
 		});
 		await vault.createFolder("Kindle Highlights");
-		await vault.create(atomicPath, existingMarkdown);
+		await vault.create(orchardPath, existingMarkdown);
 
 		await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Deep Work",
-				author: "Cal Newport",
-				clippings: [deepWorkHighlight],
+				bookTitle: "Night Trains to Lumen Bay",
+				author: "Owen Hart",
+				clippings: [lumenBayHighlight],
 			},
 		]);
 
-		expect(vault.readFile(atomicPath)).toBe(existingMarkdown);
+		expect(vault.readFile(orchardPath)).toBe(existingMarkdown);
 		expect(vault.modifies()).toBe(0);
-		expect(vault.readFile("Kindle Highlights/Deep Work - Cal Newport.md")).toContain("Schedule focus time.");
+		expect(vault.readFile("Kindle Highlights/Night Trains to Lumen Bay - Owen Hart.md")).toContain("Reserve a window seat before moonrise.");
 	});
 
 	it("updates an empty managed region with incoming highlights", async () => {
 		const vault = new MockVault();
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
-		const before = "# Atomic Habits\n\nPersonal content before the managed region.\n";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
+		const before = "# The Clockwork Orchard\n\nPersonal content before the managed region.\n";
 		const after = "\nPersonal content after the managed region.";
 		const existingMarkdown = `${before}${SYNC_START_MARKER}\n\n\n${SYNC_END_MARKER}${after}`;
 		await vault.createFolder("Kindle Highlights");
@@ -522,15 +522,15 @@ describe("writeBookNotesToVault", () => {
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight, atomicNote],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight, orchardNote],
 			},
 		]);
 		const expectedMarkdown = `${before}${renderSyncRegion({
-			bookTitle: "Atomic Habits",
-			author: "James Clear",
-			clippings: [atomicHighlight, atomicNote],
+			bookTitle: "The Clockwork Orchard",
+			author: "Mira Vale",
+			clippings: [orchardHighlight, orchardNote],
 		})}${after}`;
 		const fileContent = vault.readFile(notePath) ?? "";
 
@@ -549,9 +549,9 @@ describe("writeBookNotesToVault", () => {
 
 	it("protects nonempty managed content without valid highlight IDs", async () => {
 		const vault = new MockVault();
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
 		const existingMarkdown = [
-			"# Atomic Habits",
+			"# The Clockwork Orchard",
 			"",
 			"Personal content before the managed region.",
 			SYNC_START_MARKER,
@@ -568,9 +568,9 @@ describe("writeBookNotesToVault", () => {
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight, atomicNote],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight, orchardNote],
 			},
 		]);
 
@@ -589,19 +589,19 @@ describe("writeBookNotesToVault", () => {
 
 	it("protects a note containing multiple complete managed regions", async () => {
 		const vault = new MockVault();
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
 		const firstRegion = renderSyncRegion({
-			bookTitle: "Atomic Habits",
-			author: "James Clear",
-			clippings: [atomicHighlight],
+			bookTitle: "The Clockwork Orchard",
+			author: "Mira Vale",
+			clippings: [orchardHighlight],
 		});
 		const secondRegion = renderSyncRegion({
-			bookTitle: "Atomic Habits",
-			author: "James Clear",
-			clippings: [atomicNote],
+			bookTitle: "The Clockwork Orchard",
+			author: "Mira Vale",
+			clippings: [orchardNote],
 		});
 		const existingMarkdown = [
-			"# Atomic Habits",
+			"# The Clockwork Orchard",
 			"",
 			"Personal content before the managed regions.",
 			firstRegion,
@@ -614,9 +614,9 @@ describe("writeBookNotesToVault", () => {
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight, atomicNote],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight, orchardNote],
 			},
 		]);
 
@@ -633,20 +633,20 @@ describe("writeBookNotesToVault", () => {
 	it.each([
 		[
 			"start marker without an end marker",
-			`# Atomic Habits\n\n${SYNC_START_MARKER}\n\nExisting managed content.`,
+			`# The Clockwork Orchard\n\n${SYNC_START_MARKER}\n\nExisting managed content.`,
 		],
 		[
 			"end marker without a preceding start marker",
-			`# Atomic Habits\n\nExisting managed content.\n\n${SYNC_END_MARKER}`,
+			`# The Clockwork Orchard\n\nExisting managed content.\n\n${SYNC_END_MARKER}`,
 		],
 		[
 			"reversed end and start markers",
-			`# Atomic Habits\n\n${SYNC_END_MARKER}\n\nExisting managed content.\n\n${SYNC_START_MARKER}`,
+			`# The Clockwork Orchard\n\n${SYNC_END_MARKER}\n\nExisting managed content.\n\n${SYNC_START_MARKER}`,
 		],
 		[
 			"nested managed markers",
 			[
-				"# Atomic Habits",
+				"# The Clockwork Orchard",
 				SYNC_START_MARKER,
 				SYNC_START_MARKER,
 				"Existing managed content.",
@@ -656,15 +656,15 @@ describe("writeBookNotesToVault", () => {
 		],
 	])("protects malformed managed Markdown with a %s", async (_caseName, existingMarkdown) => {
 		const vault = new MockVault();
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
 		await vault.createFolder("Kindle Highlights");
 		await vault.create(notePath, existingMarkdown);
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight],
 			},
 		]);
 
@@ -682,75 +682,75 @@ describe("writeBookNotesToVault", () => {
 
 	it("protects one unsafe book while allowing another book to update", async () => {
 		const vault = new MockVault();
-		const atomicPath = "Kindle Highlights/Atomic Habits - James Clear.md";
-		const deepWorkPath = "Kindle Highlights/Deep Work - Cal Newport.md";
+		const orchardPath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
+		const lumenBayPath = "Kindle Highlights/Night Trains to Lumen Bay - Owen Hart.md";
 		const existingHighlightC = createHighlight({
 			location: "170",
 			content: "Existing highlight C must remain.",
 		});
-		const deepWorkD = createHighlight({
-			bookTitle: "Deep Work",
-			author: "Cal Newport",
+		const lumenBayD = createHighlight({
+			bookTitle: "Night Trains to Lumen Bay",
+			author: "Owen Hart",
 			location: "220",
 			content: "Existing highlight D.",
 		});
-		const deepWorkE = createHighlight({
-			bookTitle: "Deep Work",
-			author: "Cal Newport",
+		const lumenBayE = createHighlight({
+			bookTitle: "Night Trains to Lumen Bay",
+			author: "Owen Hart",
 			location: "225",
 			content: "New highlight E.",
 		});
-		const atomicMarkdown = renderManagedNote(
-			"Atomic Habits",
-			"James Clear",
-			[atomicHighlight, existingHighlightC]
+		const orchardMarkdown = renderManagedNote(
+			"The Clockwork Orchard",
+			"Mira Vale",
+			[orchardHighlight, existingHighlightC]
 		);
-		const deepWorkMarkdown = renderManagedNote("Deep Work", "Cal Newport", [deepWorkD]);
+		const lumenBayMarkdown = renderManagedNote("Night Trains to Lumen Bay", "Owen Hart", [lumenBayD]);
 		await vault.createFolder("Kindle Highlights");
-		await vault.create(atomicPath, atomicMarkdown);
-		await vault.create(deepWorkPath, deepWorkMarkdown);
+		await vault.create(orchardPath, orchardMarkdown);
+		await vault.create(lumenBayPath, lumenBayMarkdown);
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight, atomicNote],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight, orchardNote],
 			},
 			{
-				bookTitle: "Deep Work",
-				author: "Cal Newport",
-				clippings: [deepWorkD, deepWorkE],
+				bookTitle: "Night Trains to Lumen Bay",
+				author: "Owen Hart",
+				clippings: [lumenBayD, lumenBayE],
 			},
 		]);
 
-		expect(vault.readFile(deepWorkPath)).toContain("Existing highlight D.");
-		expect(vault.readFile(deepWorkPath)).toContain("New highlight E.");
-		expect(vault.readFile(deepWorkPath)?.match(/kindle-local-sync-id:/g)).toHaveLength(2);
-		expect(vault.readFile(atomicPath)).toBe(atomicMarkdown);
-		expect(vault.readFile(atomicPath)).toContain("Existing highlight C must remain.");
+		expect(vault.readFile(lumenBayPath)).toContain("Existing highlight D.");
+		expect(vault.readFile(lumenBayPath)).toContain("New highlight E.");
+		expect(vault.readFile(lumenBayPath)?.match(/kindle-local-sync-id:/g)).toHaveLength(2);
+		expect(vault.readFile(orchardPath)).toBe(orchardMarkdown);
+		expect(vault.readFile(orchardPath)).toContain("Existing highlight C must remain.");
 		expect(summary).toMatchObject({
 			filesCreated: 0,
 			filesUpdated: 1,
 			filesUnchanged: 0,
 			filesProtected: 1,
 			bookOutcomes: [
-				{ bookTitle: "Atomic Habits", status: "protected" },
-				{ bookTitle: "Deep Work", status: "updated" },
+				{ bookTitle: "The Clockwork Orchard", status: "protected" },
+				{ bookTitle: "Night Trains to Lumen Bay", status: "updated" },
 			],
 		});
 	});
 
 	it("protects missing existing highlights through the adapter fallback path", async () => {
 		const vault = new MockVault();
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
 		const existingHighlightC = createHighlight({
 			location: "170",
 			content: "Existing highlight C must remain.",
 		});
 		const existingMarkdown = renderManagedNote(
-			"Atomic Habits",
-			"James Clear",
-			[atomicHighlight, existingHighlightC]
+			"The Clockwork Orchard",
+			"Mira Vale",
+			[orchardHighlight, existingHighlightC]
 		);
 		await vault.createFolder("Kindle Highlights");
 		await vault.create(notePath, existingMarkdown);
@@ -758,9 +758,9 @@ describe("writeBookNotesToVault", () => {
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight, atomicNote],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight, orchardNote],
 			},
 		]);
 
@@ -779,18 +779,18 @@ describe("writeBookNotesToVault", () => {
 	it("appends a sync region when an existing file has no sync markers", async () => {
 		const vault = new MockVault();
 		await vault.createFolder("Kindle Highlights");
-		await vault.create("Kindle Highlights/Atomic Habits - James Clear.md", "# Atomic Habits\n\nUser notes.");
+		await vault.create("Kindle Highlights/The Clockwork Orchard - Mira Vale.md", "# The Clockwork Orchard\n\nUser notes.");
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight],
 			},
 		]);
-		const fileContent = vault.readFile("Kindle Highlights/Atomic Habits - James Clear.md") ?? "";
+		const fileContent = vault.readFile("Kindle Highlights/The Clockwork Orchard - Mira Vale.md") ?? "";
 
-		expect(fileContent).toContain("# Atomic Habits\n\nUser notes.");
+		expect(fileContent).toContain("# The Clockwork Orchard\n\nUser notes.");
 		expect(fileContent).toContain("## Kindle Highlights & Notes");
 		expect(fileContent).toContain(SYNC_START_MARKER);
 		expect(fileContent).toContain(SYNC_END_MARKER);
@@ -801,16 +801,16 @@ describe("writeBookNotesToVault", () => {
 		const vault = new MockVault();
 		const bookGroups = [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight, atomicNote],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight, orchardNote],
 			},
 		];
 
 		await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", bookGroups);
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", bookGroups);
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
-		const fileContent = vault.readFile("Kindle Highlights/Atomic Habits - James Clear.md") ?? "";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
+		const fileContent = vault.readFile("Kindle Highlights/The Clockwork Orchard - Mira Vale.md") ?? "";
 
 		expect(fileContent.match(/kindle-local-sync-id:/g)).toHaveLength(2);
 		expect(vault.createCount(notePath)).toBe(1);
@@ -827,20 +827,20 @@ describe("writeBookNotesToVault", () => {
 
 	it("retries a completed but unverifiable recovery write without changing preserved content or duplicating highlights", async () => {
 		const vault = new MockVault();
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
-		const before = "# Atomic Habits\n\nPersonal introduction.\n\n";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
+		const before = "# The Clockwork Orchard\n\nPersonal introduction.\n\n";
 		const after = "\n\nPersonal follow-up notes.";
 		const existingMarkdown = renderManagedNote(
-			"Atomic Habits",
-			"James Clear",
-			[atomicHighlight],
+			"The Clockwork Orchard",
+			"Mira Vale",
+			[orchardHighlight],
 			before,
 			after
 		);
-		const recoveryHighlights = [atomicHighlight, atomicNote];
+		const recoveryHighlights = [orchardHighlight, orchardNote];
 		const bookGroups = [{
-			bookTitle: "Atomic Habits",
-			author: "James Clear",
+			bookTitle: "The Clockwork Orchard",
+			author: "Mira Vale",
 			clippings: recoveryHighlights,
 		}];
 
@@ -868,13 +868,13 @@ describe("writeBookNotesToVault", () => {
 		)).toThrow(InvalidVaultWriteContractError);
 		expect(markdownAfterUnconfirmedWrite).toContain(before);
 		expect(markdownAfterUnconfirmedWrite).toContain(after);
-		expect(markdownAfterUnconfirmedWrite).toContain(atomicHighlight.content);
-		expect(markdownAfterUnconfirmedWrite).toContain(atomicNote.content);
+		expect(markdownAfterUnconfirmedWrite).toContain(orchardHighlight.content);
+		expect(markdownAfterUnconfirmedWrite).toContain(orchardNote.content);
 		expect(markdownAfterUnconfirmedWrite.match(
-			new RegExp(createClippingId(atomicHighlight), "g")
+			new RegExp(createClippingId(orchardHighlight), "g")
 		)).toHaveLength(1);
 		expect(markdownAfterUnconfirmedWrite.match(
-			new RegExp(createClippingId(atomicNote), "g")
+			new RegExp(createClippingId(orchardNote), "g")
 		)).toHaveLength(1);
 
 		const retrySummary = await writeBookNotesToVault(
@@ -904,25 +904,25 @@ describe("writeBookNotesToVault", () => {
 
 	it("updates an existing adapter file when the Obsidian file lookup is stale", async () => {
 		const vault = new MockVault();
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
-		const before = "# Atomic Habits\n\nUser introduction.\n\n";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
+		const before = "# The Clockwork Orchard\n\nUser introduction.\n\n";
 		const after = "\n\nUser outro.";
 		await vault.createFolder("Kindle Highlights");
-		await vault.create(notePath, renderManagedNote("Atomic Habits", "James Clear", [atomicHighlight], before, after));
+		await vault.create(notePath, renderManagedNote("The Clockwork Orchard", "Mira Vale", [orchardHighlight], before, after));
 		vault.missGetAbstractFileByPath(notePath);
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight, atomicNote],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight, orchardNote],
 			},
 		]);
 		const fileContent = vault.readFile(notePath) ?? "";
 		const expectedMarkdown = renderManagedNote(
-			"Atomic Habits",
-			"James Clear",
-			[atomicHighlight, atomicNote],
+			"The Clockwork Orchard",
+			"Mira Vale",
+			[orchardHighlight, orchardNote],
 			before,
 			after
 		);
@@ -931,7 +931,7 @@ describe("writeBookNotesToVault", () => {
 		expect(fileContent).toBe(expectedMarkdown);
 		expect(fileContent).toContain("User introduction.");
 		expect(fileContent).toContain("User outro.");
-		expect(fileContent).toContain("Review this idea later.");
+		expect(fileContent).toContain("Revisit the orchard map later.");
 		expect(vault.adapterWrites()).toBe(1);
 		expect(summary).toMatchObject({
 			filesCreated: 0,
@@ -942,26 +942,26 @@ describe("writeBookNotesToVault", () => {
 
 	it("recovers if create reports that the note file already exists", async () => {
 		const vault = new MockVault();
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
-		const before = "# Atomic Habits\n\nUser introduction.\n\n";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
+		const before = "# The Clockwork Orchard\n\nUser introduction.\n\n";
 		const after = "\n\nUser outro.";
 		await vault.createFolder("Kindle Highlights");
-		await vault.create(notePath, renderManagedNote("Atomic Habits", "James Clear", [atomicHighlight], before, after));
+		await vault.create(notePath, renderManagedNote("The Clockwork Orchard", "Mira Vale", [orchardHighlight], before, after));
 		vault.missGetAbstractFileByPath(notePath);
 		vault.missAdapterExists(notePath);
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight, atomicNote],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight, orchardNote],
 			},
 		]);
 		const fileContent = vault.readFile(notePath) ?? "";
 		const expectedMarkdown = renderManagedNote(
-			"Atomic Habits",
-			"James Clear",
-			[atomicHighlight, atomicNote],
+			"The Clockwork Orchard",
+			"Mira Vale",
+			[orchardHighlight, orchardNote],
 			before,
 			after
 		);
@@ -970,7 +970,7 @@ describe("writeBookNotesToVault", () => {
 		expect(fileContent).toBe(expectedMarkdown);
 		expect(fileContent).toContain("User introduction.");
 		expect(fileContent).toContain("User outro.");
-		expect(fileContent).toContain("Review this idea later.");
+		expect(fileContent).toContain("Revisit the orchard map later.");
 		expect(vault.modifies()).toBe(1);
 		expect(summary).toMatchObject({
 			filesCreated: 0,
@@ -981,15 +981,15 @@ describe("writeBookNotesToVault", () => {
 
 	it("protects missing existing highlights after a create conflict", async () => {
 		const vault = new MockVault();
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
 		const existingHighlightC = createHighlight({
 			location: "170",
 			content: "Existing highlight C must remain.",
 		});
 		const existingMarkdown = renderManagedNote(
-			"Atomic Habits",
-			"James Clear",
-			[atomicHighlight, existingHighlightC]
+			"The Clockwork Orchard",
+			"Mira Vale",
+			[orchardHighlight, existingHighlightC]
 		);
 		await vault.createFolder("Kindle Highlights");
 		await vault.create(notePath, existingMarkdown);
@@ -998,16 +998,16 @@ describe("writeBookNotesToVault", () => {
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight, atomicNote],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight, orchardNote],
 			},
 		]);
 
 		expect(vault.createCount(notePath)).toBe(2);
 		expect(vault.readFile(notePath)).toBe(existingMarkdown);
 		expect(vault.readFile(notePath)).toContain("Existing highlight C must remain.");
-		expect(vault.readFile(notePath)).not.toContain("Review this idea later.");
+		expect(vault.readFile(notePath)).not.toContain("Revisit the orchard map later.");
 		expect(vault.modifies()).toBe(0);
 		expect(vault.adapterWrites()).toBe(0);
 		expect(summary).toMatchObject({
@@ -1027,12 +1027,12 @@ describe("writeBookNotesToVault", () => {
 
 		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight, { ...atomicHighlight }],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight, { ...orchardHighlight }],
 			},
 		]);
-		const fileContent = vault.readFile("Kindle Highlights/Atomic Habits - James Clear.md") ?? "";
+		const fileContent = vault.readFile("Kindle Highlights/The Clockwork Orchard - Mira Vale.md") ?? "";
 
 		expect(fileContent.match(/kindle-local-sync-id:/g)).toHaveLength(1);
 		expect(summary).toMatchObject({
@@ -1044,7 +1044,7 @@ describe("writeBookNotesToVault", () => {
 			duplicatesSkipped: 1,
 			bookOutcomes: [{
 				status: "created",
-				highlightIds: [createClippingId(atomicHighlight)],
+				highlightIds: [createClippingId(orchardHighlight)],
 			}],
 		});
 	});
@@ -1148,32 +1148,32 @@ describe("writeBookNotesToVault", () => {
 	it("throws a clear error when the target note path is a folder", async () => {
 		const vault = new MockVault();
 		await vault.createFolder("Kindle Highlights");
-		await vault.createFolder("Kindle Highlights/Atomic Habits - James Clear.md");
+		await vault.createFolder("Kindle Highlights/The Clockwork Orchard - Mira Vale.md");
 
 		await expect(
 			writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 				{
-					bookTitle: "Atomic Habits",
-					author: "James Clear",
-					clippings: [atomicHighlight],
+					bookTitle: "The Clockwork Orchard",
+					author: "Mira Vale",
+					clippings: [orchardHighlight],
 				},
 			])
-		).rejects.toThrow('Cannot sync Kindle highlights because "Kindle Highlights/Atomic Habits - James Clear.md" is a folder.');
+		).rejects.toThrow('Cannot sync Kindle highlights because "Kindle Highlights/The Clockwork Orchard - Mira Vale.md" is a folder.');
 	});
 
 	it("keeps genuine write failures separate from protected outcomes", async () => {
 		const vault = new MockVault();
-		const notePath = "Kindle Highlights/Atomic Habits - James Clear.md";
-		const existingMarkdown = renderManagedNote("Atomic Habits", "James Clear", [atomicHighlight]);
+		const notePath = "Kindle Highlights/The Clockwork Orchard - Mira Vale.md";
+		const existingMarkdown = renderManagedNote("The Clockwork Orchard", "Mira Vale", [orchardHighlight]);
 		await vault.createFolder("Kindle Highlights");
 		await vault.create(notePath, existingMarkdown);
 		vault.failNextModify(new Error("Disk write failed."));
 
 		await expect(writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
-				clippings: [atomicHighlight, atomicNote],
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
+				clippings: [orchardHighlight, orchardNote],
 			},
 		])).rejects.toThrow("Disk write failed.");
 
@@ -1197,11 +1197,11 @@ function renderManagedNote(
 
 function createHighlight(overrides: Partial<KindleHighlight> = {}): KindleHighlight {
 	return {
-		bookTitle: "Atomic Habits",
-		author: "James Clear",
+		bookTitle: "The Clockwork Orchard",
+		author: "Mira Vale",
 		location: "154",
-		content: "Small habits make a big difference.",
-		dateAdded: "Thursday, May 14, 2026 2:44 PM",
+		content: "Clockwork apples chime at midnight.",
+		dateAdded: "Monday, October 5, 2099 9:41 AM",
 		type: "Highlight",
 		...overrides,
 	};

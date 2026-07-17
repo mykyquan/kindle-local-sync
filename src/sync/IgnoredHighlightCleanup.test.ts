@@ -129,7 +129,7 @@ describe("ignored highlight cleanup", () => {
 		const vault = new MockVault();
 		const ignoredHighlight = createHighlight({ content: "Remove this highlight.", location: "154" });
 		const keptHighlight = createHighlight({ content: "Keep this highlight.", location: "160" });
-		vault.addFile("Kindle Highlights/Atomic Habits.md", renderNote([ignoredHighlight, keptHighlight]));
+		vault.addFile("Kindle Highlights/The Clockwork Orchard.md", renderNote([ignoredHighlight, keptHighlight]));
 
 		await removeIgnoredHighlightBlocksFromExistingNotes(
 			vault as unknown as Vault,
@@ -137,7 +137,7 @@ describe("ignored highlight cleanup", () => {
 			[createCleanupTarget(ignoredHighlight)]
 		);
 
-		const markdown = vault.readFile("Kindle Highlights/Atomic Habits.md");
+		const markdown = vault.readFile("Kindle Highlights/The Clockwork Orchard.md");
 		expect(markdown).not.toContain("Remove this highlight.");
 		expect(markdown).toContain("Keep this highlight.");
 		expect(markdown).toContain(SYNC_START_MARKER);
@@ -148,7 +148,7 @@ describe("ignored highlight cleanup", () => {
 		const vault = new MockVault();
 		const ignoredHighlight = createHighlight({ content: "Remove this highlight.", location: "154" });
 		const keptHighlight = createHighlight({ content: "Keep this highlight.", location: "160" });
-		vault.addFile("Kindle Highlights/Atomic Habits.md", renderNote([ignoredHighlight, keptHighlight]));
+		vault.addFile("Kindle Highlights/The Clockwork Orchard.md", renderNote([ignoredHighlight, keptHighlight]));
 
 		await removeIgnoredHighlightBlocksFromExistingNotes(
 			vault as unknown as Vault,
@@ -156,7 +156,7 @@ describe("ignored highlight cleanup", () => {
 			[createCleanupTarget(ignoredHighlight)]
 		);
 
-		const markdown = vault.readFile("Kindle Highlights/Atomic Habits.md");
+		const markdown = vault.readFile("Kindle Highlights/The Clockwork Orchard.md");
 		expect(markdown).toContain(renderClippingMarkdown(keptHighlight));
 		expect(markdown).toContain(`<!-- kindle-local-sync-id: ${createClippingId(keptHighlight)} -->`);
 	});
@@ -165,7 +165,7 @@ describe("ignored highlight cleanup", () => {
 		const vault = new MockVault();
 		const ignoredHighlight = createHighlight({ content: "Remove this highlight." });
 		vault.addFile(
-			"Kindle Highlights/Atomic Habits.md",
+			"Kindle Highlights/The Clockwork Orchard.md",
 			renderNote([ignoredHighlight], "User introduction.", "User outro.")
 		);
 
@@ -175,23 +175,23 @@ describe("ignored highlight cleanup", () => {
 			[createCleanupTarget(ignoredHighlight)]
 		);
 
-		const markdown = vault.readFile("Kindle Highlights/Atomic Habits.md");
+		const markdown = vault.readFile("Kindle Highlights/The Clockwork Orchard.md");
 		expect(markdown).toContain("User introduction.");
 		expect(markdown).toContain("User outro.");
 	});
 
 	it("does not modify a note without sync markers", async () => {
 		const vault = new MockVault();
-		const originalMarkdown = "# Atomic Habits\n\nRemove this highlight.\n\n<!-- kindle-local-sync-id: kls-example -->";
-		vault.addFile("Kindle Highlights/Atomic Habits.md", originalMarkdown);
+		const originalMarkdown = "# The Clockwork Orchard\n\nRemove this highlight.\n\n<!-- kindle-local-sync-id: kls-example -->";
+		vault.addFile("Kindle Highlights/The Clockwork Orchard.md", originalMarkdown);
 
 		const summary = await removeIgnoredHighlightBlocksFromExistingNotes(
 			vault as unknown as Vault,
 			"Kindle Highlights",
-			[{ bookTitle: "Atomic Habits", author: "James Clear", id: "kls-example" }]
+			[{ bookTitle: "The Clockwork Orchard", author: "Mira Vale", id: "kls-example" }]
 		);
 
-		expect(vault.readFile("Kindle Highlights/Atomic Habits.md")).toBe(originalMarkdown);
+		expect(vault.readFile("Kindle Highlights/The Clockwork Orchard.md")).toBe(originalMarkdown);
 		expect(summary.filesUpdated).toBe(0);
 		expect(vault.modifies()).toBe(0);
 	});
@@ -200,15 +200,15 @@ describe("ignored highlight cleanup", () => {
 		const vault = new MockVault();
 		const highlight = createHighlight({ content: "Keep this highlight." });
 		const originalMarkdown = renderNote([highlight]);
-		vault.addFile("Kindle Highlights/Atomic Habits.md", originalMarkdown);
+		vault.addFile("Kindle Highlights/The Clockwork Orchard.md", originalMarkdown);
 
 		const summary = await removeIgnoredHighlightBlocksFromExistingNotes(
 			vault as unknown as Vault,
 			"Kindle Highlights",
-			[{ bookTitle: "Atomic Habits", author: "James Clear", id: "kls-missing" }]
+			[{ bookTitle: "The Clockwork Orchard", author: "Mira Vale", id: "kls-missing" }]
 		);
 
-		expect(vault.readFile("Kindle Highlights/Atomic Habits.md")).toBe(originalMarkdown);
+		expect(vault.readFile("Kindle Highlights/The Clockwork Orchard.md")).toBe(originalMarkdown);
 		expect(summary.filesUpdated).toBe(0);
 	});
 
@@ -217,7 +217,7 @@ describe("ignored highlight cleanup", () => {
 		const firstIgnored = createHighlight({ content: "Remove first.", location: "154" });
 		const keptHighlight = createHighlight({ content: "Keep middle.", location: "160" });
 		const secondIgnored = createHighlight({ content: "Remove second.", location: "170" });
-		vault.addFile("Kindle Highlights/Atomic Habits.md", renderNote([firstIgnored, keptHighlight, secondIgnored]));
+		vault.addFile("Kindle Highlights/The Clockwork Orchard.md", renderNote([firstIgnored, keptHighlight, secondIgnored]));
 
 		const summary = await removeIgnoredHighlightBlocksFromExistingNotes(
 			vault as unknown as Vault,
@@ -225,7 +225,7 @@ describe("ignored highlight cleanup", () => {
 			[createCleanupTarget(firstIgnored), createCleanupTarget(secondIgnored)]
 		);
 
-		const markdown = vault.readFile("Kindle Highlights/Atomic Habits.md");
+		const markdown = vault.readFile("Kindle Highlights/The Clockwork Orchard.md");
 		expect(markdown).not.toContain("Remove first.");
 		expect(markdown).not.toContain("Remove second.");
 		expect(markdown).toContain("Keep middle.");
@@ -236,7 +236,7 @@ describe("ignored highlight cleanup", () => {
 		const vault = new MockVault();
 		const removed = createHighlight({ content: "Remove this target.", location: "154" });
 		const retained = createHighlight({ content: "Retain unrelated content.", location: "160" });
-		const notePath = "Kindle Highlights/Atomic Habits.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard.md";
 		const originalMarkdown = renderNote([removed, retained], "Personal before.", "Personal after.");
 		const missingTarget = {
 			bookTitle: removed.bookTitle,
@@ -269,7 +269,7 @@ describe("ignored highlight cleanup", () => {
 	it("reports a safe note without managed blocks as no matching highlight block", async () => {
 		const vault = new MockVault();
 		const highlight = createHighlight();
-		const notePath = "Kindle Highlights/Atomic Habits.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard.md";
 		const markdown = [
 			"---",
 			`title: ${JSON.stringify(highlight.bookTitle)}`,
@@ -298,18 +298,18 @@ describe("ignored highlight cleanup", () => {
 		const vault = new MockVault();
 		const ignoredHighlight = createHighlight({ content: "Remove this highlight.", location: "154" });
 		const keptHighlight = createHighlight({ content: "Keep this highlight.", location: "160" });
-		vault.addFile("Kindle Highlights/Atomic Habits.md", renderNote([ignoredHighlight, keptHighlight]));
+		vault.addFile("Kindle Highlights/The Clockwork Orchard.md", renderNote([ignoredHighlight, keptHighlight]));
 		const ignoredTargets = [createCleanupTarget(ignoredHighlight)];
 
 		await removeIgnoredHighlightBlocksFromExistingNotes(vault as unknown as Vault, "Kindle Highlights", ignoredTargets);
-		const afterFirstRun = vault.readFile("Kindle Highlights/Atomic Habits.md");
+		const afterFirstRun = vault.readFile("Kindle Highlights/The Clockwork Orchard.md");
 		const secondSummary = await removeIgnoredHighlightBlocksFromExistingNotes(
 			vault as unknown as Vault,
 			"Kindle Highlights",
 			ignoredTargets
 		);
 
-		expect(vault.readFile("Kindle Highlights/Atomic Habits.md")).toBe(afterFirstRun);
+		expect(vault.readFile("Kindle Highlights/The Clockwork Orchard.md")).toBe(afterFirstRun);
 		expect(secondSummary.filesUpdated).toBe(0);
 	});
 
@@ -407,7 +407,7 @@ describe("ignored highlight cleanup", () => {
 		const vault = new MockVault();
 		const highlight = createHighlight();
 		const markdown = [
-			"# Atomic Habits",
+			"# The Clockwork Orchard",
 			"",
 			SYNC_START_MARKER,
 			"",
@@ -416,7 +416,7 @@ describe("ignored highlight cleanup", () => {
 			SYNC_END_MARKER,
 		].join("\n");
 
-		vault.addFile("Kindle Highlights/Atomic Habits.md", markdown);
+		vault.addFile("Kindle Highlights/The Clockwork Orchard.md", markdown);
 
 		const summary = await removeIgnoredHighlightBlocksFromExistingNotes(
 			vault as unknown as Vault,
@@ -424,7 +424,7 @@ describe("ignored highlight cleanup", () => {
 			[createCleanupTarget(highlight)]
 		);
 
-		expect(vault.readFile("Kindle Highlights/Atomic Habits.md")).toBe(markdown);
+		expect(vault.readFile("Kindle Highlights/The Clockwork Orchard.md")).toBe(markdown);
 		expect(summary.filesUpdated).toBe(0);
 		expect(vault.modifies()).toBe(0);
 		expect(summary.bookOutcomes[0]?.targetOutcomes).toEqual([{
@@ -436,7 +436,7 @@ describe("ignored highlight cleanup", () => {
 	it("reports an unsafe managed region and preserves the exact note", async () => {
 		const vault = new MockVault();
 		const highlight = createHighlight();
-		const notePath = "Kindle Highlights/Atomic Habits.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard.md";
 		const markdown = [
 			"---",
 			`title: ${JSON.stringify(highlight.bookTitle)}`,
@@ -470,7 +470,7 @@ describe("ignored highlight cleanup", () => {
 		const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
 		const vault = new MockVault();
 		const highlight = createHighlight();
-		const notePath = "Kindle Highlights/Atomic Habits.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard.md";
 
 		vault.addFile(notePath, renderNote([highlight]));
 		vault.failRead(notePath);
@@ -496,7 +496,7 @@ describe("ignored highlight cleanup", () => {
 		const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
 		const vault = new MockVault();
 		const highlight = createHighlight();
-		const notePath = "Kindle Highlights/Atomic Habits.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard.md";
 		const markdown = renderNote([highlight]);
 
 		vault.addFile(notePath, markdown);
@@ -556,7 +556,7 @@ describe("ignored highlight cleanup", () => {
 		const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
 		const vault = new MockVault();
 		const highlight = createHighlight();
-		const notePath = "Kindle Highlights/Atomic Habits.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard.md";
 
 		vault.addFile(notePath, renderNote([highlight]));
 		vault.failWrite(notePath, true);
@@ -587,7 +587,7 @@ function renderNote(highlights: KindleHighlight[], before = "", after = ""): str
 		`author: ${JSON.stringify(firstHighlight.author)}`,
 		"---",
 		"",
-		"# Atomic Habits",
+		"# The Clockwork Orchard",
 		"",
 		before,
 		"",
@@ -614,11 +614,11 @@ function joinBlocks(blocks: string[]): string[] {
 
 function createHighlight(overrides: Partial<KindleHighlight> = {}): KindleHighlight {
 	return {
-		bookTitle: "Atomic Habits",
-		author: "James Clear",
+		bookTitle: "The Clockwork Orchard",
+		author: "Mira Vale",
 		location: "154",
-		content: "Small habits make a big difference.",
-		dateAdded: "Thursday, May 14, 2026 2:44 PM",
+		content: "Clockwork apples chime at midnight.",
+		dateAdded: "Monday, October 5, 2099 9:41 AM",
 		type: "Highlight",
 		...overrides,
 	};

@@ -408,7 +408,7 @@ describe("sync review gate", () => {
 		const newHighlight = createHighlight({
 			location: "160",
 			content: "Newly captured idea.",
-			dateAdded: "Friday, May 15, 2026 9:10 AM",
+			dateAdded: "Tuesday, October 6, 2099 10:10 AM",
 		});
 		const plugin = await createPlugin(createSettings({
 			importedHighlights: [createImportedRecord(existingHighlight)],
@@ -901,12 +901,12 @@ describe("protected writer result propagation", () => {
 	});
 
 	it("rejects a partial Import Again report and persists a later valid retry exactly once", async () => {
-		const first = createHighlight({ bookTitle: "Atomic Habits", author: "James Clear" });
+		const first = createHighlight({ bookTitle: "The Clockwork Orchard", author: "Mira Vale" });
 		const second = createHighlight({
-			bookTitle: "Deep Work",
-			author: "Cal Newport",
+			bookTitle: "Night Trains to Lumen Bay",
+			author: "Owen Hart",
 			location: "160",
-			content: "Sustained focus creates valuable work.",
+			content: "The last lantern glows beyond Lumen Bay.",
 		});
 		const historicalRecords = [createImportedRecord(first), createImportedRecord(second)];
 		const plugin = await createPlugin(createSettings({ importedHighlights: historicalRecords }));
@@ -1726,18 +1726,18 @@ describe("reconnect discovery after config-only settings persistence", () => {
 	});
 
 	it("reconnects only physically confirmed A1 and B1 without recreating unavailable Ignore state", async () => {
-		const a1 = createHighlight({ bookTitle: "Atomic Habits", author: "James Clear" });
+		const a1 = createHighlight({ bookTitle: "The Clockwork Orchard", author: "Mira Vale" });
 		const b1 = createHighlight({
-			bookTitle: "Deep Work",
-			author: "Cal Newport",
+			bookTitle: "Night Trains to Lumen Bay",
+			author: "Owen Hart",
 			location: "160",
-			content: "Deep work is valuable.",
+			content: "Night trains arrive beneath a silver tide.",
 		});
 		const c1 = createHighlight({
-			bookTitle: "Digital Minimalism",
-			author: "Cal Newport",
+			bookTitle: "Signals in the Rain",
+			author: "Owen Hart",
 			location: "170",
-			content: "Attention is a resource worth protecting.",
+			content: "Rain signals echo across the glass rooftops.",
 		});
 		const confirmedIds = new Set([createClippingId(a1), createClippingId(b1)]);
 		const plugin = await createPlugin(null);
@@ -1834,7 +1834,7 @@ describe("existing notes without data review choices", () => {
 		const newHighlight = createHighlight({
 			location: "160",
 			content: "Newly captured idea.",
-			dateAdded: "Friday, May 15, 2026 9:10 AM",
+			dateAdded: "Tuesday, October 6, 2099 10:10 AM",
 		});
 		const existingId = createClippingId(existingHighlight);
 		const plugin = await createPlugin(null);
@@ -2000,7 +2000,7 @@ describe("existing notes without data review choices", () => {
 		const newHighlight = createHighlight({
 			location: "160",
 			content: "Newly captured idea.",
-			dateAdded: "Friday, May 15, 2026 9:10 AM",
+			dateAdded: "Tuesday, October 6, 2099 10:10 AM",
 		});
 		const plugin = await createPlugin(null);
 		mocks.parseClippings.mockReturnValue([existingHighlight, newHighlight]);
@@ -2021,10 +2021,10 @@ describe("existing notes without data review choices", () => {
 describe("durable settings persistence verification", () => {
 	it("keeps a resolved but non-durable First Sync untrusted and retries with fresh timestamps", async () => {
 		vi.useFakeTimers();
-		const failedAttemptTime = new Date("2026-07-16T07:11:12.000Z");
-		const successfulAttemptTime = new Date("2026-07-16T08:22:30.000Z");
-		const importedHighlight = createHighlight({ bookTitle: "Atomic Habits", author: "James Clear" });
-		const ignoredHighlight = createHighlight({ bookTitle: "Digital Minimalism", author: "Cal Newport" });
+		const failedAttemptTime = new Date("2099-07-16T07:11:12.000Z");
+		const successfulAttemptTime = new Date("2099-07-16T08:22:30.000Z");
+		const importedHighlight = createHighlight({ bookTitle: "The Clockwork Orchard", author: "Mira Vale" });
+		const ignoredHighlight = createHighlight({ bookTitle: "Signals in the Rain", author: "Owen Hart" });
 		const historicalImport = createHighlight({ bookTitle: "Historical Import", author: "Existing Author" });
 		const historicalIgnore = createHighlight({ bookTitle: "Historical Ignore", author: "Existing Author" });
 		const initialSettings = createSettings({
@@ -2315,7 +2315,7 @@ function createImportedRecord(highlight: KindleHighlight): ImportedHighlightReco
 		title: highlight.bookTitle,
 		author: highlight.author,
 		textPreview: highlight.content,
-		importedAt: "2026-07-09T00:00:00.000Z",
+		importedAt: "2099-07-09T00:00:00.000Z",
 	};
 }
 
@@ -2325,7 +2325,7 @@ function createIgnoredRecord(highlight: KindleHighlight): IgnoredHighlight {
 		title: highlight.bookTitle,
 		author: highlight.author,
 		textPreview: highlight.content,
-		ignoredAt: "2026-07-09T00:00:00.000Z",
+		ignoredAt: "2099-07-09T00:00:00.000Z",
 	};
 }
 
@@ -2458,11 +2458,11 @@ async function waitForMockCall(mock: { mock: { calls: unknown[][] } }): Promise<
 
 function createHighlight(overrides: Partial<KindleHighlight> = {}): KindleHighlight {
 	return {
-		bookTitle: "Atomic Habits",
-		author: "James Clear",
+		bookTitle: "The Clockwork Orchard",
+		author: "Mira Vale",
 		location: "154",
-		content: "Small habits make a big difference.",
-		dateAdded: "Thursday, May 14, 2026 2:44 PM",
+		content: "Clockwork apples chime at midnight.",
+		dateAdded: "Monday, October 5, 2099 9:41 AM",
 		type: "Highlight",
 		...overrides,
 	};

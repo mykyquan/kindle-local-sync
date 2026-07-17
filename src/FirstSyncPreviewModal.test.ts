@@ -225,7 +225,7 @@ describe("FirstSyncPreviewModal wording and layout", () => {
 	});
 
 	it("keeps book-list help hidden by default and expands or collapses it from the shared action button", async () => {
-		const modal = createModal(createPlugin(), [createBookGroup(), createBookGroup("Deep Work")]);
+		const modal = createModal(createPlugin(), [createBookGroup(), createBookGroup("Night Trains to Lumen Bay")]);
 
 		modal.onOpen();
 
@@ -251,7 +251,7 @@ describe("FirstSyncPreviewModal wording and layout", () => {
 	});
 
 	it("does not repeat the choices help under each book", () => {
-		const modal = createModal(createPlugin(), [createBookGroup(), createBookGroup("Deep Work")]);
+		const modal = createModal(createPlugin(), [createBookGroup(), createBookGroup("Night Trains to Lumen Bay")]);
 
 		modal.onOpen();
 
@@ -426,7 +426,7 @@ describe("FirstSyncPreviewModal UI polish", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Import All").click();
 		await findByText(modal.contentEl, "Reviewed").click();
-		await searchBooks(modal, "Atomic");
+		await searchBooks(modal, "Clockwork");
 		const input = elementsByTag(modal.contentEl, "input")[0];
 		const body = elementByClassAt(modal.contentEl, "kls-modal-scroll-body", 0);
 		const trigger = findByText(modal.contentEl, "How choices work");
@@ -435,7 +435,7 @@ describe("FirstSyncPreviewModal UI polish", () => {
 		await trigger.click();
 
 		expect(elementsByTag(modal.contentEl, "input")[0]).toBe(input);
-		expect(input?.value).toBe("Atomic");
+		expect(input?.value).toBe("Clockwork");
 		expect(findByText(modal.contentEl, "Reviewed").attributes.get("aria-pressed")).toBe("true");
 		expect(findByText(modal.contentEl, "Import All").attributes.get("aria-pressed")).toBe("true");
 		expect(scrollTop(body)).toBe(180);
@@ -467,8 +467,8 @@ describe("FirstSyncPreviewModal UI polish", () => {
 
 	it("places detail help after the header and before the independently scrollable highlight list", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
@@ -545,7 +545,7 @@ describe("FirstSyncPreviewModal UI polish", () => {
 	});
 
 	it("shows the full detail help content only once", async () => {
-		const modal = createModal(createPlugin(), [createBookGroup(), createBookGroup("Deep Work")]);
+		const modal = createModal(createPlugin(), [createBookGroup(), createBookGroup("Night Trains to Lumen Bay")]);
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Highlights").click();
@@ -609,47 +609,47 @@ describe("FirstSyncPreviewModal UI polish", () => {
 describe("FirstSyncPreviewModal book dashboard controls", () => {
 	it("filters books by title search", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
-		await searchBooks(modal, "Deep");
+		await searchBooks(modal, "Lumen");
 
-		expect(readText(modal.contentEl)).toContain("Deep Work");
-		expect(readText(modal.contentEl)).not.toContain("Atomic Habits");
+		expect(readText(modal.contentEl)).toContain("Night Trains to Lumen Bay");
+		expect(readText(modal.contentEl)).not.toContain("The Clockwork Orchard");
 	});
 
 	it("filters books by title case-insensitively", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
-		await searchBooks(modal, "atomic");
+		await searchBooks(modal, "clockwork");
 
-		expect(readText(modal.contentEl)).toContain("Atomic Habits");
-		expect(readText(modal.contentEl)).not.toContain("Deep Work");
+		expect(readText(modal.contentEl)).toContain("The Clockwork Orchard");
+		expect(readText(modal.contentEl)).not.toContain("Night Trains to Lumen Bay");
 	});
 
 	it("filters books by author search", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits", "James Clear"),
-			createBookGroup("The Left Hand of Darkness", "Ursula K. Le Guin"),
+			createBookGroup("The Clockwork Orchard", "Mira Vale"),
+			createBookGroup("Winter on the Glass Moon", "Avery Sol"),
 		]);
 
 		modal.onOpen();
-		await searchBooks(modal, "le guin");
+		await searchBooks(modal, "avery");
 
-		expect(readText(modal.contentEl)).toContain("The Left Hand of Darkness");
-		expect(readText(modal.contentEl)).not.toContain("Atomic Habits");
+		expect(readText(modal.contentEl)).toContain("Winter on the Glass Moon");
+		expect(readText(modal.contentEl)).not.toContain("The Clockwork Orchard");
 	});
 
 	it("keeps the search input mounted and typed value intact while filtering", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
@@ -659,17 +659,17 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 			throw new Error("Could not find book search input.");
 		}
 
-		await input.input("De");
+		await input.input("Lu");
 
 		expect(elementsByTag(modal.contentEl, "input")[0]).toBe(input);
-		expect(input.value).toBe("De");
-		expect(bookHeadings(modal)).toEqual(["2 / 2 — Deep Work"]);
+		expect(input.value).toBe("Lu");
+		expect(bookHeadings(modal)).toEqual(["2 / 2 — Night Trains to Lumen Bay"]);
 	});
 
 	it("renders the search input without a search icon button", () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
@@ -683,8 +683,8 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 
 	it("renders search and filter controls inside the book list controls", () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
@@ -699,8 +699,8 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 
 	it("keeps search text and visible filtering while typing", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
@@ -710,52 +710,52 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 			throw new Error("Could not find book search input.");
 		}
 
-		await input.input("Deep");
+		await input.input("Lumen");
 		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 160);
 		setScrollTop(modal.contentEl, 160);
 
-		expect(input.value).toBe("Deep");
-		expect(bookHeadings(modal)).toEqual(["2 / 2 — Deep Work"]);
+		expect(input.value).toBe("Lumen");
+		expect(bookHeadings(modal)).toEqual(["2 / 2 — Night Trains to Lumen Bay"]);
 		expect(scrollTop(modal.contentEl)).toBe(160);
 		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(160);
 	});
 
 	it("does not reset selected decisions when search text changes", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Import All").click();
-		await searchBooks(modal, "Deep");
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — The Clockwork Orchard"), "Import All").click();
+		await searchBooks(modal, "Lumen");
 		await searchBooks(modal, "");
 
-		const atomicHabits = findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits");
-		const importAll = buttonByTextAt(atomicHabits, "Import All", 0);
+		const clockworkOrchard = findSectionByHeading(modal.contentEl, "1 / 2 — The Clockwork Orchard");
+		const importAll = buttonByTextAt(clockworkOrchard, "Import All", 0);
 
-		expect(readText(atomicHabits)).toContain("Import All");
+		expect(readText(clockworkOrchard)).toContain("Import All");
 		expect(importAll.classes.has("kls-decision-button-active-import")).toBe(true);
 		expect(importAll.attributes.get("aria-pressed")).toBe("true");
 	});
 
 	it("does not change scroll position while searching", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
 		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 210);
 		setScrollTop(modal.contentEl, 210);
-		await searchBooks(modal, "Deep");
+		await searchBooks(modal, "Lumen");
 
 		expect(scrollTop(modal.contentEl)).toBe(210);
 		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(210);
 	});
 
 	it("shows an empty state when no books match search", async () => {
-		const modal = createModal(createPlugin(), [createBookGroup("Atomic Habits")]);
+		const modal = createModal(createPlugin(), [createBookGroup("The Clockwork Orchard")]);
 
 		modal.onOpen();
 		await searchBooks(modal, "missing");
@@ -766,53 +766,53 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 
 	it("filters All Books, Needs Review, and Reviewed books", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Import All").click();
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — The Clockwork Orchard"), "Import All").click();
 
 		await findByText(modal.contentEl, "Needs Review").click();
-		expect(bookHeadings(modal)).toEqual(["2 / 2 — Deep Work"]);
+		expect(bookHeadings(modal)).toEqual(["2 / 2 — Night Trains to Lumen Bay"]);
 
 		await findByText(modal.contentEl, "Reviewed").click();
-		expect(bookHeadings(modal)).toEqual(["1 / 2 — Atomic Habits"]);
+		expect(bookHeadings(modal)).toEqual(["1 / 2 — The Clockwork Orchard"]);
 
 		await findByText(modal.contentEl, "All Books").click();
 		expect(bookHeadings(modal)).toEqual([
-			"1 / 2 — Atomic Habits",
-			"2 / 2 — Deep Work",
+			"1 / 2 — The Clockwork Orchard",
+			"2 / 2 — Night Trains to Lumen Bay",
 		]);
 	});
 
 	it("preserves the original My Clippings book order instead of sorting alphabetically", async () => {
 		const modal = createModal(createPlugin(), [
 			createBookGroup("Zebra Notes"),
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
 		expect(bookHeadings(modal)).toEqual([
 			"1 / 3 — Zebra Notes",
-			"2 / 3 — Atomic Habits",
-			"3 / 3 — Deep Work",
+			"2 / 3 — The Clockwork Orchard",
+			"3 / 3 — Night Trains to Lumen Bay",
 		]);
 
-		await findByText(findSectionByHeading(modal.contentEl, "2 / 3 — Atomic Habits"), "Import All").click();
+		await findByText(findSectionByHeading(modal.contentEl, "2 / 3 — The Clockwork Orchard"), "Import All").click();
 		expect(bookHeadings(modal)).toEqual([
 			"1 / 3 — Zebra Notes",
-			"2 / 3 — Atomic Habits",
-			"3 / 3 — Deep Work",
+			"2 / 3 — The Clockwork Orchard",
+			"3 / 3 — Night Trains to Lumen Bay",
 		]);
 	});
 
 	it("preserves original relative order while search hides non-matching books", async () => {
 		const modal = createModal(createPlugin(), [
 			createBookGroup("Zebra Notes", "Morgan Field"),
-			createBookGroup("Atomic Habits", "James Clear"),
-			createBookGroup("Deep Work", "Morgan Newport"),
+			createBookGroup("The Clockwork Orchard", "Mira Vale"),
+			createBookGroup("Night Trains to Lumen Bay", "Morgan Field"),
 		]);
 
 		modal.onOpen();
@@ -820,55 +820,55 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 
 		expect(bookHeadings(modal)).toEqual([
 			"1 / 3 — Zebra Notes",
-			"3 / 3 — Deep Work",
+			"3 / 3 — Night Trains to Lumen Bay",
 		]);
 	});
 
 	it("combines search and status filter", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Import All").click();
-		await searchBooks(modal, "Deep");
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — The Clockwork Orchard"), "Import All").click();
+		await searchBooks(modal, "Lumen");
 		await findByText(modal.contentEl, "Reviewed").click();
 
 		expect(readText(modal.contentEl)).toContain("No matching books.");
 
 		await findByText(modal.contentEl, "Needs Review").click();
-		expect(bookHeadings(modal)).toEqual(["2 / 2 — Deep Work"]);
+		expect(bookHeadings(modal)).toEqual(["2 / 2 — Night Trains to Lumen Bay"]);
 	});
 
 	it("does not reset selected decisions while filtering and searching", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Import All").click();
-		await searchBooks(modal, "Deep");
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — The Clockwork Orchard"), "Import All").click();
+		await searchBooks(modal, "Lumen");
 		await searchBooks(modal, "");
 
-		const atomicHabits = findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits");
-		const importAll = buttonByTextAt(atomicHabits, "Import All", 0);
+		const clockworkOrchard = findSectionByHeading(modal.contentEl, "1 / 2 — The Clockwork Orchard");
+		const importAll = buttonByTextAt(clockworkOrchard, "Import All", 0);
 
-		expect(readText(atomicHabits)).toContain("Import All");
+		expect(readText(clockworkOrchard)).toContain("Import All");
 		expect(importAll.classes.has("kls-decision-button-active-import")).toBe(true);
 		expect(importAll.attributes.get("aria-pressed")).toBe("true");
 	});
 
 	it("keeps review progress global while search is active", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Import All").click();
-		await searchBooks(modal, "Deep");
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — The Clockwork Orchard"), "Import All").click();
+		await searchBooks(modal, "Lumen");
 
 		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
 		expect(readText(compactProgress)).toBe(
@@ -884,7 +884,7 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		const actions = elementByClassAt(modal.contentEl, "kls-book-actions", 0);
 
 		expect(elementByClassAt(header, "kls-book-index", 0).text()).toBe("1 / 1");
-		expect(elementByClassAt(header, "kls-book-title", 0).text()).toBe("Atomic Habits");
+		expect(elementByClassAt(header, "kls-book-title", 0).text()).toBe("The Clockwork Orchard");
 		expect(buttonTexts(header)).toEqual([]);
 		expect(buttonTexts(actions)).toEqual([
 			"Import All", "Skip This Sync", "Ignore All", "Review Highlights",
@@ -893,8 +893,8 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 
 	it("renders each book as a shared card container", () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
@@ -926,11 +926,11 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 	});
 
 	it("renders every stored title variant together without inferring or reordering languages", () => {
-		const group = createBookGroup("Muôn Kiếp Nhân Sinh", "Nguyên Phong");
+		const group = createBookGroup("Café at Dawn", "Mira Vale");
 
-		group.clippings[1]!.bookTitle = "Many Lives – Many Times";
+		group.clippings[1]!.bookTitle = "Dawn Café – Illustrated Edition";
 		const modal = createModal(createPlugin(), [group]);
-		const combinedTitle = "Muôn Kiếp Nhân Sinh · Many Lives – Many Times";
+		const combinedTitle = "Café at Dawn · Dawn Café – Illustrated Edition";
 
 		modal.onOpen();
 		const card = elementByClassAt(modal.contentEl, "kls-book-card", 0);
@@ -941,8 +941,8 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		expect(title.text()).toBe(combinedTitle);
 		expect(title.attributes.get("aria-label")).toBe(combinedTitle);
 		expect(title.attributes.get("title")).toBe(combinedTitle);
-		expect(authors.map((author) => author.text())).toEqual(["Nguyên Phong"]);
-		expect(authors[0]?.attributes.get("title")).toBe("Nguyên Phong");
+		expect(authors.map((author) => author.text())).toEqual(["Mira Vale"]);
+		expect(authors[0]?.attributes.get("title")).toBe("Mira Vale");
 	});
 
 	it("keeps Review Highlights and per-book action buttons inside the same card", () => {
@@ -1072,8 +1072,8 @@ describe("FirstSyncPreviewModal skipped summary items", () => {
 
 		const skippedHighlights = getCompleteFirstSyncArgs(plugin)[2];
 		expect(skippedHighlights.map((highlight) => highlight.textPreview)).toEqual([
-			"Small habits make a big difference.",
-			"Review this idea later.",
+			"Clockwork apples chime at midnight.",
+			"Revisit the orchard map later.",
 		]);
 	});
 
@@ -1219,7 +1219,7 @@ describe("FirstSyncPreviewModal Import All Books", () => {
 
 	it("imports every reviewable highlight immediately when there are no current Skip or Ignore choices", async () => {
 		const plugin = createPlugin();
-		const groups = [createBookGroup("Atomic Habits"), createBookGroup("Deep Work")];
+		const groups = [createBookGroup("The Clockwork Orchard"), createBookGroup("Night Trains to Lumen Bay")];
 		const modal = createModal(plugin, groups);
 
 		modal.onOpen();
@@ -1287,11 +1287,11 @@ describe("FirstSyncPreviewModal Import All Books", () => {
 
 	it("changes every current modal choice to Import only after confirmation", async () => {
 		const plugin = createPlugin();
-		const modal = createModal(plugin, [createBookGroup(), createBookGroup("Deep Work")]);
+		const modal = createModal(plugin, [createBookGroup(), createBookGroup("Night Trains to Lumen Bay")]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Skip This Sync").click();
-		await chooseIgnoreAll(modal, findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"));
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — The Clockwork Orchard"), "Skip This Sync").click();
+		await chooseIgnoreAll(modal, findSectionByHeading(modal.contentEl, "2 / 2 — Night Trains to Lumen Bay"));
 		await findByText(modal.contentEl, "Import All Books").click();
 		expect(currentChoiceValues(modal)).toEqual(["skip", "skip", "ignore", "ignore"]);
 
@@ -1304,11 +1304,11 @@ describe("FirstSyncPreviewModal Import All Books", () => {
 
 	it("includes books hidden by search and filter while preserving help, query, filter, and scroll", async () => {
 		const plugin = createPlugin();
-		const modal = createModal(plugin, [createBookGroup(), createBookGroup("Deep Work")]);
+		const modal = createModal(plugin, [createBookGroup(), createBookGroup("Night Trains to Lumen Bay")]);
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "How choices work").click();
-		await searchBooks(modal, "Atomic");
+		await searchBooks(modal, "Clockwork");
 		await findByText(modal.contentEl, "Reviewed").click();
 		const body = elementByClassAt(modal.contentEl, "kls-modal-scroll-body", 0);
 
@@ -1318,12 +1318,12 @@ describe("FirstSyncPreviewModal Import All Books", () => {
 		await findByText(modal.contentEl, "Import All Books").click();
 
 		expect(currentChoiceValues(modal)).toEqual(["import", "import", "import", "import"]);
-		expect(elementsByTag(modal.contentEl, "input")[0]?.value).toBe("Atomic");
+		expect(elementsByTag(modal.contentEl, "input")[0]?.value).toBe("Clockwork");
 		expect(findByText(modal.contentEl, "Reviewed").attributes.get("aria-pressed")).toBe("true");
 		expect(findByText(modal.contentEl, "How choices work").attributes.get("aria-expanded")).toBe("true");
 		expect(scrollTop(modal.contentEl)).toBe(190);
 		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(190);
-		expect(bookHeadings(modal)).toEqual(["1 / 2 — Atomic Habits"]);
+		expect(bookHeadings(modal)).toEqual(["1 / 2 — The Clockwork Orchard"]);
 		expect(plugin.completeFirstSync).not.toHaveBeenCalled();
 	});
 
@@ -1365,9 +1365,9 @@ describe("FirstSyncPreviewModal Import All Books", () => {
 
 	it("passes the final live choices to Finish Sync after later individual edits", async () => {
 		const plugin = createPlugin();
-		const atomic = createBookGroup();
-		const deepWork = createBookGroup("Deep Work");
-		const modal = createModal(plugin, [atomic, deepWork]);
+		const orchard = createBookGroup();
+		const lumenBay = createBookGroup("Night Trains to Lumen Bay");
+		const modal = createModal(plugin, [orchard, lumenBay]);
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Import All Books").click();
@@ -1379,10 +1379,10 @@ describe("FirstSyncPreviewModal Import All Books", () => {
 
 		const [imports, ignores, skipped] = getCompleteFirstSyncArgs(plugin);
 
-		expect(imports).toEqual(deepWork.clippings);
-		expect(ignores).toEqual([atomic.clippings[1]]);
+		expect(imports).toEqual(lumenBay.clippings);
+		expect(ignores).toEqual([orchard.clippings[1]]);
 		expect(skipped).toEqual([expect.objectContaining({
-			id: createClippingId(atomic.clippings[0]!),
+			id: createClippingId(orchard.clippings[0]!),
 			returnReason: "skipped",
 		})]);
 	});
@@ -1594,7 +1594,7 @@ describe("FirstSyncPreviewModal book status", () => {
 
 describe("FirstSyncPreviewModal review progress", () => {
 	it("removes the full review progress section from the book list", () => {
-		const modal = createModal(createPlugin(), [createBookGroup("Atomic Habits"), createBookGroup("Deep Work")]);
+		const modal = createModal(createPlugin(), [createBookGroup("The Clockwork Orchard"), createBookGroup("Night Trains to Lumen Bay")]);
 
 		modal.onOpen();
 
@@ -1604,7 +1604,7 @@ describe("FirstSyncPreviewModal review progress", () => {
 	});
 
 	it("shows compact sticky global progress while the book list renders", () => {
-		const modal = createModal(createPlugin(), [createBookGroup("Atomic Habits"), createBookGroup("Deep Work")]);
+		const modal = createModal(createPlugin(), [createBookGroup("The Clockwork Orchard"), createBookGroup("Night Trains to Lumen Bay")]);
 
 		modal.onOpen();
 
@@ -1624,19 +1624,19 @@ describe("FirstSyncPreviewModal review progress", () => {
 
 	it("keeps compact progress global while search is active", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Import All").click();
-		await searchBooks(modal, "Deep");
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — The Clockwork Orchard"), "Import All").click();
+		await searchBooks(modal, "Lumen");
 
 		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
 		expect(readText(compactProgress)).toBe(
 			"Reviewed: 1/2 books · Needs Review: 1 book · Ignore: 0 highlights · Skip: 0 highlights"
 		);
-		expect(bookHeadings(modal)).toEqual(["2 / 2 — Deep Work"]);
+		expect(bookHeadings(modal)).toEqual(["2 / 2 — Night Trains to Lumen Bay"]);
 	});
 
 	it("updates progress after Import All", async () => {
@@ -1691,10 +1691,10 @@ describe("FirstSyncPreviewModal review progress", () => {
 	});
 
 	it("counts partially reviewed books as not reviewed", async () => {
-		const modal = createModal(createPlugin(), [createBookGroup("Atomic Habits"), createBookGroup("Deep Work")]);
+		const modal = createModal(createPlugin(), [createBookGroup("The Clockwork Orchard"), createBookGroup("Night Trains to Lumen Bay")]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Review Highlights").click();
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — The Clockwork Orchard"), "Review Highlights").click();
 		await findByText(modal.contentEl, "Import").click();
 		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 
@@ -1820,13 +1820,13 @@ describe("FirstSyncPreviewModal unsaved decision confirmation", () => {
 
 	it("does not mark search, filters, scroll, book navigation, or Back as dirty", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 		const onClose = vi.spyOn(modal, "onClose");
 
 		modal.onOpen();
-		await searchBooks(modal, "Deep");
+		await searchBooks(modal, "Lumen");
 		await findByText(modal.contentEl, "Needs Review").click();
 		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 175);
 		await findByText(modal.contentEl, "Review Highlights").click();
@@ -1859,8 +1859,8 @@ describe("FirstSyncPreviewModal unsaved decision confirmation", () => {
 describe("FirstSyncPreviewModal control registry lifecycle", () => {
 	it("keeps only current book decision controls across repeated search and filter renders", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
@@ -1868,7 +1868,7 @@ describe("FirstSyncPreviewModal control registry lifecycle", () => {
 		const initialFinish = initialState.finishButtons[0];
 		const initialBulk = findByText(modal.contentEl, "Import All Books");
 
-		await searchBooks(modal, "Deep");
+		await searchBooks(modal, "Lumen");
 		expect(expectCurrentControlRegistries(modal, 4, 1).finishButtons).toEqual([initialFinish]);
 		expect(findByText(modal.contentEl, "Import All Books")).toBe(initialBulk);
 		await searchBooks(modal, "");
@@ -1925,22 +1925,22 @@ describe("FirstSyncPreviewModal completion failure", () => {
 	it("keeps decisions, search, filter, and scroll after an ordinary rejection", async () => {
 		const plugin = createPlugin();
 		const modal = createModal(plugin, [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
-			createBookGroup("Digital Minimalism"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
+			createBookGroup("Signals in the Rain"),
 		]);
 		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 		const noticeCountBefore = Notice.messages.length;
 
 		plugin.completeFirstSync.mockRejectedValueOnce(new Error("Disk write failed."));
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 / 3 — Atomic Habits"), "Import All").click();
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 3 — The Clockwork Orchard"), "Import All").click();
 		await chooseIgnoreAll(
 			modal,
-			findSectionByHeading(modal.contentEl, "2 / 3 — Deep Work")
+			findSectionByHeading(modal.contentEl, "2 / 3 — Night Trains to Lumen Bay")
 		);
-		await findByText(findSectionByHeading(modal.contentEl, "3 / 3 — Digital Minimalism"), "Skip This Sync").click();
-		await searchBooks(modal, "Atomic");
+		await findByText(findSectionByHeading(modal.contentEl, "3 / 3 — Signals in the Rain"), "Skip This Sync").click();
+		await searchBooks(modal, "Clockwork");
 		await findByText(modal.contentEl, "Reviewed").click();
 		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 220);
 		setScrollTop(modal.contentEl, 220);
@@ -1959,7 +1959,7 @@ describe("FirstSyncPreviewModal completion failure", () => {
 		expect(readText(failure)).toContain("Some note changes may have occurred.");
 		expect(readText(failure)).not.toContain("Your Ignore choices were saved");
 		expect(Notice.messages).toHaveLength(noticeCountBefore);
-		expect(elementsByTag(modal.contentEl, "input")[0]?.value).toBe("Atomic");
+		expect(elementsByTag(modal.contentEl, "input")[0]?.value).toBe("Clockwork");
 		expect(findByText(modal.contentEl, "Reviewed").attributes.get("aria-pressed")).toBe("true");
 		expect(readText(modal.contentEl)).toContain("How choices work");
 		expect(scrollTop(modal.contentEl)).toBe(220);
@@ -1967,14 +1967,14 @@ describe("FirstSyncPreviewModal completion failure", () => {
 
 		await findByText(modal.contentEl, "Return to review").click();
 		await searchBooks(modal, "");
-		const atomicHabits = findSectionByHeading(modal.contentEl, "1 / 3 — Atomic Habits");
-		const deepWork = findSectionByHeading(modal.contentEl, "2 / 3 — Deep Work");
-		const digitalMinimalism = findSectionByHeading(modal.contentEl, "3 / 3 — Digital Minimalism");
+		const clockworkOrchard = findSectionByHeading(modal.contentEl, "1 / 3 — The Clockwork Orchard");
+		const lumenBay = findSectionByHeading(modal.contentEl, "2 / 3 — Night Trains to Lumen Bay");
+		const signalsInRain = findSectionByHeading(modal.contentEl, "3 / 3 — Signals in the Rain");
 
-		expect(readText(atomicHabits)).toContain("Import All");
-		expect(buttonByTextAt(atomicHabits, "Import All", 0).classes.has("kls-decision-button-active-import")).toBe(true);
-		expect(findByText(deepWork, "Ignore All").classes.has("kls-decision-button-active-ignore")).toBe(true);
-		expect(buttonByTextAt(digitalMinimalism, "Skip This Sync", 0).classes.has("kls-decision-button-active-skip")).toBe(true);
+		expect(readText(clockworkOrchard)).toContain("Import All");
+		expect(buttonByTextAt(clockworkOrchard, "Import All", 0).classes.has("kls-decision-button-active-import")).toBe(true);
+		expect(findByText(lumenBay, "Ignore All").classes.has("kls-decision-button-active-ignore")).toBe(true);
+		expect(buttonByTextAt(signalsInRain, "Skip This Sync", 0).classes.has("kls-decision-button-active-skip")).toBe(true);
 		expect(elementsByClass(modal.contentEl, "kls-operation-failure")).toHaveLength(0);
 		consoleError.mockRestore();
 	});
@@ -2206,7 +2206,7 @@ describe("FirstSyncPreviewModal completion failure", () => {
 		await finishRequest;
 
 		expect(elementByClassAt(modal.contentEl, "kls-book-detail-count", 0).text()).toBe("2 highlights");
-		expect(elementByClassAt(modal.contentEl, "kls-book-title", 0).text()).toBe("Atomic Habits");
+		expect(elementByClassAt(modal.contentEl, "kls-book-title", 0).text()).toBe("The Clockwork Orchard");
 		const importButton = findByText(modal.contentEl, "Import");
 
 		expect(importButton.classes.has("kls-decision-button-active-import")).toBe(true);
@@ -2453,41 +2453,41 @@ describe("FirstSyncPreviewModal finish confirmation", () => {
 describe("FirstSyncPreviewModal per-book review scroll", () => {
 	it("resets scroll to top when entering per-book review", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
-		const deepWorkSection = findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work");
+		const lumenBaySection = findSectionByHeading(modal.contentEl, "2 / 2 — Night Trains to Lumen Bay");
 		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 320);
 		setScrollTop(modal.contentEl, 320);
-		await findByText(deepWorkSection, "Review Highlights").click();
+		await findByText(lumenBaySection, "Review Highlights").click();
 
-		expect(elementsByTag(modal.contentEl, "h2").map((element) => element.text())).toContain("Deep Work");
+		expect(elementsByTag(modal.contentEl, "h2").map((element) => element.text())).toContain("Night Trains to Lumen Bay");
 		expect(elementByClassAt(modal.contentEl, "kls-book-detail-count", 0).text()).toBe("2 highlights");
 		expect(readText(modal.contentEl)).toContain("Location 154");
-		expect(readText(modal.contentEl)).toContain("Small habits make a big difference.");
+		expect(readText(modal.contentEl)).toContain("Clockwork apples chime at midnight.");
 		expect(scrollTop(modal.contentEl)).toBe(0);
 		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(0);
-		expect(scrollIntoViewCalls(deepWorkSection)).toHaveLength(0);
+		expect(scrollIntoViewCalls(lumenBaySection)).toHaveLength(0);
 	});
 
 	it("does not break Back to Book List anchor restoration", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
 		setScrollTop(modal.contentEl, 320);
-		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"), "Review Highlights").click();
+		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Night Trains to Lumen Bay"), "Review Highlights").click();
 		setScrollTop(modal.contentEl, 25);
 		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 
-		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"))).toEqual([
+		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "2 / 2 — Night Trains to Lumen Bay"))).toEqual([
 			{ block: "center" },
 		]);
-		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"))).toHaveLength(0);
+		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "1 / 2 — The Clockwork Orchard"))).toHaveLength(0);
 	});
 
 	it("preserves scroll after selecting a per-highlight decision", async () => {
@@ -2514,8 +2514,8 @@ describe("FirstSyncPreviewModal book list navigation", () => {
 
 	it("shows book numbering in the book list", () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
@@ -2524,66 +2524,66 @@ describe("FirstSyncPreviewModal book list navigation", () => {
 			"1 / 2",
 			"2 / 2",
 		]);
-		expect(bookHeadings(modal)).toEqual(["1 / 2 — Atomic Habits", "2 / 2 — Deep Work"]);
+		expect(bookHeadings(modal)).toEqual(["1 / 2 — The Clockwork Orchard", "2 / 2 — Night Trains to Lumen Bay"]);
 		expect(readText(modal.contentEl)).not.toContain("Book 1 / 2");
 	});
 
 	it("shows the highlight count in per-book review", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"), "Review Highlights").click();
+		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Night Trains to Lumen Bay"), "Review Highlights").click();
 
-		expect(elementsByTag(modal.contentEl, "h2").map((element) => element.text())).toContain("Deep Work");
+		expect(elementsByTag(modal.contentEl, "h2").map((element) => element.text())).toContain("Night Trains to Lumen Bay");
 		expect(elementByClassAt(modal.contentEl, "kls-book-detail-count", 0).text()).toBe("2 highlights");
 	});
 
 	it("stores the clicked book as a return anchor when Review Highlights is clicked", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"), "Review Highlights").click();
+		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Night Trains to Lumen Bay"), "Review Highlights").click();
 		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 
-		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"))).toEqual([
+		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "2 / 2 — Night Trains to Lumen Bay"))).toEqual([
 			{ block: "center" },
 		]);
-		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"))).toHaveLength(0);
+		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "1 / 2 — The Clockwork Orchard"))).toHaveLength(0);
 	});
 
 	it("scrolls the clicked book back into view when Back to Book List is clicked", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
 		setScrollTop(modal.contentEl, 240);
-		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"), "Review Highlights").click();
+		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Night Trains to Lumen Bay"), "Review Highlights").click();
 		setScrollTop(modal.contentEl, 10);
 		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 
-		const deepWorkSection = findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work");
+		const lumenBaySection = findSectionByHeading(modal.contentEl, "2 / 2 — Night Trains to Lumen Bay");
 
 		expect(readText(modal.contentEl)).toContain("First Sync Preview");
-		expect(scrollIntoViewCalls(deepWorkSection)).toEqual([{ block: "center" }]);
+		expect(scrollIntoViewCalls(lumenBaySection)).toEqual([{ block: "center" }]);
 	});
 
 	it("falls back safely when the return anchor cannot be found", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
 		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 240);
-		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"), "Review Highlights").click();
+		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Night Trains to Lumen Bay"), "Review Highlights").click();
 		(modal as unknown as { bookListReturnAnchorKey: string }).bookListReturnAnchorKey = "missing";
 		setScrollTop(elementsByClass(modal.contentEl, "kls-book-detail-highlights")[0], 10);
 		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
@@ -2594,18 +2594,18 @@ describe("FirstSyncPreviewModal book list navigation", () => {
 
 	it("preserves book position after a book-level action", async () => {
 		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
+			createBookGroup("The Clockwork Orchard"),
+			createBookGroup("Night Trains to Lumen Bay"),
 		]);
 
 		modal.onOpen();
 		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 275);
 		setScrollTop(modal.contentEl, 275);
-		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"), "Skip This Sync").click();
+		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Night Trains to Lumen Bay"), "Skip This Sync").click();
 
 		expect(scrollTop(modal.contentEl)).toBe(275);
 		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(275);
-		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"))).toHaveLength(0);
+		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "2 / 2 — Night Trains to Lumen Bay"))).toHaveLength(0);
 	});
 });
 
@@ -2643,20 +2643,20 @@ function createEmptyCleanupResult() {
 }
 
 function createBookGroup(
-	bookTitle = "Atomic Habits",
-	author = "James Clear"
+	bookTitle = "The Clockwork Orchard",
+	author = "Mira Vale"
 ): KindleBookGroup {
 	const firstHighlight = createHighlight({
 		bookTitle,
 		author,
 		location: "154",
-		content: "Small habits make a big difference.",
+		content: "Clockwork apples chime at midnight.",
 	});
 	const secondHighlight = createHighlight({
 		bookTitle,
 		author,
 		location: "160",
-		content: "Review this idea later.",
+		content: "Revisit the orchard map later.",
 		type: "Note",
 	});
 
@@ -2667,7 +2667,7 @@ function createBookGroup(
 	};
 }
 
-function createSingleHighlightBookGroup(bookTitle = "Atomic Habits", author = "James Clear"): KindleBookGroup {
+function createSingleHighlightBookGroup(bookTitle = "The Clockwork Orchard", author = "Mira Vale"): KindleBookGroup {
 	return {
 		bookTitle,
 		author,
@@ -2676,7 +2676,7 @@ function createSingleHighlightBookGroup(bookTitle = "Atomic Habits", author = "J
 				bookTitle,
 				author,
 				location: "154",
-				content: "Small habits make a big difference.",
+				content: "Clockwork apples chime at midnight.",
 			}),
 		],
 	};
@@ -2700,11 +2700,11 @@ function createCollisionBookGroup(bookTitle: string): KindleBookGroup {
 
 function createHighlight(overrides: Partial<KindleHighlight> = {}): KindleHighlight {
 	return {
-		bookTitle: "Atomic Habits",
-		author: "James Clear",
+		bookTitle: "The Clockwork Orchard",
+		author: "Mira Vale",
 		location: "154",
-		content: "Small habits make a big difference.",
-		dateAdded: "Thursday, May 14, 2026 2:44 PM",
+		content: "Clockwork apples chime at midnight.",
+		dateAdded: "Monday, October 5, 2099 9:41 AM",
 		type: "Highlight",
 		...overrides,
 	};

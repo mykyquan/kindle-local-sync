@@ -12,7 +12,7 @@ describe("classifyHighlightsForSync", () => {
 				id: createClippingId(highlight),
 				title: highlight.bookTitle,
 				textPreview: highlight.content,
-				ignoredAt: "2026-07-07T00:00:00.000Z",
+				ignoredAt: "2099-07-07T00:00:00.000Z",
 			}],
 			importedHighlights: [],
 			identityIndex: new CurrentClippingIdentityIndex([highlight]),
@@ -146,7 +146,7 @@ describe("classifyHighlightsForSync", () => {
 				id: createClippingId(first),
 				title: first.bookTitle,
 				textPreview: "Legacy ignored preview",
-				ignoredAt: "2026-07-07T00:00:00.000Z",
+				ignoredAt: "2099-07-07T00:00:00.000Z",
 			}],
 			importedHighlights: [],
 			identityIndex: new CurrentClippingIdentityIndex([first, second]),
@@ -178,7 +178,7 @@ function createImportedRecord(highlight: KindleHighlight) {
 		title: highlight.bookTitle,
 		author: highlight.author,
 		textPreview: highlight.content,
-		importedAt: "2026-07-07T00:00:00.000Z",
+		importedAt: "2099-07-07T00:00:00.000Z",
 	};
 }
 
@@ -187,7 +187,7 @@ function createLegacyImportedRecord(highlight: KindleHighlight) {
 		id: createClippingId(highlight),
 		title: highlight.bookTitle,
 		textPreview: highlight.content,
-		importedAt: "2026-07-07T00:00:00.000Z",
+		importedAt: "2099-07-07T00:00:00.000Z",
 	};
 }
 
@@ -213,11 +213,11 @@ function createSameTitleAuthorCollision(author: string): KindleHighlight {
 
 function createHighlight(overrides: Partial<KindleHighlight> = {}): KindleHighlight {
 	return {
-		bookTitle: "Atomic Habits",
-		author: "James Clear",
+		bookTitle: "The Clockwork Orchard",
+		author: "Mira Vale",
 		location: "154",
-		content: "Small habits make a big difference.",
-		dateAdded: "Thursday, May 14, 2026 2:44 PM",
+		content: "Clockwork apples chime at midnight.",
+		dateAdded: "Monday, October 5, 2099 9:41 AM",
 		type: "Highlight",
 		...overrides,
 	};

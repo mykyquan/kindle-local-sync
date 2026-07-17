@@ -16,9 +16,9 @@ describe("SyncOutcomePresentation protected books", () => {
 		const automatic = createHighlight({ content: "Previously imported." });
 		const selected = createHighlight({ content: "Selected now.", location: "2" });
 		const selectedOtherBook = createHighlight({
-			bookTitle: "Deep Work",
-			author: "Cal Newport",
-			content: "Focus deeply.",
+			bookTitle: "Night Trains to Lumen Bay",
+			author: "Owen Hart",
+			content: "Follow the midnight timetable.",
 		});
 
 		expect(createProtectedBooksPresentation(
@@ -30,14 +30,14 @@ describe("SyncOutcomePresentation protected books", () => {
 			selectedHighlightCount: 2,
 			books: [
 				{
-					title: "Atomic Habits",
-					author: "James Clear",
+					title: "The Clockwork Orchard",
+					author: "Mira Vale",
 					affectedHighlightCount: 2,
 					selectedHighlightCount: 1,
 				},
 				{
-					title: "Deep Work",
-					author: "Cal Newport",
+					title: "Night Trains to Lumen Bay",
+					author: "Owen Hart",
 					affectedHighlightCount: 1,
 					selectedHighlightCount: 1,
 				},
@@ -124,8 +124,8 @@ describe("SyncOutcomePresentation Ignore results", () => {
 	it("preserves result order, attaches only safe previews, and removes internal cleanup details", () => {
 		const first = createHighlight({ content: "First preview." });
 		const second = createHighlight({
-			bookTitle: "Deep Work",
-			author: "Cal Newport",
+			bookTitle: "Night Trains to Lumen Bay",
+			author: "Owen Hart",
 			content: "Second preview.",
 		});
 		const presentation = createIgnoreResultsPresentation([
@@ -144,14 +144,14 @@ describe("SyncOutcomePresentation Ignore results", () => {
 
 		expect(presentation.items).toEqual([
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
 				highlightPreview: "First preview.",
 				status: "not-removed",
 			},
 			{
-				bookTitle: "Deep Work",
-				author: "Cal Newport",
+				bookTitle: "Night Trains to Lumen Bay",
+				author: "Owen Hart",
 				highlightPreview: "Second preview.",
 				status: "note-unchanged",
 			},
@@ -204,11 +204,11 @@ function createTarget(highlight: KindleHighlight) {
 
 function createHighlight(overrides: Partial<KindleHighlight> = {}): KindleHighlight {
 	return {
-		bookTitle: "Atomic Habits",
-		author: "James Clear",
+		bookTitle: "The Clockwork Orchard",
+		author: "Mira Vale",
 		location: "1",
-		content: "Small habits compound.",
-		dateAdded: "Thursday, May 14, 2026 2:44 PM",
+		content: "Clockwork petals unfold at midnight.",
+		dateAdded: "Monday, October 5, 2099 9:41 AM",
 		type: "Highlight",
 		...overrides,
 	};

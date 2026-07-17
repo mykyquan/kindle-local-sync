@@ -21,21 +21,21 @@ describe("IgnoredHighlightsModal", () => {
 
 	it("groups highlights by book title", () => {
 		const modal = new IgnoredHighlightsModal(new App() as never, createPlugin([
-			createIgnoredHighlight("one", "Atomic Habits"),
-			createIgnoredHighlight("two", "Atomic Habits"),
-			createIgnoredHighlight("three", "Deep Work"),
+			createIgnoredHighlight("one", "The Clockwork Orchard"),
+			createIgnoredHighlight("two", "The Clockwork Orchard"),
+			createIgnoredHighlight("three", "Night Trains to Lumen Bay"),
 		]) as never);
 
 		modal.onOpen();
 
-		expect(readText(modal.contentEl)).toContain("Atomic Habits");
-		expect(readText(modal.contentEl)).toContain("Deep Work");
-		expect(readText(modal.contentEl).match(/Atomic Habits/g)).toHaveLength(1);
+		expect(readText(modal.contentEl)).toContain("The Clockwork Orchard");
+		expect(readText(modal.contentEl)).toContain("Night Trains to Lumen Bay");
+		expect(readText(modal.contentEl).match(/The Clockwork Orchard/g)).toHaveLength(1);
 	});
 
 	it("uses shared book cards for ignored highlight groups with review and remove-all actions", () => {
 		const modal = new IgnoredHighlightsModal(new App() as never, createPlugin([
-			createIgnoredHighlight("one", "Atomic Habits"),
+			createIgnoredHighlight("one", "The Clockwork Orchard"),
 		]) as never);
 
 		modal.onOpen();
@@ -46,7 +46,7 @@ describe("IgnoredHighlightsModal", () => {
 
 		expect(elementsByClass(modal.contentEl, "kls-book-list")).toHaveLength(1);
 		expect(card.classes.has("kls-book-section")).toBe(true);
-		expect(elementByClass(header, "kls-book-title").text()).toBe("Atomic Habits");
+		expect(elementByClass(header, "kls-book-title").text()).toBe("The Clockwork Orchard");
 		expect(elementByClass(card, "kls-book-review-summary").text()).toBe("1 ignored highlight");
 		expect(elementsByClass(card, "kls-ignored-highlight-text")).toHaveLength(0);
 		expect(elementsByClass(modal.contentEl, "kls-ignored-highlight-item")).toHaveLength(0);
@@ -68,24 +68,24 @@ describe("IgnoredHighlightsModal", () => {
 
 	it("removes all ignored highlights for a book from the summary card", async () => {
 		const plugin = createPlugin([
-			createIgnoredHighlight("one", "Atomic Habits"),
-			createIgnoredHighlight("two", "Atomic Habits"),
-			createIgnoredHighlight("three", "Deep Work"),
+			createIgnoredHighlight("one", "The Clockwork Orchard"),
+			createIgnoredHighlight("two", "The Clockwork Orchard"),
+			createIgnoredHighlight("three", "Night Trains to Lumen Bay"),
 		]);
 		const modal = new IgnoredHighlightsModal(new App() as never, plugin as never);
 
 		modal.onOpen();
-		await findByText(bookCardByTitle(modal.contentEl, "Atomic Habits"), "Remove All From Ignore List").click();
+		await findByText(bookCardByTitle(modal.contentEl, "The Clockwork Orchard"), "Remove All From Ignore List").click();
 
 		expect(plugin.unignoreHighlight).toHaveBeenCalledWith(expect.objectContaining({ id: "one" }));
 		expect(plugin.unignoreHighlight).toHaveBeenCalledWith(expect.objectContaining({ id: "two" }));
 		expect(plugin.unignoreHighlight).not.toHaveBeenCalledWith(expect.objectContaining({ id: "three" }));
-		expect(readText(modal.contentEl)).not.toContain("Atomic Habits");
-		expect(readText(modal.contentEl)).toContain("Deep Work");
+		expect(readText(modal.contentEl)).not.toContain("The Clockwork Orchard");
+		expect(readText(modal.contentEl)).toContain("Night Trains to Lumen Bay");
 	});
 
 	it("shows the empty state after removing all ignored highlights from the last book", async () => {
-		const plugin = createPlugin([createIgnoredHighlight("one", "Atomic Habits")]);
+		const plugin = createPlugin([createIgnoredHighlight("one", "The Clockwork Orchard")]);
 		const modal = new IgnoredHighlightsModal(new App() as never, plugin as never);
 
 		modal.onOpen();
@@ -99,7 +99,7 @@ describe("IgnoredHighlightsModal", () => {
 
 	it("opens ignored highlight details for a book", async () => {
 		const modal = new IgnoredHighlightsModal(new App() as never, createPlugin([
-			createIgnoredHighlight("one", "Atomic Habits"),
+			createIgnoredHighlight("one", "The Clockwork Orchard"),
 		]) as never);
 
 		modal.onOpen();
@@ -113,7 +113,7 @@ describe("IgnoredHighlightsModal", () => {
 		expect(detail.children[0]).toBe(header);
 		expect(header.children[0]).toBe(navigation);
 		expect(header.children[1]?.classes.has("kls-book-title")).toBe(true);
-		expect(elementByClass(detail, "kls-book-title").text()).toBe("Atomic Habits");
+		expect(elementByClass(detail, "kls-book-title").text()).toBe("The Clockwork Orchard");
 		expect(findButtonByAriaLabel(navigation, "Back to Ignored Highlights").classes.has("kls-review-back-button")).toBe(true);
 		expect(buttonTexts(navigation)).toEqual(["Back"]);
 		expect(elementByClass(detail, "kls-book-detail-count").text()).toBe("1 ignored highlight");
@@ -122,7 +122,7 @@ describe("IgnoredHighlightsModal", () => {
 			"kls-book-detail-highlight-meta",
 			"kls-button-row",
 		]);
-		expect(elementByClass(row, "kls-book-detail-highlight-meta").text()).toBe("Ignored 7/7/2026");
+		expect(elementByClass(row, "kls-book-detail-highlight-meta").text()).toBe("Ignored 7/7/2099");
 		expect(elementByClass(row, "kls-book-detail-highlight-text").text()).toBe("one preview");
 		expect(elementsByClass(detail, "kls-book-card")).toHaveLength(0);
 		expect(buttonTexts(modal.contentEl)).toContain("Remove From Ignore List");
@@ -130,7 +130,7 @@ describe("IgnoredHighlightsModal", () => {
 
 	it("uses the complete ignored book title as the direct detail heading", async () => {
 		const modal = new IgnoredHighlightsModal(new App() as never, createPlugin([
-			createIgnoredHighlight("one", "A Very Long Atomic Habits Title That Should Wrap Cleanly In The Detail Card"),
+			createIgnoredHighlight("one", "A Very Long Clockwork Orchard Almanac Title That Should Wrap Cleanly In The Detail Card"),
 		]) as never);
 
 		modal.onOpen();
@@ -142,14 +142,14 @@ describe("IgnoredHighlightsModal", () => {
 		expect(header.children[0]?.classes.has("kls-book-detail-back")).toBe(true);
 		expect(header.children[1]?.classes.has("kls-book-title")).toBe(true);
 		expect(elementByClass(detail, "kls-book-title").text()).toBe(
-			"A Very Long Atomic Habits Title That Should Wrap Cleanly In The Detail Card"
+			"A Very Long Clockwork Orchard Almanac Title That Should Wrap Cleanly In The Detail Card"
 		);
 		expect(elementsByClass(detail, "kls-book-card")).toHaveLength(0);
 	});
 
 	it("returns from ignored detail view to ignored summary view", async () => {
 		const modal = new IgnoredHighlightsModal(new App() as never, createPlugin([
-			createIgnoredHighlight("one", "Atomic Habits"),
+			createIgnoredHighlight("one", "The Clockwork Orchard"),
 		]) as never);
 
 		modal.onOpen();
@@ -162,7 +162,7 @@ describe("IgnoredHighlightsModal", () => {
 	});
 
 	it("removes row from DOM on unignore click", async () => {
-		const plugin = createPlugin([createIgnoredHighlight("one", "Atomic Habits")]);
+		const plugin = createPlugin([createIgnoredHighlight("one", "The Clockwork Orchard")]);
 		const modal = new IgnoredHighlightsModal(new App() as never, plugin as never);
 
 		modal.onOpen();
@@ -202,7 +202,7 @@ function createIgnoredHighlight(id: string, title: string): IgnoredHighlight {
 		id,
 		title,
 		textPreview: `${id} preview`,
-		ignoredAt: "2026-07-07T12:00:00.000Z",
+		ignoredAt: "2099-07-07T12:00:00.000Z",
 	};
 }
 

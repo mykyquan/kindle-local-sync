@@ -17,7 +17,7 @@ describe("readClippingsFile", () => {
 	it("reads a UTF-8 clippings file as raw text", async () => {
 		temporaryDirectory = await mkdtemp(join(tmpdir(), "kindle-local-sync-"));
 		const filePath = join(temporaryDirectory, "My Clippings.txt");
-		const rawText = "Atomic Habits (James Clear)\n==========";
+		const rawText = "The Clockwork Orchard (Mira Vale)\n==========";
 
 		await writeFile(filePath, rawText, "utf8");
 

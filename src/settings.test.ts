@@ -28,9 +28,9 @@ describe("settings migration", () => {
 		const ignoredHighlights = [
 			{
 				id: "kls-existing",
-				title: "Atomic Habits",
+				title: "The Clockwork Orchard",
 				textPreview: "Old highlight.",
-				ignoredAt: "2026-07-07T00:00:00.000Z",
+				ignoredAt: "2099-07-07T00:00:00.000Z",
 			},
 		];
 		const settings = migrateSettings({ ignoredHighlights });
@@ -41,11 +41,11 @@ describe("settings migration", () => {
 	it("preserves legacy authorless imported and ignored records byte-for-byte and in order", () => {
 		const loadedData = {
 			importedHighlights: [
-				{ id: "kls-one", title: "One", textPreview: "First", importedAt: "2026-01-01" },
-				{ id: "kls-two", title: "Two", textPreview: "Second", importedAt: "2026-01-02" },
+				{ id: "kls-one", title: "One", textPreview: "First", importedAt: "2099-01-01" },
+				{ id: "kls-two", title: "Two", textPreview: "Second", importedAt: "2099-01-02" },
 			],
 			ignoredHighlights: [
-				{ id: "kls-three", title: "Three", textPreview: "Third", ignoredAt: "2026-01-03" },
+				{ id: "kls-three", title: "Three", textPreview: "Third", ignoredAt: "2099-01-03" },
 			],
 		};
 		const before = JSON.stringify(loadedData);

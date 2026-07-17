@@ -101,7 +101,7 @@ describe("unignoreHighlight", () => {
 describe("blocked explicit Ignore cleanup", () => {
 	it("persists the composite Ignore while preserving unsafe Markdown and reporting non-removal", async () => {
 		const highlight = createHighlight();
-		const notePath = "Kindle Highlights/Atomic Habits.md";
+		const notePath = "Kindle Highlights/The Clockwork Orchard.md";
 		const markdown = [
 			"---",
 			`title: ${JSON.stringify(highlight.bookTitle)}`,
@@ -155,19 +155,19 @@ describe("blocked explicit Ignore cleanup", () => {
 function createIgnoredHighlight(id: string) {
 	return {
 		id,
-		title: "Atomic Habits",
+		title: "The Clockwork Orchard",
 		textPreview: `${id} preview`,
-		ignoredAt: "2026-07-07T00:00:00.000Z",
+		ignoredAt: "2099-07-07T00:00:00.000Z",
 	};
 }
 
 function createHighlight(): KindleHighlight {
 	return {
-		bookTitle: "Atomic Habits",
-		author: "James Clear",
+		bookTitle: "The Clockwork Orchard",
+		author: "Mira Vale",
 		location: "154",
-		content: "Small habits make a big difference.",
-		dateAdded: "Thursday, May 14, 2026 2:44 PM",
+		content: "Clockwork apples chime at midnight.",
+		dateAdded: "Monday, October 5, 2099 9:41 AM",
 		type: "Highlight",
 	};
 }

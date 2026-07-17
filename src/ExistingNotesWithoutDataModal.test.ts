@@ -8,11 +8,11 @@ import {
 
 const mocks = vi.hoisted(() => {
 	const highlight = {
-		bookTitle: "Atomic Habits",
-		author: "James Clear",
+		bookTitle: "The Clockwork Orchard",
+		author: "Mira Vale",
 		location: "154",
-		content: "Small habits make a big difference.",
-		dateAdded: "Thursday, May 14, 2026 2:44 PM",
+		content: "Clockwork apples chime at midnight.",
+		dateAdded: "Monday, October 5, 2099 9:41 AM",
 		type: "Highlight" as const,
 	};
 
@@ -91,7 +91,7 @@ beforeEach(() => {
 		bookOutcomes: [{
 			bookTitle: mocks.highlight.bookTitle,
 			author: mocks.highlight.author,
-			notePath: "Kindle Highlights/Atomic Habits - James Clear.md",
+			notePath: "Kindle Highlights/The Clockwork Orchard - Mira Vale.md",
 			highlightIds: [createClippingId(mocks.highlight)],
 			status: "updated",
 		}],

@@ -106,13 +106,13 @@ describe("ignored highlight cleanup triggers", () => {
 		const plugin = createPlugin();
 		const ignoredHighlight = createHighlight();
 		const secondIgnoredHighlight = createHighlight({
-			bookTitle: "The Creative Act",
-			author: "Rick Rubin",
+			bookTitle: "The Paper Constellation",
+			author: "Rowan Ellis",
 			content: "Keep this ignored too.",
 		});
 		const skippedHighlight = createHighlight({
-			bookTitle: "Deep Work",
-			author: "Cal Newport",
+			bookTitle: "Night Trains to Lumen Bay",
+			author: "Owen Hart",
 			content: "Keep this for the next review.",
 		});
 		const cleanupError = new Error("unexpected cleanup rejection");
@@ -181,8 +181,8 @@ describe("ignored highlight cleanup triggers", () => {
 		const plugin = createPlugin();
 		const ignoredHighlight = createHighlight();
 		const validDuplicate = createHighlight({
-			bookTitle: "Deep Work",
-			author: "Cal Newport",
+			bookTitle: "Night Trains to Lumen Bay",
+			author: "Owen Hart",
 			content: "Previously imported result.",
 		});
 		const cleanupError = new Error("unexpected reviewed cleanup rejection");
@@ -504,17 +504,17 @@ function createClassification(overrides: Partial<SyncClassification> = {}): Sync
 function createBookGroup(): KindleBookGroup {
 	const firstHighlight = createHighlight({
 		location: "154",
-		content: "Small habits make a big difference.",
+		content: "Clockwork apples chime at midnight.",
 	});
 	const secondHighlight = createHighlight({
 		location: "160",
-		content: "Review this idea later.",
+		content: "Revisit the orchard map later.",
 		type: "Note",
 	});
 
 	return {
-		bookTitle: "Atomic Habits",
-		author: "James Clear",
+		bookTitle: "The Clockwork Orchard",
+		author: "Mira Vale",
 		clippings: [firstHighlight, secondHighlight],
 	};
 }
@@ -537,11 +537,11 @@ function createCollisionBookGroup(bookTitle: string): KindleBookGroup {
 
 function createHighlight(overrides: Partial<KindleHighlight> = {}): KindleHighlight {
 	return {
-		bookTitle: "Atomic Habits",
-		author: "James Clear",
+		bookTitle: "The Clockwork Orchard",
+		author: "Mira Vale",
 		location: "154",
-		content: "Small habits make a big difference.",
-		dateAdded: "Thursday, May 14, 2026 2:44 PM",
+		content: "Clockwork apples chime at midnight.",
+		dateAdded: "Monday, October 5, 2099 9:41 AM",
 		type: "Highlight",
 		...overrides,
 	};
@@ -550,9 +550,9 @@ function createHighlight(overrides: Partial<KindleHighlight> = {}): KindleHighli
 function createSummaryItem(overrides: Partial<SyncSummaryHighlightItem> = {}): SyncSummaryHighlightItem {
 	return {
 		id: "kls-skipped",
-		title: "Atomic Habits",
-		author: "James Clear",
-		textPreview: "Small habits make a big difference.",
+		title: "The Clockwork Orchard",
+		author: "Mira Vale",
+		textPreview: "Clockwork apples chime at midnight.",
 		location: "154",
 		...overrides,
 	};

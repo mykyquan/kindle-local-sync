@@ -350,7 +350,7 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 				ignoredHighlights: [
 					createIgnoredHighlight(),
 					createIgnoredHighlight({ id: "kls-ignored-two", textPreview: "Second ignored highlight." }),
-					createIgnoredHighlight({ id: "kls-ignored-three", title: "Deep Work", textPreview: "Deep focus matters." }),
+					createIgnoredHighlight({ id: "kls-ignored-three", title: "Night Trains to Lumen Bay", textPreview: "Moonlit rail maps matter." }),
 				],
 			}),
 			classification: createClassification({
@@ -362,13 +362,13 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 		await findByText(modal.contentEl, "Manage Ignored Highlights").click();
 
 		expect(readText(modal.contentEl)).toContain("Ignored Highlights");
-		expect(readText(modal.contentEl)).toContain("Atomic Habits");
+		expect(readText(modal.contentEl)).toContain("The Clockwork Orchard");
 		expect(readText(modal.contentEl)).toContain("2 ignored highlights");
-		expect(readText(modal.contentEl)).toContain("Deep Work");
+		expect(readText(modal.contentEl)).toContain("Night Trains to Lumen Bay");
 		expect(readText(modal.contentEl)).toContain("1 ignored highlight");
-		expect(readText(modal.contentEl)).not.toContain("Small habits make a big difference.");
+		expect(readText(modal.contentEl)).not.toContain("Clockwork apples chime at midnight.");
 		expect(readText(modal.contentEl)).not.toContain("Second ignored highlight.");
-		expect(readText(modal.contentEl)).not.toContain("Deep focus matters.");
+		expect(readText(modal.contentEl)).not.toContain("Moonlit rail maps matter.");
 	});
 
 	it("shows Back with a summary destination label in ignored highlights view", async () => {
@@ -423,7 +423,7 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 
 		expect(elementsByClass(modal.contentEl, "kls-book-list")).toHaveLength(1);
 		expect(card.classes.has("kls-book-section")).toBe(true);
-		expect(elementByClass(header, "kls-book-title").text()).toBe("Atomic Habits");
+		expect(elementByClass(header, "kls-book-title").text()).toBe("The Clockwork Orchard");
 		expect(elementByClass(card, "kls-book-review-summary").text()).toBe("1 ignored highlight");
 		expect(elementsByClass(card, "kls-ignored-highlight-text")).toHaveLength(0);
 		expect(elementsByClass(modal.contentEl, "kls-ignored-highlight-item")).toHaveLength(0);
@@ -442,9 +442,9 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 	it("removes all ignored highlights for a book from the ignored highlights summary", async () => {
 		const plugin = createPlugin({
 			ignoredHighlights: [
-				createIgnoredHighlight({ id: "one", title: "Atomic Habits" }),
-				createIgnoredHighlight({ id: "two", title: "Atomic Habits", textPreview: "Second ignored highlight." }),
-				createIgnoredHighlight({ id: "three", title: "Deep Work" }),
+				createIgnoredHighlight({ id: "one", title: "The Clockwork Orchard" }),
+				createIgnoredHighlight({ id: "two", title: "The Clockwork Orchard", textPreview: "Second ignored highlight." }),
+				createIgnoredHighlight({ id: "three", title: "Night Trains to Lumen Bay" }),
 			],
 		});
 		const modal = createModal({
@@ -456,13 +456,13 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Manage Ignored Highlights").click();
-		await findByText(bookCardByTitle(modal.contentEl, "Atomic Habits"), "Remove All From Ignore List").click();
+		await findByText(bookCardByTitle(modal.contentEl, "The Clockwork Orchard"), "Remove All From Ignore List").click();
 
 		expect(plugin.unignoreHighlight).toHaveBeenCalledWith(expect.objectContaining({ id: "one" }));
 		expect(plugin.unignoreHighlight).toHaveBeenCalledWith(expect.objectContaining({ id: "two" }));
 		expect(plugin.unignoreHighlight).not.toHaveBeenCalledWith(expect.objectContaining({ id: "three" }));
-		expect(readText(modal.contentEl)).not.toContain("Atomic Habits");
-		expect(readText(modal.contentEl)).toContain("Deep Work");
+		expect(readText(modal.contentEl)).not.toContain("The Clockwork Orchard");
+		expect(readText(modal.contentEl)).toContain("Night Trains to Lumen Bay");
 	});
 
 	it("shows the ignored empty state after removing all ignored highlights from the last book", async () => {
@@ -510,22 +510,22 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 		expect(detail.children[0]).toBe(header);
 		expect(header.children[0]).toBe(navigation);
 		expect(header.children[1]?.classes.has("kls-book-title")).toBe(true);
-		expect(elementByClass(detail, "kls-book-title").text()).toBe("Atomic Habits");
-		expect(elementByClass(detail, "kls-book-author").text()).toBe("James Clear");
+		expect(elementByClass(detail, "kls-book-title").text()).toBe("The Clockwork Orchard");
+		expect(elementByClass(detail, "kls-book-author").text()).toBe("Mira Vale");
 		expect(elementByClass(detail, "kls-book-detail-count").text()).toBe("1 ignored highlight");
 		expect(row.children.map((child) => [...child.classes][0])).toEqual([
 			"kls-book-detail-highlight-text",
 			"kls-book-detail-highlight-meta",
 			"kls-button-row",
 		]);
-		expect(findByText(row, "Ignored 7/9/2026").text()).toBe("Ignored 7/9/2026");
-		expect(elementByClass(row, "kls-book-detail-highlight-text").text()).toBe("Small habits make a big difference.");
+		expect(findByText(row, "Ignored 7/9/2099").text()).toBe("Ignored 7/9/2099");
+		expect(elementByClass(row, "kls-book-detail-highlight-text").text()).toBe("Clockwork apples chime at midnight.");
 		expect(elementsByClass(detail, "kls-book-card")).toHaveLength(0);
 		expect(buttonTexts(modal.contentEl)).toContain("Remove From Ignore List");
 	});
 
 	it("uses the complete ignored book title as the direct detail heading", async () => {
-		const longTitle = "A Very Long Atomic Habits Title That Should Wrap Cleanly In The Detail Card";
+		const longTitle = "A Very Long Clockwork Orchard Almanac Title That Should Wrap Cleanly In The Detail Card";
 		const modal = createModal({
 			plugin: createPlugin({
 				ignoredHighlights: [createIgnoredHighlight({ title: longTitle })],
@@ -585,7 +585,7 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 
 		expect(readText(modal.contentEl)).toContain("Ignored Highlights");
 		expect(readText(modal.contentEl)).toContain("1 ignored highlight");
-		expect(readText(modal.contentEl)).not.toContain("Small habits make a big difference.");
+		expect(readText(modal.contentEl)).not.toContain("Clockwork apples chime at midnight.");
 		expect(buttonTexts(modal.contentEl)).toContain("Review Highlights");
 	});
 });
@@ -612,18 +612,18 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 	it("renders skipped books grouped by title", async () => {
 		const modal = createModal({
 			skippedThisSyncHighlights: [
-				createSummaryItem({ id: "one", title: "Atomic Habits" }),
-				createSummaryItem({ id: "two", title: "Atomic Habits", textPreview: "Second highlight." }),
-				createSummaryItem({ id: "three", title: "Deep Work" }),
+				createSummaryItem({ id: "one", title: "The Clockwork Orchard" }),
+				createSummaryItem({ id: "two", title: "The Clockwork Orchard", textPreview: "Second highlight." }),
+				createSummaryItem({ id: "three", title: "Night Trains to Lumen Bay" }),
 			],
 		});
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
 
-		expect(readText(modal.contentEl)).toContain("Atomic Habits");
+		expect(readText(modal.contentEl)).toContain("The Clockwork Orchard");
 		expect(readText(modal.contentEl)).toContain("2 highlights skipped this sync");
-		expect(readText(modal.contentEl)).toContain("Deep Work");
+		expect(readText(modal.contentEl)).toContain("Night Trains to Lumen Bay");
 	});
 
 	it("uses the shared book card structure in skipped books review rows", async () => {
@@ -641,7 +641,7 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 
 		expect(elementsByClass(modal.contentEl, "kls-book-list")).toHaveLength(1);
 		expect(card.classes.has("kls-book-section")).toBe(true);
-		expect(title.text()).toBe("Atomic Habits");
+		expect(title.text()).toBe("The Clockwork Orchard");
 		expect(elementByClass(card, "kls-book-review-summary").text()).toBe("1 highlight skipped this sync");
 		expect(elementsByClass(header, "kls-action-button")).toHaveLength(0);
 		expect(actions.classes.has("kls-button-row")).toBe(true);
@@ -718,15 +718,15 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		expect(detail.children[0]).toBe(header);
 		expect(header.children[0]).toBe(navigation);
 		expect(header.children[1]?.classes.has("kls-book-title")).toBe(true);
-		expect(elementByClass(detail, "kls-book-title").text()).toBe("Atomic Habits");
-		expect(elementByClass(detail, "kls-book-author").text()).toBe("James Clear");
+		expect(elementByClass(detail, "kls-book-title").text()).toBe("The Clockwork Orchard");
+		expect(elementByClass(detail, "kls-book-author").text()).toBe("Mira Vale");
 		expect(elementByClass(detail, "kls-book-detail-count").text()).toBe("1 highlight skipped this sync");
 		expect(row.children.map((child) => [...child.classes][0])).toEqual([
 			"kls-book-detail-highlight-text",
 			"kls-book-detail-highlight-meta",
 			"kls-button-row",
 		]);
-		expect(elementByClass(row, "kls-book-detail-highlight-text").text()).toBe("Small habits make a big difference.");
+		expect(elementByClass(row, "kls-book-detail-highlight-text").text()).toBe("Clockwork apples chime at midnight.");
 		expect(elementByClass(row, "kls-book-detail-highlight-meta").text()).toBe("Location 154");
 		expect(elementsByClass(detail, "kls-book-card")).toHaveLength(0);
 		expect(readText(detail)).toContain("Ignore Going Forward");
@@ -805,7 +805,7 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Ignore Going Forward").click();
 
-		expect(readText(modal.contentEl)).not.toContain("Small habits make a big difference.");
+		expect(readText(modal.contentEl)).not.toContain("Clockwork apples chime at midnight.");
 		expect(readText(modal.contentEl)).toContain("No skipped highlights left in this book.");
 	});
 
@@ -962,7 +962,7 @@ describe("SyncSummaryModal protected-book outcomes", () => {
 	it("shows automatic-history copy without describing selected new imports", async () => {
 		const automatic = [
 			createHighlight(),
-			createHighlight({ bookTitle: "Deep Work", author: "Cal Newport" }),
+			createHighlight({ bookTitle: "Night Trains to Lumen Bay", author: "Owen Hart" }),
 		];
 		const modal = createModal({
 			protectedBooks: createProtectedBooksPresentation(automatic, []),
@@ -1206,22 +1206,22 @@ describe("SyncSummaryModal Ignore outcomes", () => {
 
 describe("SyncSummaryModal missing managed highlight review", () => {
 	it("groups by exact book identity with stable book/highlight order and correct counts", async () => {
-		const first = createHighlight({ content: "First in Atomic.", location: "10" });
-		const second = createHighlight({ content: "Second in Atomic.", location: "20" });
+		const first = createHighlight({ content: "First orchard note.", location: "10" });
+		const second = createHighlight({ content: "Second orchard note.", location: "20" });
 		const sameTitleDifferentAuthor = createHighlight({
 			author: "Another Author",
 			content: "Different exact book.",
 			location: "30",
 		});
-		const deepWork = createHighlight({
-			bookTitle: "Deep Work",
-			author: "Cal Newport",
-			content: "Deep work detail.",
+		const lumenBay = createHighlight({
+			bookTitle: "Night Trains to Lumen Bay",
+			author: "Owen Hart",
+			content: "Lumen Bay route detail.",
 			location: "40",
 		});
 		const modal = createModal({
 			classification: createClassification({
-				possibleReappearedHighlights: [first, second, sameTitleDifferentAuthor, deepWork],
+				possibleReappearedHighlights: [first, second, sameTitleDifferentAuthor, lumenBay],
 			}),
 		});
 
@@ -1231,11 +1231,11 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 
 		expect(cards).toHaveLength(3);
 		expect(cards.map((card) => elementByClass(card, "kls-book-title").text())).toEqual([
-			"Atomic Habits",
-			"Atomic Habits",
-			"Deep Work",
+			"The Clockwork Orchard",
+			"The Clockwork Orchard",
+			"Night Trains to Lumen Bay",
 		]);
-		expect(elementByClass(cards[0], "kls-book-author").text()).toBe("James Clear");
+		expect(elementByClass(cards[0], "kls-book-author").text()).toBe("Mira Vale");
 		expect(elementByClass(cards[0], "kls-book-review-summary").text()).toBe("2 missing highlights");
 		expect(elementByClass(cards[1], "kls-book-author").text()).toBe("Another Author");
 		expect(elementByClass(cards[1], "kls-book-review-summary").text()).toBe("1 missing highlight");
@@ -1243,17 +1243,17 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 		await findByText(cards[0], "Review Highlights").click();
 		const detailText = readText(modal.contentEl);
 
-		expect(detailText).toContain("First in Atomic.");
-		expect(detailText).toContain("Second in Atomic.");
+		expect(detailText).toContain("First orchard note.");
+		expect(detailText).toContain("Second orchard note.");
 		expect(detailText).not.toContain("Different exact book.");
-		expect(detailText).not.toContain("Deep work detail.");
-		expect(detailText.indexOf("First in Atomic.")).toBeLessThan(detailText.indexOf("Second in Atomic."));
+		expect(detailText).not.toContain("Lumen Bay route detail.");
+		expect(detailText.indexOf("First orchard note.")).toBeLessThan(detailText.indexOf("Second orchard note."));
 	});
 
 	it("returns to grouped books and keeps mixed per-highlight decisions across reopening", async () => {
 		const first = createHighlight({ content: "Skip this recovery.", location: "10" });
 		const second = createHighlight({ content: "Ignore this recovery.", location: "20" });
-		const otherBook = createHighlight({ bookTitle: "Deep Work", author: "Cal Newport" });
+		const otherBook = createHighlight({ bookTitle: "Night Trains to Lumen Bay", author: "Owen Hart" });
 		const plugin = createPlugin();
 		const modal = createModal({
 			plugin,
@@ -1264,27 +1264,27 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Missing Highlights").click();
-		await findByText(bookCardByTitle(modal.contentEl, "Atomic Habits"), "Review Highlights").click();
+		await findByText(bookCardByTitle(modal.contentEl, "The Clockwork Orchard"), "Review Highlights").click();
 		await buttonsByText(modal.contentEl, "Skip This Time")[0]!.click();
 		await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
 
-		expect(elementByClass(bookCardByTitle(modal.contentEl, "Atomic Habits"), "kls-book-review-summary").text())
+		expect(elementByClass(bookCardByTitle(modal.contentEl, "The Clockwork Orchard"), "kls-book-review-summary").text())
 			.toBe("1 missing highlight");
-		await findByText(bookCardByTitle(modal.contentEl, "Atomic Habits"), "Review Highlights").click();
+		await findByText(bookCardByTitle(modal.contentEl, "The Clockwork Orchard"), "Review Highlights").click();
 		expect(readText(modal.contentEl)).not.toContain("Skip this recovery.");
 		expect(readText(modal.contentEl)).toContain("Ignore this recovery.");
 		await findByText(modal.contentEl, "Ignore Going Forward").click();
 		await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
 
 		expect(plugin.ignoreHighlights).toHaveBeenCalledWith([second], expect.any(CurrentClippingIdentityIndex));
-		expect(readText(modal.contentEl)).not.toContain("Atomic Habits");
-		expect(readText(modal.contentEl)).toContain("Deep Work");
+		expect(readText(modal.contentEl)).not.toContain("The Clockwork Orchard");
+		expect(readText(modal.contentEl)).toContain("Night Trains to Lumen Bay");
 	});
 
 	it("scopes every book-level action to that book's currently missing highlights", async () => {
 		const first = createHighlight({ content: "First missing.", location: "10" });
 		const second = createHighlight({ content: "Second missing.", location: "20" });
-		const otherBook = createHighlight({ bookTitle: "Deep Work", author: "Cal Newport" });
+		const otherBook = createHighlight({ bookTitle: "Night Trains to Lumen Bay", author: "Owen Hart" });
 		const plugin = createPlugin();
 		const modal = createModal({
 			plugin,
@@ -1295,7 +1295,7 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Missing Highlights").click();
-		await findByText(bookCardByTitle(modal.contentEl, "Atomic Habits"), "Import All Again").click();
+		await findByText(bookCardByTitle(modal.contentEl, "The Clockwork Orchard"), "Import All Again").click();
 
 		expect(plugin.importHighlights).toHaveBeenCalledWith(
 			[first, second],
@@ -1303,9 +1303,9 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 			true,
 			[first, second]
 		);
-		expect(readText(modal.contentEl)).not.toContain("Atomic Habits");
-		expect(readText(modal.contentEl)).toContain("Deep Work");
-		await findByText(bookCardByTitle(modal.contentEl, "Deep Work"), "Ignore All Going Forward").click();
+		expect(readText(modal.contentEl)).not.toContain("The Clockwork Orchard");
+		expect(readText(modal.contentEl)).toContain("Night Trains to Lumen Bay");
+		await findByText(bookCardByTitle(modal.contentEl, "Night Trains to Lumen Bay"), "Ignore All Going Forward").click();
 		expect(plugin.ignoreHighlights).toHaveBeenCalledWith([otherBook], expect.any(CurrentClippingIdentityIndex));
 
 		const skipPlugin = createPlugin();
@@ -1316,11 +1316,11 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 
 		skipModal.onOpen();
 		await findByText(skipModal.contentEl, "Review Missing Highlights").click();
-		await findByText(bookCardByTitle(skipModal.contentEl, "Atomic Habits"), "Skip All This Time").click();
+		await findByText(bookCardByTitle(skipModal.contentEl, "The Clockwork Orchard"), "Skip All This Time").click();
 		expect(skipPlugin.importHighlights).not.toHaveBeenCalled();
 		expect(skipPlugin.ignoreHighlights).not.toHaveBeenCalled();
-		expect(readText(skipModal.contentEl)).not.toContain("Atomic Habits");
-		expect(readText(skipModal.contentEl)).toContain("Deep Work");
+		expect(readText(skipModal.contentEl)).not.toContain("The Clockwork Orchard");
+		expect(readText(skipModal.contentEl)).toContain("Night Trains to Lumen Bay");
 	});
 
 	it("does not restore or persist anything merely from grouped/detail navigation", async () => {
@@ -1348,7 +1348,7 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 			classification: createClassification({
 				possibleReappearedHighlights: [
 					createHighlight(),
-					createHighlight({ bookTitle: "Deep Work", author: "Cal Newport" }),
+					createHighlight({ bookTitle: "Night Trains to Lumen Bay", author: "Owen Hart" }),
 				],
 			}),
 		});
@@ -1356,14 +1356,14 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Missing Highlights").click();
 		setScrollTop(modal.contentEl, 280);
-		await findByText(bookCardByTitle(modal.contentEl, "Deep Work"), "Review Highlights").click();
+		await findByText(bookCardByTitle(modal.contentEl, "Night Trains to Lumen Bay"), "Review Highlights").click();
 		setScrollTop(modal.contentEl, 20);
 		await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
 
-		expect(scrollIntoViewCalls(bookCardByTitle(modal.contentEl, "Deep Work"))).toEqual([
+		expect(scrollIntoViewCalls(bookCardByTitle(modal.contentEl, "Night Trains to Lumen Bay"))).toEqual([
 			{ block: "center" },
 		]);
-		expect(scrollIntoViewCalls(bookCardByTitle(modal.contentEl, "Atomic Habits"))).toHaveLength(0);
+		expect(scrollIntoViewCalls(bookCardByTitle(modal.contentEl, "The Clockwork Orchard"))).toHaveLength(0);
 	});
 
 	it("keeps a colliding missing-managed item from another book after Ignore Going Forward", async () => {
@@ -1470,7 +1470,7 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 		expect(readText(modal.contentEl)).not.toContain("kls-");
 		expect(readText(modal.contentEl)).not.toContain("kindle-local-sync:start");
 		expect(readText(modal.contentEl)).not.toContain("unsafe-existing-managed-region");
-		expect(readText(modal.contentEl)).not.toContain("Kindle Highlights/Atomic Habits");
+		expect(readText(modal.contentEl)).not.toContain("Kindle Highlights/The Clockwork Orchard");
 		await findButtonByAriaLabel(modal.contentEl, "Back to Missing Highlights").click();
 		await findButtonByAriaLabel(modal.contentEl, "Back to Summary").click();
 		expect(readText(modal.contentEl)).toContain("Sync finished");
@@ -1841,7 +1841,7 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 
 	it("keeps protected feedback for unrelated identities while another retry is pending", async () => {
 		const first = createHighlight();
-		const second = createHighlight({ bookTitle: "Deep Work", author: "Cal Newport" });
+		const second = createHighlight({ bookTitle: "Night Trains to Lumen Bay", author: "Owen Hart" });
 		const plugin = createPlugin();
 		const retry = createDeferred<HighlightImportResult>();
 
@@ -1906,7 +1906,7 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 
 	it("serializes rapid individual imports across different exact books", async () => {
 		const first = createHighlight();
-		const second = createHighlight({ bookTitle: "Deep Work", author: "Cal Newport" });
+		const second = createHighlight({ bookTitle: "Night Trains to Lumen Bay", author: "Owen Hart" });
 		const plugin = createPlugin();
 		const firstImport = createDeferred<HighlightImportResult>();
 
@@ -1939,7 +1939,7 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 		"blocks %s in another book while an import is pending",
 		async (actionLabel) => {
 			const first = createHighlight();
-			const second = createHighlight({ bookTitle: "Deep Work", author: "Cal Newport" });
+			const second = createHighlight({ bookTitle: "Night Trains to Lumen Bay", author: "Owen Hart" });
 			const plugin = createPlugin();
 			const firstImport = createDeferred<HighlightImportResult>();
 
@@ -2001,7 +2001,7 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 
 	it("unlocks recovery mutations after failure", async () => {
 		const first = createHighlight();
-		const second = createHighlight({ bookTitle: "Deep Work", author: "Cal Newport" });
+		const second = createHighlight({ bookTitle: "Night Trains to Lumen Bay", author: "Owen Hart" });
 		const plugin = createPlugin();
 		const failedImport = createDeferred<HighlightImportResult>();
 		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -2134,7 +2134,7 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 
 	it("focuses each newly failed book without refocusing an older failure", async () => {
 		const first = createHighlight();
-		const second = createHighlight({ bookTitle: "Deep Work", author: "Cal Newport" });
+		const second = createHighlight({ bookTitle: "Night Trains to Lumen Bay", author: "Owen Hart" });
 		const plugin = createPlugin();
 		const modal = createModal({
 			plugin,
@@ -2258,8 +2258,8 @@ describe("SyncSummaryModal scroll restoration", () => {
 	it("keeps skipped books view rendered after returning from a book review view", async () => {
 		const modal = createModal({
 			skippedThisSyncHighlights: [
-				createSummaryItem({ id: "one", title: "Atomic Habits" }),
-				createSummaryItem({ id: "two", title: "Deep Work" }),
+				createSummaryItem({ id: "one", title: "The Clockwork Orchard" }),
+				createSummaryItem({ id: "two", title: "Night Trains to Lumen Bay" }),
 			],
 		});
 
@@ -2271,7 +2271,7 @@ describe("SyncSummaryModal scroll restoration", () => {
 		await findButtonByAriaLabel(modal.contentEl, "Back to Skipped Books").click();
 
 		expect(readText(modal.contentEl)).toContain("Skipped This Sync");
-		expect(readText(modal.contentEl)).toContain("Atomic Habits");
+		expect(readText(modal.contentEl)).toContain("The Clockwork Orchard");
 	});
 });
 
@@ -2279,47 +2279,47 @@ describe("SyncSummaryModal skipped books anchor restoration", () => {
 	it("stores the clicked skipped book as a return anchor when Review Highlights is clicked", async () => {
 		const modal = createModal({
 			skippedThisSyncHighlights: [
-				createSummaryItem({ id: "one", title: "Atomic Habits" }),
-				createSummaryItem({ id: "two", title: "Deep Work" }),
+				createSummaryItem({ id: "one", title: "The Clockwork Orchard" }),
+				createSummaryItem({ id: "two", title: "Night Trains to Lumen Bay" }),
 			],
 		});
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
-		await findByText(bookCardByTitle(modal.contentEl, "Deep Work"), "Review Highlights").click();
+		await findByText(bookCardByTitle(modal.contentEl, "Night Trains to Lumen Bay"), "Review Highlights").click();
 		await findButtonByAriaLabel(modal.contentEl, "Back to Skipped Books").click();
 
-		expect(scrollIntoViewCalls(bookCardByTitle(modal.contentEl, "Deep Work"))).toEqual([
+		expect(scrollIntoViewCalls(bookCardByTitle(modal.contentEl, "Night Trains to Lumen Bay"))).toEqual([
 			{ block: "center" },
 		]);
-		expect(scrollIntoViewCalls(bookCardByTitle(modal.contentEl, "Atomic Habits"))).toHaveLength(0);
+		expect(scrollIntoViewCalls(bookCardByTitle(modal.contentEl, "The Clockwork Orchard"))).toHaveLength(0);
 	});
 
 	it("scrolls the clicked book back into view when Back to Skipped Books is clicked", async () => {
 		const modal = createModal({
 			skippedThisSyncHighlights: [
-				createSummaryItem({ id: "one", title: "Atomic Habits" }),
-				createSummaryItem({ id: "two", title: "Deep Work" }),
+				createSummaryItem({ id: "one", title: "The Clockwork Orchard" }),
+				createSummaryItem({ id: "two", title: "Night Trains to Lumen Bay" }),
 			],
 		});
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
 		setScrollTop(modal.contentEl, 280);
-		await findByText(bookCardByTitle(modal.contentEl, "Deep Work"), "Review Highlights").click();
+		await findByText(bookCardByTitle(modal.contentEl, "Night Trains to Lumen Bay"), "Review Highlights").click();
 		setScrollTop(modal.contentEl, 10);
 		await findButtonByAriaLabel(modal.contentEl, "Back to Skipped Books").click();
 
-		const deepWorkSection = bookCardByTitle(modal.contentEl, "Deep Work");
+		const lumenBaySection = bookCardByTitle(modal.contentEl, "Night Trains to Lumen Bay");
 
 		expect(readText(modal.contentEl)).toContain("Skipped This Sync");
-		expect(scrollIntoViewCalls(deepWorkSection)).toEqual([{ block: "center" }]);
+		expect(scrollIntoViewCalls(lumenBaySection)).toEqual([{ block: "center" }]);
 	});
 
 	it("falls back safely when the return anchor no longer exists", async () => {
 		const modal = createModal({
 			skippedThisSyncHighlights: [
-				createSummaryItem({ id: "one", title: "Atomic Habits" }),
+				createSummaryItem({ id: "one", title: "The Clockwork Orchard" }),
 			],
 		});
 
@@ -2403,7 +2403,7 @@ function createPlugin(options: { ignoredHighlights?: IgnoredHighlight[] } = {}) 
 				title: highlight.title,
 				author: highlight.author,
 				textPreview: highlight.textPreview,
-				ignoredAt: "2026-07-09T00:00:00.000Z",
+				ignoredAt: "2099-07-09T00:00:00.000Z",
 				lang: highlight.lang,
 			});
 
@@ -2529,11 +2529,11 @@ function createClassification(overrides: Partial<SyncClassification> = {}): Sync
 
 function createHighlight(overrides: Partial<KindleHighlight> = {}): KindleHighlight {
 	return {
-		bookTitle: "Atomic Habits",
-		author: "James Clear",
+		bookTitle: "The Clockwork Orchard",
+		author: "Mira Vale",
 		location: "154",
-		content: "Small habits make a big difference.",
-		dateAdded: "Thursday, May 14, 2026 2:44 PM",
+		content: "Clockwork apples chime at midnight.",
+		dateAdded: "Monday, October 5, 2099 9:41 AM",
 		type: "Highlight",
 		...overrides,
 	};
@@ -2552,10 +2552,10 @@ function createCollisionHighlight(bookTitle: string): KindleHighlight {
 function createIgnoredHighlight(overrides: Partial<IgnoredHighlight> = {}): IgnoredHighlight {
 	return {
 		id: "kls-ignored",
-		title: "Atomic Habits",
-		author: "James Clear",
-		textPreview: "Small habits make a big difference.",
-		ignoredAt: "2026-07-09T12:00:00.000Z",
+		title: "The Clockwork Orchard",
+		author: "Mira Vale",
+		textPreview: "Clockwork apples chime at midnight.",
+		ignoredAt: "2099-07-09T12:00:00.000Z",
 		...overrides,
 	};
 }
@@ -2563,9 +2563,9 @@ function createIgnoredHighlight(overrides: Partial<IgnoredHighlight> = {}): Igno
 function createSummaryItem(overrides: Partial<SyncSummaryHighlightItem> = {}): SyncSummaryHighlightItem {
 	return {
 		id: "kls-skipped",
-		title: "Atomic Habits",
-		author: "James Clear",
-		textPreview: "Small habits make a big difference.",
+		title: "The Clockwork Orchard",
+		author: "Mira Vale",
+		textPreview: "Clockwork apples chime at midnight.",
 		location: "154",
 		...overrides,
 	};
