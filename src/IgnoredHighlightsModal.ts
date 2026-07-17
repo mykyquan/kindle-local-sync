@@ -1,7 +1,13 @@
-import { App, ButtonComponent, Modal } from "obsidian";
+import { App, Modal } from "obsidian";
 import type KindleLocalSyncPlugin from "./main";
 import { IgnoredHighlight } from "./settings";
 import { createStoredBookIdentityKey } from "./sync/HighlightIdentity";
+import {
+	createReviewActionButton,
+	createReviewHighlightsButton,
+} from "./ui/ReviewActionButton";
+import { renderReviewBookMetadata } from "./ui/ReviewBookMetadata";
+import { renderReviewHighlightDetail, renderReviewHighlightRow } from "./ui/ReviewHighlightDetail";
 
 export class IgnoredHighlightsModal extends Modal {
 	private readonly plugin: KindleLocalSyncPlugin;
@@ -14,6 +20,7 @@ export class IgnoredHighlightsModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.contentEl.addClass("kls-glass-scope");
 		this.renderIgnoredHighlights();
 	}
 
@@ -34,18 +41,20 @@ export class IgnoredHighlightsModal extends Modal {
 		bookListEl.addClass("kls-book-list");
 
 		for (const [bookIdentity, highlights] of groupIgnoredHighlightsByBook(this.plugin.settings.ignoredHighlights)) {
-			const title = getIgnoredTitle(highlights[0]);
 			const section = bookListEl.createDiv();
 			section.addClass("kls-book-section");
 			section.addClass("kls-book-card");
 
 			const header = section.createDiv();
 			header.addClass("kls-book-header");
+			const headingContent = header.createDiv();
 
-			const titleEl = header.createEl("h3", { text: title });
-			titleEl.addClass("kls-book-title");
-
-			this.createActionButton(header, "Review Highlights")
+			headingContent.addClass("kls-book-heading-content");
+			renderReviewBookMetadata(headingContent, {
+				titles: highlights.map((highlight) => highlight.title),
+				author: highlights[0]?.author,
+			});
+			createReviewHighlightsButton(header)
 				.onClick(() => {
 					this.saveIgnoredHighlightsScrollPosition();
 					this.renderIgnoredBookHighlights(bookIdentity);
@@ -59,7 +68,7 @@ export class IgnoredHighlightsModal extends Modal {
 			actions.addClass("kls-button-row");
 			actions.addClass("kls-book-actions");
 
-			this.createActionButton(actions, "Remove All From Ignore List")
+			createReviewActionButton(actions, "Remove All From Ignore List")
 				.onClick(async () => {
 					this.saveIgnoredHighlightsScrollPosition();
 					await this.unignoreHighlights(highlights);
@@ -72,61 +81,35 @@ export class IgnoredHighlightsModal extends Modal {
 
 	private renderIgnoredBookHighlights(bookIdentity: string): void {
 		this.contentEl.empty();
-
-		const header = this.contentEl.createDiv();
-		header.addClass("kls-ignored-detail-header");
-
-		// eslint-disable-next-line obsidianmd/ui/sentence-case
-		const modalTitle = header.createEl("h2", { text: "Ignored Highlights" });
-		modalTitle.addClass("kls-ignored-detail-title");
-
-		const backActions = header.createDiv();
-		backActions.addClass("kls-button-row");
-		backActions.addClass("kls-summary-actions");
-		backActions.addClass("kls-ignored-detail-actions");
-		this.createActionButton(backActions, "Back to Ignored Highlights")
-			.onClick(() => {
-				this.saveIgnoredBookScrollPosition(bookIdentity);
-				this.renderIgnoredHighlights();
-			});
-
 		const bookHighlights = this.plugin.settings.ignoredHighlights
 			.filter((highlight) => createStoredBookIdentityKey(highlight) === bookIdentity);
 		const bookTitle = getIgnoredTitle(bookHighlights[0]);
-
-		const detailCard = this.contentEl.createDiv();
-		detailCard.addClass("kls-book-section");
-		detailCard.addClass("kls-book-card");
-		detailCard.addClass("kls-ignored-detail-card");
-
-		const titleEl = detailCard.createEl("h3", { text: bookTitle });
-		titleEl.addClass("kls-book-title");
+		const detail = renderReviewHighlightDetail(this.contentEl, {
+			titles: bookHighlights.length > 0
+				? bookHighlights.map((highlight) => highlight.title)
+				: [bookTitle],
+			author: bookHighlights[0]?.author,
+			countText: `${bookHighlights.length} ignored ${pluralize("highlight", bookHighlights.length)}`,
+			backAccessibleLabel: "Back to Ignored Highlights",
+			onBack: () => {
+				this.saveIgnoredBookScrollPosition(bookIdentity);
+				this.renderIgnoredHighlights();
+			},
+		});
 
 		if (bookHighlights.length === 0) {
-			detailCard.createEl("p", { text: "No ignored highlights left in this book." }).addClass("kls-empty-state");
+			detail.detailEl.createEl("p", { text: "No ignored highlights left in this book." }).addClass("kls-empty-state");
 			this.restoreScrollPosition(this.ignoredBookScrollTopByTitle.get(bookIdentity) ?? 0);
 			return;
 		}
 
-		detailCard.createEl("p", {
-			text: `${bookHighlights.length} ignored ${pluralize("highlight", bookHighlights.length)}`,
-		}).addClass("kls-book-review-summary");
-
-		const highlightsEl = detailCard.createDiv();
-		highlightsEl.addClass("kls-ignored-highlight-list");
-
 		for (const highlight of bookHighlights) {
-			const row = highlightsEl.createDiv();
-			row.addClass("kls-ignored-highlight-item");
-			row.createEl("p", { text: `Ignored ${new Date(highlight.ignoredAt).toLocaleDateString()}` })
-				.addClass("kls-book-meta");
-			row.createEl("p", { text: highlight.textPreview })
-				.addClass("kls-ignored-highlight-text");
-
-			const actions = row.createDiv();
-			actions.addClass("kls-button-row");
-			actions.addClass("kls-book-actions");
-			this.createActionButton(actions, "Remove From Ignore List")
+			const { actionsEl: actions } = renderReviewHighlightRow(
+				detail.highlightsEl,
+				highlight.textPreview,
+				`Ignored ${new Date(highlight.ignoredAt).toLocaleDateString()}`
+			);
+			createReviewActionButton(actions, "Remove From Ignore List")
 				.onClick(async () => {
 					this.saveIgnoredBookScrollPosition(bookIdentity);
 					await this.plugin.unignoreHighlight(highlight);
@@ -162,12 +145,6 @@ export class IgnoredHighlightsModal extends Modal {
 		this.contentEl.scrollTop = scrollTop;
 	}
 
-	private createActionButton(containerEl: HTMLElement, text: string): ButtonComponent {
-		const button = new ButtonComponent(containerEl).setButtonText(text);
-
-		button.buttonEl.addClass("kls-action-button");
-		return button;
-	}
 }
 
 function getIgnoredTitle(highlight: IgnoredHighlight | undefined): string {

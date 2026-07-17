@@ -1,5 +1,10 @@
 type ClickHandler = () => void | Promise<void>;
 type InputHandler = () => void | Promise<void>;
+type KeyboardHandler = (event: {
+	key: string;
+	preventDefault: () => void;
+	stopPropagation: () => void;
+}) => void | Promise<void>;
 
 export class MockElement {
 	tagName: string;
@@ -17,6 +22,7 @@ export class MockElement {
 	disabled = false;
 	private clickHandler: ClickHandler | null = null;
 	private inputHandler: InputHandler | null = null;
+	private keydownHandler: KeyboardHandler | null = null;
 
 	constructor(tagName = "div", text = "") {
 		this.tagName = tagName;
@@ -55,6 +61,10 @@ export class MockElement {
 		this.attributes.set(name, value);
 	}
 
+	getAttribute(name: string): string | null {
+		return this.attributes.get(name) ?? null;
+	}
+
 	removeAttribute(name: string): void {
 		this.attributes.delete(name);
 	}
@@ -63,9 +73,13 @@ export class MockElement {
 		this.clickHandler = handler;
 	}
 
-	addEventListener(eventName: string, handler: InputHandler): void {
+	addEventListener(eventName: string, handler: InputHandler | KeyboardHandler): void {
 		if (eventName === "input") {
-			this.inputHandler = handler;
+			this.inputHandler = handler as InputHandler;
+		}
+
+		if (eventName === "keydown") {
+			this.keydownHandler = handler as KeyboardHandler;
 		}
 	}
 
@@ -81,7 +95,15 @@ export class MockElement {
 		await this.inputHandler?.();
 	}
 
-	focus(): void {
+	async keydown(key: string): Promise<void> {
+		await this.keydownHandler?.({
+			key,
+			preventDefault: () => undefined,
+			stopPropagation: () => undefined,
+		});
+	}
+
+	focus(_options?: FocusOptions): void {
 		this.focusCalls += 1;
 	}
 
@@ -97,6 +119,10 @@ export class MockElement {
 	}
 
 	findByText(text: string): MockElement | null {
+		if (this.attributes.has("hidden")) {
+			return null;
+		}
+
 		if (this.textContent === text) {
 			return this;
 		}

@@ -161,7 +161,7 @@ describe("ignored highlight cleanup triggers", () => {
 				expect.objectContaining({ status: "change-unconfirmed" }),
 				expect.objectContaining({ status: "change-unconfirmed" }),
 			]);
-		await findByText(summary!.contentEl, "Review Ignore Results").click();
+		await findByText(summary!.contentEl, "Review Note Update Issues").click();
 		const detailText = readText(summary!.contentEl);
 
 		expect(detailText.match(/couldn’t confirm whether the existing note changed/g)).toHaveLength(2);
@@ -217,7 +217,7 @@ describe("ignored highlight cleanup triggers", () => {
 		]);
 		expect(summaryOpen).toHaveBeenCalledTimes(1);
 		expect(summary).toBeDefined();
-		expect(readText(summary!.contentEl)).toContain("1 duplicates skipped");
+		expect(readText(summary!.contentEl)).toContain("1 duplicate skipped");
 		expect(readText(summary!.contentEl)).toContain(
 			"The final note state could not be confirmed for 1 highlight."
 		);
@@ -242,7 +242,7 @@ describe("ignored highlight cleanup triggers", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Ignore").click();
-		await findByText(modal.contentEl, "Back To Book List").click();
+		await findByText(modal.contentEl, "Back").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
 
@@ -262,13 +262,13 @@ describe("ignored highlight cleanup triggers", () => {
 		);
 	});
 
-	it("First Sync Preview Ignore All Highlights triggers cleanup", async () => {
+	it("First Sync Preview Ignore All triggers cleanup", async () => {
 		const plugin = createPlugin();
 		const group = createBookGroup();
 		const modal = new FirstSyncPreviewModal(new App() as never, plugin as never, [group]);
 
 		modal.onOpen();
-		await findByText(modal.contentEl, "Ignore All Highlights").click();
+		await findByText(modal.contentEl, "Ignore All").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
 
 		expect(mocks.removeIgnoredHighlightBlocksFromExistingNotes).toHaveBeenCalledWith(
@@ -290,7 +290,7 @@ describe("ignored highlight cleanup triggers", () => {
 
 		expect(createClippingId(bookA.clippings[0]!)).toBe(createClippingId(bookB.clippings[0]!));
 		modal.onOpen();
-		await findByText(modal.contentEl, "Ignore All Highlights").click();
+		await findByText(modal.contentEl, "Ignore All").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
 
@@ -398,7 +398,8 @@ describe("ignored highlight cleanup triggers", () => {
 		});
 
 		modal.onOpen();
-		await findByText(modal.contentEl, "Review Missing Managed Highlights").click();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Ignore Going Forward").click();
 
 		expect(mocks.removeIgnoredHighlightBlocksFromExistingNotes).toHaveBeenCalledWith(
@@ -446,7 +447,8 @@ describe("ignored highlight cleanup triggers", () => {
 		});
 
 		modal.onOpen();
-		await findByText(modal.contentEl, "Review Missing Managed Highlights").click();
+		await findByText(modal.contentEl, "Review Missing Highlights").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Ignore Going Forward").click();
 
 		expect((modal as unknown as {

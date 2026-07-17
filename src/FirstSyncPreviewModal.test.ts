@@ -30,7 +30,7 @@ describe("FirstSyncPreviewModal skip and ignore behavior", () => {
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Import All").click();
-		await findByText(modal.contentEl, "Finish Sync").click();
+		await buttonByTextAt(modal.contentEl, "Finish Sync", -1).click();
 
 		expect(importedCounts).toEqual([1]);
 	});
@@ -87,13 +87,14 @@ describe("FirstSyncPreviewModal skip and ignore behavior", () => {
 		);
 	});
 
-	it("adds all book highlights to ignoredHighlights when Ignore All Highlights is clicked", async () => {
+	it("adds all book highlights to ignoredHighlights when Ignore All is clicked", async () => {
 		const plugin = createPlugin();
 		const group = createBookGroup();
 		const modal = createModal(plugin, [group]);
 
 		modal.onOpen();
-		await findByText(modal.contentEl, "Ignore All Highlights").click();
+		await chooseIgnoreAll(modal);
+		expect(plugin.completeFirstSync).not.toHaveBeenCalled();
 		await findByText(modal.contentEl, "Finish Sync").click();
 
 		expect(plugin.completeFirstSync).toHaveBeenCalledWith(
@@ -112,7 +113,7 @@ describe("FirstSyncPreviewModal skip and ignore behavior", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Skip This Sync").click();
-		await findByText(modal.contentEl, "Back To Book List").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
 
@@ -132,9 +133,9 @@ describe("FirstSyncPreviewModal skip and ignore behavior", () => {
 
 		expect(createClippingId(bookA.clippings[0]!)).toBe(createClippingId(bookB.clippings[0]!));
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, `1 of 2 — ${bookA.bookTitle}`), "Review Highlights").click();
+		await findByText(findSectionByHeading(modal.contentEl, `1 / 2 — ${bookA.bookTitle}`), "Review Highlights").click();
 		await findByText(modal.contentEl, "Ignore").click();
-		await findByText(modal.contentEl, "Back To Book List").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
 
@@ -156,8 +157,11 @@ describe("FirstSyncPreviewModal skip and ignore behavior", () => {
 		const modal = createModal(plugin, [bookA, bookB]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, `1 of 2 — ${bookA.bookTitle}`), "Ignore All Highlights").click();
-		await findByText(findSectionByHeading(modal.contentEl, `2 of 2 — ${bookB.bookTitle}`), "Import All").click();
+		await chooseIgnoreAll(
+			modal,
+			findSectionByHeading(modal.contentEl, `1 / 2 — ${bookA.bookTitle}`)
+		);
+		await findByText(findSectionByHeading(modal.contentEl, `2 / 2 — ${bookB.bookTitle}`), "Import All").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
 
 		const [imports, ignores, skipped] = plugin.completeFirstSync.mock.calls[0]!;
@@ -176,66 +180,91 @@ describe("FirstSyncPreviewModal wording and layout", () => {
 		expect(buttonTexts(modal.contentEl)).toEqual(expect.arrayContaining([
 			"Review Highlights",
 			"Import All",
-			"Ignore All Highlights",
+			"Ignore All",
 			"Skip This Sync",
 			"Finish Sync",
 		]));
 
 		await findByText(modal.contentEl, "Review Highlights").click();
 		expect(buttonTexts(modal.contentEl)).toEqual(expect.arrayContaining([
-			"Back To Book List",
+			"Back",
 			"Import",
 			"Skip This Sync",
 			"Ignore",
 		]));
 	});
 
-	it("shows Ignore All Highlights instead of Ignore book", () => {
+	it("shows Ignore All instead of Ignore book", () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 
-		expect(readText(modal.contentEl)).toContain("Ignore All Highlights");
+		expect(readText(modal.contentEl)).toContain("Ignore All");
+		expect(readText(modal.contentEl)).not.toContain("Ignore All Highlights");
 		expect(readText(modal.contentEl)).not.toContain("Ignore book");
 	});
 
-	it("shows Review Highlights before Import All", () => {
+	it("places Review Highlights last in the shared book action row as a shared glass button", () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 
-		const buttons = buttonTexts(modal.contentEl);
-		expect(buttons.indexOf("Review Highlights")).toBeLessThan(buttons.indexOf("Import All"));
+		const actions = elementByClassAt(modal.contentEl, "kls-book-actions", 0);
+		expect(buttonTexts(actions)).toEqual([
+			"Import All",
+			"Skip This Sync",
+			"Ignore All",
+			"Review Highlights",
+		]);
+		const reviewButton = findByText(actions, "Review Highlights");
+		expect(reviewButton.classes.has("kls-review-action-button")).toBe(true);
+		expect(reviewButton.classes.has("kls-pill-button")).toBe(true);
+		expect(reviewButton.classes.has("kls-action-button")).toBe(true);
+		expect(reviewButton.classes.has("kls-glass-subtle")).toBe(true);
 	});
 
-	it("shows the choices explanation only once", () => {
+	it("keeps book-list help hidden by default and expands or collapses it from the shared action button", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup(), createBookGroup("Deep Work")]);
 
 		modal.onOpen();
 
-		expect(countText(readText(modal.contentEl), "How choices work")).toBe(1);
-		expect(countText(readText(modal.contentEl), "Ignore all highlights: Ignore current highlights from this book")).toBe(0);
+		const trigger = findByText(modal.contentEl, "How choices work");
+		const helpPanel = elementByClassAt(modal.contentEl, "kls-choice-help-panel", 0);
+
+		expect(trigger.classes.has("kls-pill-button")).toBe(true);
+		expect(trigger.classes.has("kls-glass-subtle")).toBe(true);
+		expect(trigger.attributes.get("aria-expanded")).toBe("false");
+		expect(trigger.attributes.get("aria-controls")).toBe("kls-book-list-choice-help");
+		expect(helpPanel.attributes.get("id")).toBe("kls-book-list-choice-help");
+		expect(helpPanel.attributes.has("hidden")).toBe(true);
+		expect(helpPanel.attributes.get("role")).toBe("note");
+		expect(helpPanel.attributes.get("aria-label")).toBe("How choices work");
+
+		await trigger.click();
+		expect(trigger.attributes.get("aria-expanded")).toBe("true");
+		expect(helpPanel.attributes.has("hidden")).toBe(false);
+
+		await trigger.click();
+		expect(trigger.attributes.get("aria-expanded")).toBe("false");
+		expect(helpPanel.attributes.has("hidden")).toBe(true);
 	});
 
-	it("does not repeat the skip explanation under each book", async () => {
+	it("does not repeat the choices help under each book", () => {
 		const modal = createModal(createPlugin(), [createBookGroup(), createBookGroup("Deep Work")]);
 
 		modal.onOpen();
-		await findByText(modal.contentEl, "How choices work").click();
 
-		expect(countText(readText(modal.contentEl), "Skip This Sync: skip this run only. Skipped highlights may return next sync.")).toBe(1);
-		expect(readText(modal.contentEl)).not.toContain(
-			"Skipped highlights are only skipped for this sync. They may appear again next time unless ignored."
-		);
+		expect(elementsByClass(modal.contentEl, "kls-choice-help-button")).toHaveLength(1);
+		expect(elementsByClass(modal.contentEl, "kls-choice-help-panel")).toHaveLength(1);
 	});
 
-	it("keeps Ignore All Highlights behavior unchanged", async () => {
+	it("keeps Ignore All behavior unchanged", async () => {
 		const plugin = createPlugin();
 		const group = createBookGroup();
 		const modal = createModal(plugin, [group]);
 
 		modal.onOpen();
-		await findByText(modal.contentEl, "Ignore All Highlights").click();
+		await chooseIgnoreAll(modal);
 		await findByText(modal.contentEl, "Finish Sync").click();
 
 		expect(plugin.completeFirstSync).toHaveBeenCalledWith(
@@ -246,103 +275,242 @@ describe("FirstSyncPreviewModal wording and layout", () => {
 		);
 	});
 
-	it("does not style Ignore All Highlights as mod-warning", () => {
+	it("styles Ignore All as a neutral secondary action", () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
+		const ignoreAll = findByText(modal.contentEl, "Ignore All");
 
-		expect(findByText(modal.contentEl, "Ignore All Highlights").classes.has("mod-warning")).toBe(false);
+		expect(ignoreAll.classes.has("kls-pill-button")).toBe(true);
+		expect(ignoreAll.classes.has("mod-warning")).toBe(false);
+		expect(ignoreAll.classes.has("kls-glass-subtle")).toBe(true);
+		expect(ignoreAll.classes.has("kls-glass-strong")).toBe(false);
 	});
 });
 
 describe("FirstSyncPreviewModal UI polish", () => {
-	it("opens How choices work near the top controls with count and action help", async () => {
+	it("uses the shared pill and glass hierarchy for preview controls", () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
+		expect(elementsByClass(modal.contentEl, "kls-glass-scope")).toHaveLength(1);
 
-		const helpActions = elementByClassAt(modal.contentEl, "kls-choice-help-actions", 0);
-		expect(buttonTexts(helpActions)).toEqual(["How choices work"]);
-		expect(elementsByClass(modal.contentEl, "kls-choice-help")).toHaveLength(0);
+		for (const label of ["Import All", "Skip This Sync", "Cancel"]) {
+			const button = findByText(modal.contentEl, label);
 
-		await findByText(helpActions, "How choices work").click();
+			expect(button.classes.has("kls-pill-button")).toBe(true);
+			expect(button.classes.has("kls-glass-subtle")).toBe(true);
+			expect(button.classes.has("kls-glass-strong")).toBe(false);
+			expect(button.classes.has("mod-cta")).toBe(false);
+		}
+		expect(buttonByTextAt(modal.contentEl, "Import All", 0).attributes.get("aria-pressed")).toBe("false");
+		const reviewButton = findByText(modal.contentEl, "Review Highlights");
+		expect(reviewButton.classes.has("kls-review-action-button")).toBe(true);
+		expect(reviewButton.classes.has("kls-pill-button")).toBe(true);
+		expect(reviewButton.classes.has("kls-glass-subtle")).toBe(true);
+		expect(reviewButton.classes.has("kls-decision-button-active")).toBe(false);
+		expect(reviewButton.attributes.get("aria-pressed")).toBeUndefined();
 
-		const items = elementsByTag(modal.contentEl, "li").map((element) => element.text());
+		for (const label of ["Finish Sync"]) {
+			const button = findByText(modal.contentEl, label);
 
-		expect(items).toEqual([
-			"Checked / Need Review = books.",
-			"Ignore / Skip = individual highlights.",
-			"Review Highlights: choose item by item for one book.",
-			"Import All: import this book's current highlights.",
-			"Ignore All Highlights: ignore this book's current highlights in future syncs.",
-			"Skip This Sync: skip this run only. Skipped highlights may return next sync.",
-			"Unreviewed highlights are skipped for this sync and may return next time.",
-		]);
+			expect(button.classes.has("kls-pill-button")).toBe(true);
+			expect(button.classes.has("kls-glass-strong")).toBe(true);
+			expect(button.classes.has("mod-cta")).toBe(true);
+		}
 	});
 
-	it("opens help without resetting decisions", async () => {
+	it("keeps filter controls identifiable while switching active glass treatment", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		const all = findByText(modal.contentEl, "All Books");
+		const needsReview = findByText(modal.contentEl, "Needs Review");
+		const reviewed = findByText(modal.contentEl, "Reviewed");
+
+		for (const button of [all, needsReview, reviewed]) {
+			expect(button.classes.has("kls-book-filter-button")).toBe(true);
+			expect(button.classes.has("kls-pill-button")).toBe(true);
+			expect(button.classes.has("kls-action-button")).toBe(true);
+		}
+		expect(all.classes.has("kls-book-filter-button-active")).toBe(true);
+		expect(all.classes.has("kls-glass-strong")).toBe(true);
+		expect(all.attributes.get("aria-pressed")).toBe("true");
+		expect(needsReview.classes.has("kls-glass-subtle")).toBe(true);
+		expect(needsReview.attributes.get("aria-pressed")).toBe("false");
+		expect(reviewed.classes.has("kls-glass-subtle")).toBe(true);
+
+		await needsReview.click();
+
+		expect(all.classes.has("kls-book-filter-button-active")).toBe(false);
+		expect(all.classes.has("kls-glass-subtle")).toBe(true);
+		expect(all.classes.has("kls-glass-strong")).toBe(false);
+		expect(all.attributes.get("aria-pressed")).toBe("false");
+		expect(needsReview.classes.has("kls-book-filter-button-active")).toBe(true);
+		expect(needsReview.classes.has("kls-glass-strong")).toBe(true);
+		expect(needsReview.classes.has("kls-glass-subtle")).toBe(false);
+		expect(needsReview.attributes.get("aria-pressed")).toBe("true");
+	});
+
+	it("uses the same semantic help content in both disclosure locations", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		const listPanel = elementByClassAt(modal.contentEl, "kls-choice-help-panel", 0);
+		const listContent = helpContentSnapshot(modal.contentEl);
+		const listStructure = helpStructureSnapshot(listPanel);
+		await findByText(modal.contentEl, "Review Highlights").click();
+		const detailPanel = elementByClassAt(modal.contentEl, "kls-choice-help-panel", 0);
+		const detailContent = helpContentSnapshot(modal.contentEl);
+
+		expect(detailContent).toEqual(listContent);
+		expect(helpStructureSnapshot(detailPanel)).toEqual(listStructure);
+		expect(listStructure).toEqual({
+			panelClasses: ["kls-choice-help-panel"],
+			panelChildren: ["p", "dl", "p"],
+			definitionChildren: ["dt", "dd", "dt", "dd", "dt", "dd", "dt", "dd", "dt", "dd"],
+		});
+		expect(detailContent).toEqual({
+			terms: ["Import All", "Ignore All", "Skip This Sync", "Review Highlights", "Finish Sync"],
+			descriptions: [
+				"Choose Import for every highlight in this book.",
+				"Keep every highlight out of future syncs until you remove it from Ignored Highlights.",
+				"Skip this book once — its highlights may return next sync.",
+				"Choose Import, Skip, or Ignore one highlight at a time.",
+				"Save your choices and sync. Highlights still needing review are skipped this time.",
+			],
+			opening: "How choices work: Your choices are temporary until you select Finish Sync.",
+			status: "Reviewed: every highlight has a choice. Needs Review: at least one highlight still needs a choice.",
+		});
+		expect(elementsByTag(modal.contentEl, "dl")).toHaveLength(1);
+	});
+
+	it("keeps detail help hidden by default and supports click and Escape dismissal", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		const trigger = findButtonByAriaLabel(modal.contentEl, "Show how choices work");
+		const helpPanel = elementByClassAt(modal.contentEl, "kls-choice-help-panel", 0);
+
+		expect(trigger.text()).toBe("?");
+		expect(trigger.classes.has("kls-choice-help-icon")).toBe(true);
+		expect(trigger.attributes.get("aria-expanded")).toBe("false");
+		expect(trigger.attributes.get("aria-controls")).toBe("kls-highlight-choice-help");
+		expect(helpPanel.attributes.has("hidden")).toBe(true);
+
+		await trigger.click();
+		expect(trigger.attributes.get("aria-expanded")).toBe("true");
+		expect(helpPanel.attributes.has("hidden")).toBe(false);
+
+		await trigger.click();
+		expect(trigger.attributes.get("aria-expanded")).toBe("false");
+		expect(helpPanel.attributes.has("hidden")).toBe(true);
+
+		await trigger.click();
+		await trigger.keydown("Escape");
+		expect(trigger.attributes.get("aria-expanded")).toBe("false");
+		expect(helpPanel.attributes.has("hidden")).toBe(true);
+		expect(trigger.focusCalls).toBe(1);
+	});
+
+	it("opens book-list help without resetting selections, filters, search, or scroll", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Import All").click();
-		await findByText(modal.contentEl, "How choices work").click();
+		await findByText(modal.contentEl, "Reviewed").click();
+		await searchBooks(modal, "Atomic");
+		const input = elementsByTag(modal.contentEl, "input")[0];
+		const body = elementByClassAt(modal.contentEl, "kls-modal-scroll-body", 0);
+		const trigger = findByText(modal.contentEl, "How choices work");
 
-		expect(readText(findSectionByHeading(modal.contentEl, "1 of 1 — Atomic Habits"))).toContain("Status: Ready to Import");
-		expect(readText(modal.contentEl)).toContain("Review Highlights: choose item by item for one book.");
+		setScrollTop(body, 180);
+		await trigger.click();
+
+		expect(elementsByTag(modal.contentEl, "input")[0]).toBe(input);
+		expect(input?.value).toBe("Atomic");
+		expect(findByText(modal.contentEl, "Reviewed").attributes.get("aria-pressed")).toBe("true");
+		expect(findByText(modal.contentEl, "Import All").attributes.get("aria-pressed")).toBe("true");
+		expect(scrollTop(body)).toBe(180);
 	});
 
-	it("opens help without resetting search text", async () => {
+	it("opens detail help without resetting a selection or highlight-list scroll", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		await findByText(modal.contentEl, "Import").click();
+		const highlights = elementByClassAt(modal.contentEl, "kls-book-detail-highlights", 0);
+		const detail = elementByClassAt(modal.contentEl, "kls-book-detail-view", 0);
+		const header = elementByClassAt(detail, "kls-book-detail-header", 0);
+		const headerIndex = directChildIndexByClass(detail, "kls-book-detail-header");
+		const highlightsIndex = directChildIndexByClass(detail, "kls-book-detail-highlights");
+		const trigger = findButtonByAriaLabel(modal.contentEl, "Show how choices work");
+
+		setScrollTop(highlights, 175);
+		await trigger.click();
+
+		expect(findByText(modal.contentEl, "Import").attributes.get("aria-pressed")).toBe("true");
+		expect(scrollTop(highlights)).toBe(175);
+		expect(elementByClassAt(modal.contentEl, "kls-book-detail-header", 0)).toBe(header);
+		expect(elementByClassAt(modal.contentEl, "kls-book-detail-highlights", 0)).toBe(highlights);
+		expect(directChildIndexByClass(detail, "kls-book-detail-header")).toBe(headerIndex);
+		expect(directChildIndexByClass(detail, "kls-book-detail-highlights")).toBe(highlightsIndex);
+	});
+
+	it("places detail help after the header and before the independently scrollable highlight list", async () => {
 		const modal = createModal(createPlugin(), [
 			createBookGroup("Atomic Habits"),
 			createBookGroup("Deep Work"),
 		]);
 
 		modal.onOpen();
-		await searchBooks(modal, "Deep");
-		await findByText(modal.contentEl, "How choices work").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		const body = elementByClassAt(modal.contentEl, "kls-modal-scroll-body", 0);
+		const detail = elementByClassAt(body, "kls-book-detail-view", 0);
+		const headerIndex = directChildIndexByClass(detail, "kls-book-detail-header");
+		const helpIndex = directChildIndexByClass(detail, "kls-choice-help-panel");
+		const highlightsIndex = directChildIndexByClass(detail, "kls-book-detail-highlights");
 
-		expect(elementsByTag(modal.contentEl, "input")[0]?.value).toBe("Deep");
-		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
-	});
-
-	it("opens help without changing scroll position", async () => {
-		const modal = createModal(createPlugin(), [
-			createBookGroup("Atomic Habits"),
-			createBookGroup("Deep Work"),
-		]);
-
-		modal.onOpen();
-		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 180);
-		setScrollTop(modal.contentEl, 180);
-		await findByText(modal.contentEl, "How choices work").click();
-
-		expect(scrollTop(modal.contentEl)).toBe(180);
-		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(180);
+		expect(body.classes.has("kls-highlight-review-layout")).toBe(true);
+		expect(headerIndex).toBeLessThan(helpIndex);
+		expect(helpIndex).toBeLessThan(highlightsIndex);
 	});
 
 	it("explains count meanings, actions, and Finish Sync clearly", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
-		await findByText(modal.contentEl, "How choices work").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		await findButtonByAriaLabel(modal.contentEl, "Show how choices work").click();
 
-		const items = elementsByTag(modal.contentEl, "li").map((element) => element.text());
-		expect(readText(modal.contentEl)).toContain("Counts");
-		expect(readText(modal.contentEl)).toContain("Actions");
+		const text = readText(modal.contentEl);
+		expect(text).toContain("Your choices are temporary until you select Finish Sync.");
 		expect(readText(modal.contentEl)).toContain("Finish Sync");
-		expect(items).toContain("Checked / Need Review = books.");
-		expect(items).toContain("Ignore / Skip = individual highlights.");
-		expect(items.some((text) => text.startsWith("Review Highlights:"))).toBe(true);
-		expect(items.some((text) => text.startsWith("Import All:"))).toBe(true);
-		expect(items.some((text) => text.startsWith("Ignore All Highlights:"))).toBe(true);
-		expect(items.some((text) => text.startsWith("Skip This Sync:"))).toBe(true);
-		expect(items).toContain(
-			"Unreviewed highlights are skipped for this sync and may return next time."
-		);
+		expect(text).toContain("Choose Import for every highlight in this book.");
+		expect(text).toContain("Keep every highlight out of future syncs until you remove it from Ignored Highlights.");
+		expect(text).toContain("Skip this book once — its highlights may return next sync.");
+		expect(text).toContain("Choose Import, Skip, or Ignore one highlight at a time.");
+		expect(text).toContain("Save your choices and sync. Highlights still needing review are skipped this time.");
+		expect(text).toContain("Reviewed: every highlight has a choice.");
+		expect(text).toContain("Needs Review: at least one highlight still needs a choice.");
+		expect(text).not.toContain("Checked");
+		expect(text).not.toContain("Need Review");
 		expect(readText(modal.contentEl)).not.toContain("unselected highlights");
+		const panelText = elementByClassAt(modal.contentEl, "kls-choice-help-panel", 0).text();
+		const panel = elementByClassAt(modal.contentEl, "kls-choice-help-panel", 0);
+
+		expect(panelText.indexOf("Your choices are temporary until you select Finish Sync."))
+			.toBeLessThan(panelText.indexOf("Import All"));
+		expect(panelText.indexOf("Finish Sync"))
+			.toBeLessThan(panelText.indexOf("Reviewed: every highlight has a choice."));
+		expect(directChildIndexByClass(panel, "kls-choice-help"))
+			.toBeLessThan(directChildIndexByClass(panel, "kls-choice-help-status"));
+		expect(elementsByTag(modal.contentEl, "dl")).toHaveLength(1);
 	});
 
-	it("puts sticky search, filters, help, compact progress, and book cards in order", () => {
+	it("places the book-list help trigger and card before search, filters, progress, and books", () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
@@ -351,50 +519,49 @@ describe("FirstSyncPreviewModal UI polish", () => {
 		const bookListIndex = directChildIndexByClass(body, "kls-book-list");
 		const stickySummary = elementByClassAt(body, "kls-review-sticky-summary", 0);
 		const controlsPanel = elementByClassAt(stickySummary, "kls-review-controls-panel", 0);
+		const helpButtonIndex = directChildIndexByClass(controlsPanel, "kls-choice-help-button");
+		const helpPanelIndex = directChildIndexByClass(controlsPanel, "kls-choice-help-panel");
 		const controlsIndex = directChildIndexByClass(controlsPanel, "kls-book-list-controls");
-		const helpIndex = directChildIndexByClass(controlsPanel, "kls-choice-help-actions");
 		const compactProgressIndex = directChildIndexByClass(controlsPanel, "kls-compact-review-progress");
 
 		expect(stickyIndex).toBeGreaterThan(-1);
 		expect(elementsByClass(body, "kls-review-controls-panel")).toHaveLength(1);
 		expect(elementsByClass(body, "kls-book-list-controls")).toHaveLength(1);
-		expect(elementsByClass(body, "kls-choice-help-actions")).toHaveLength(1);
+		expect(elementsByClass(body, "kls-review-modal-heading")).toHaveLength(1);
+		expect(elementsByClass(controlsPanel, "kls-choice-help-button")).toHaveLength(1);
+		expect(elementByClassAt(controlsPanel, "kls-choice-help-panel", 0).attributes.get("role")).toBe("note");
 		expect(elementsByClass(body, "kls-compact-review-progress")).toHaveLength(1);
 		expect(elementsByClass(body, "kls-review-progress")).toHaveLength(0);
-		expect(controlsIndex).toBeLessThan(helpIndex);
-		expect(helpIndex).toBeLessThan(compactProgressIndex);
+		expect(helpButtonIndex).toBeLessThan(helpPanelIndex);
+		expect(helpPanelIndex).toBeLessThan(controlsIndex);
+		expect(controlsIndex).toBeLessThan(compactProgressIndex);
 		expect(bookListIndex).toBeGreaterThan(stickyIndex);
-		expect(elementsByClass(body, "kls-choice-help-details")).toHaveLength(0);
 	});
 
-	it("styles How choices work as a subtle help control", () => {
-		const modal = createModal(createPlugin(), [createBookGroup()]);
-
-		modal.onOpen();
-		const helpButton = findByText(elementByClassAt(modal.contentEl, "kls-choice-help-actions", 0), "How choices work");
-
-		expect(helpButton.classes.has("kls-action-button")).toBe(true);
-		expect(helpButton.classes.has("kls-help-button")).toBe(true);
-		expect(helpButton.classes.has("mod-cta")).toBe(false);
-	});
-
-	it("shows the top-level help content only once", async () => {
+	it("shows the full detail help content only once", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup(), createBookGroup("Deep Work")]);
 
 		modal.onOpen();
-		await findByText(modal.contentEl, "How choices work").click();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		await findButtonByAriaLabel(modal.contentEl, "Show how choices work").click();
 
-		expect(countText(readText(modal.contentEl), "Skip This Sync: skip this run only. Skipped highlights may return next sync.")).toBe(1);
+		expect(countText(
+			readText(modal.contentEl),
+			"Skip this book once — its highlights may return next sync."
+		)).toBe(1);
 	});
 
-	it("does not repeat the skip explanation inside per-book review", async () => {
-		const modal = createModal(createPlugin(), [createBookGroup()]);
+	it("omits Help from the Review New Highlights finish confirmation", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()], {
+			title: "Review New Highlights",
+		});
 
 		modal.onOpen();
-		await findByText(modal.contentEl, "Review Highlights").click();
+		expect(elementsByClass(modal.contentEl, "kls-choice-help-button")).toHaveLength(1);
+		await findByText(modal.contentEl, "Finish Sync").click();
 
-		expect(readText(modal.contentEl)).not.toContain("Skipped highlights are only skipped for this sync.");
-		expect(buttonTexts(elementByClassAt(modal.contentEl, "kls-choice-help-actions", 0))).toContain("How choices work");
+		expect(readText(modal.contentEl)).toContain("Some highlights have not been reviewed.");
+		expect(elementsByClass(modal.contentEl, "kls-choice-help-button")).toHaveLength(0);
 	});
 
 	it("orders per-highlight buttons as Import, Skip This Sync, Ignore", async () => {
@@ -490,7 +657,7 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 
 		expect(elementsByTag(modal.contentEl, "input")[0]).toBe(input);
 		expect(input.value).toBe("De");
-		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
+		expect(bookHeadings(modal)).toEqual(["2 / 2 — Deep Work"]);
 	});
 
 	it("renders the search input without a search icon button", () => {
@@ -521,7 +688,7 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 
 		expect(elementsByTag(searchControl, "input")).toHaveLength(1);
 		expect(elementsByClass(searchControl, "kls-book-search-button")).toHaveLength(0);
-		expect(buttonTexts(filters)).toEqual(["All", "Needs Review", "Checked"]);
+		expect(buttonTexts(filters)).toEqual(["All Books", "Needs Review", "Reviewed"]);
 	});
 
 	it("keeps search text and visible filtering while typing", async () => {
@@ -542,7 +709,7 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		setScrollTop(modal.contentEl, 160);
 
 		expect(input.value).toBe("Deep");
-		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
+		expect(bookHeadings(modal)).toEqual(["2 / 2 — Deep Work"]);
 		expect(scrollTop(modal.contentEl)).toBe(160);
 		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(160);
 	});
@@ -554,11 +721,16 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Import All").click();
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Import All").click();
 		await searchBooks(modal, "Deep");
 		await searchBooks(modal, "");
 
-		expect(readText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"))).toContain("Status: Ready to Import");
+		const atomicHabits = findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits");
+		const importAll = buttonByTextAt(atomicHabits, "Import All", 0);
+
+		expect(readText(atomicHabits)).toContain("Import All");
+		expect(importAll.classes.has("kls-decision-button-active-import")).toBe(true);
+		expect(importAll.attributes.get("aria-pressed")).toBe("true");
 	});
 
 	it("does not change scroll position while searching", async () => {
@@ -586,25 +758,25 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		expect(elementsByClass(modal.contentEl, "kls-book-section")).toHaveLength(0);
 	});
 
-	it("filters All, Needs Review, and Checked books", async () => {
+	it("filters All Books, Needs Review, and Reviewed books", async () => {
 		const modal = createModal(createPlugin(), [
 			createBookGroup("Atomic Habits"),
 			createBookGroup("Deep Work"),
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Import All").click();
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Import All").click();
 
 		await findByText(modal.contentEl, "Needs Review").click();
-		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
+		expect(bookHeadings(modal)).toEqual(["2 / 2 — Deep Work"]);
 
-		await findByText(modal.contentEl, "Checked").click();
-		expect(bookHeadings(modal)).toEqual(["1 of 2 — Atomic Habits"]);
+		await findByText(modal.contentEl, "Reviewed").click();
+		expect(bookHeadings(modal)).toEqual(["1 / 2 — Atomic Habits"]);
 
-		await findByText(modal.contentEl, "All").click();
+		await findByText(modal.contentEl, "All Books").click();
 		expect(bookHeadings(modal)).toEqual([
-			"1 of 2 — Atomic Habits",
-			"2 of 2 — Deep Work",
+			"1 / 2 — Atomic Habits",
+			"2 / 2 — Deep Work",
 		]);
 	});
 
@@ -617,16 +789,16 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 
 		modal.onOpen();
 		expect(bookHeadings(modal)).toEqual([
-			"1 of 3 — Zebra Notes",
-			"2 of 3 — Atomic Habits",
-			"3 of 3 — Deep Work",
+			"1 / 3 — Zebra Notes",
+			"2 / 3 — Atomic Habits",
+			"3 / 3 — Deep Work",
 		]);
 
-		await findByText(findSectionByHeading(modal.contentEl, "2 of 3 — Atomic Habits"), "Import All").click();
+		await findByText(findSectionByHeading(modal.contentEl, "2 / 3 — Atomic Habits"), "Import All").click();
 		expect(bookHeadings(modal)).toEqual([
-			"1 of 3 — Zebra Notes",
-			"2 of 3 — Atomic Habits",
-			"3 of 3 — Deep Work",
+			"1 / 3 — Zebra Notes",
+			"2 / 3 — Atomic Habits",
+			"3 / 3 — Deep Work",
 		]);
 	});
 
@@ -641,8 +813,8 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		await searchBooks(modal, "morgan");
 
 		expect(bookHeadings(modal)).toEqual([
-			"1 of 3 — Zebra Notes",
-			"3 of 3 — Deep Work",
+			"1 / 3 — Zebra Notes",
+			"3 / 3 — Deep Work",
 		]);
 	});
 
@@ -653,14 +825,14 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Import All").click();
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Import All").click();
 		await searchBooks(modal, "Deep");
-		await findByText(modal.contentEl, "Checked").click();
+		await findByText(modal.contentEl, "Reviewed").click();
 
 		expect(readText(modal.contentEl)).toContain("No matching books.");
 
 		await findByText(modal.contentEl, "Needs Review").click();
-		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
+		expect(bookHeadings(modal)).toEqual(["2 / 2 — Deep Work"]);
 	});
 
 	it("does not reset selected decisions while filtering and searching", async () => {
@@ -670,11 +842,16 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Import All").click();
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Import All").click();
 		await searchBooks(modal, "Deep");
 		await searchBooks(modal, "");
 
-		expect(readText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"))).toContain("Status: Ready to Import");
+		const atomicHabits = findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits");
+		const importAll = buttonByTextAt(atomicHabits, "Import All", 0);
+
+		expect(readText(atomicHabits)).toContain("Import All");
+		expect(importAll.classes.has("kls-decision-button-active-import")).toBe(true);
+		expect(importAll.attributes.get("aria-pressed")).toBe("true");
 	});
 
 	it("keeps review progress global while search is active", async () => {
@@ -684,23 +861,28 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Import All").click();
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Import All").click();
 		await searchBooks(modal, "Deep");
 
 		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
 		expect(readText(compactProgress)).toBe(
-			"Checked: 1/2 books · Need Review: 1 books · Ignore: 0 highlights · Skip: 0 highlights"
+			"Reviewed: 1/2 books · Needs Review: 1 book · Ignore: 0 highlights · Skip: 0 highlights"
 		);
 	});
 
-	it("renders Review Highlights in the book header row", () => {
+	it("keeps the status in the header and Review Highlights in the action row", () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 		const header = elementByClassAt(modal.contentEl, "kls-book-header", 0);
+		const actions = elementByClassAt(modal.contentEl, "kls-book-actions", 0);
 
-		expect(readText(header)).toContain("1 of 1 — Atomic Habits");
-		expect(buttonTexts(header)).toEqual(["Review Highlights"]);
+		expect(elementByClassAt(header, "kls-book-index", 0).text()).toBe("1 / 1");
+		expect(elementByClassAt(header, "kls-book-title", 0).text()).toBe("Atomic Habits");
+		expect(buttonTexts(header)).toEqual([]);
+		expect(buttonTexts(actions)).toEqual([
+			"Import All", "Skip This Sync", "Ignore All", "Review Highlights",
+		]);
 	});
 
 	it("renders each book as a shared card container", () => {
@@ -724,14 +906,37 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		const header = elementByClassAt(card, "kls-book-header", 0);
 		const title = elementByClassAt(header, "kls-book-title", 0);
 
-		expect(title.text()).toBe(`1 of 1 — ${longTitle}`);
-		expect(buttonTexts(header)).toEqual(["Review Highlights"]);
+		expect(elementByClassAt(header, "kls-book-index", 0).text()).toBe("1 / 1");
+		expect(title.text()).toBe(longTitle);
+		expect(title.attributes.get("aria-label")).toBe(longTitle);
+		expect(title.attributes.get("title")).toBe(longTitle);
+		expect(buttonTexts(header)).toEqual([]);
 		expect(buttonTexts(card)).toEqual([
-			"Review Highlights",
 			"Import All",
-			"Ignore All Highlights",
 			"Skip This Sync",
+			"Ignore All",
+			"Review Highlights",
 		]);
+	});
+
+	it("renders every stored title variant together without inferring or reordering languages", () => {
+		const group = createBookGroup("Muôn Kiếp Nhân Sinh", "Nguyên Phong");
+
+		group.clippings[1]!.bookTitle = "Many Lives – Many Times";
+		const modal = createModal(createPlugin(), [group]);
+		const combinedTitle = "Muôn Kiếp Nhân Sinh · Many Lives – Many Times";
+
+		modal.onOpen();
+		const card = elementByClassAt(modal.contentEl, "kls-book-card", 0);
+		const title = elementByClassAt(card, "kls-book-title", 0);
+		const authors = elementsByClass(card, "kls-book-meta");
+
+		expect(elementByClassAt(card, "kls-book-index", 0).text()).toBe("1 / 1");
+		expect(title.text()).toBe(combinedTitle);
+		expect(title.attributes.get("aria-label")).toBe(combinedTitle);
+		expect(title.attributes.get("title")).toBe(combinedTitle);
+		expect(authors.map((author) => author.text())).toEqual(["Nguyên Phong"]);
+		expect(authors[0]?.attributes.get("title")).toBe("Nguyên Phong");
 	});
 
 	it("keeps Review Highlights and per-book action buttons inside the same card", () => {
@@ -742,13 +947,13 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		const header = elementByClassAt(card, "kls-book-header", 0);
 		const actions = elementByClassAt(card, "kls-book-actions", 0);
 
-		expect(buttonTexts(header)).toEqual(["Review Highlights"]);
-		expect(buttonTexts(actions)).toEqual(["Import All", "Ignore All Highlights", "Skip This Sync"]);
+		expect(buttonTexts(header)).toEqual([]);
+		expect(buttonTexts(actions)).toEqual(["Import All", "Skip This Sync", "Ignore All", "Review Highlights"]);
 		expect(buttonTexts(card)).toEqual([
-			"Review Highlights",
 			"Import All",
-			"Ignore All Highlights",
 			"Skip This Sync",
+			"Ignore All",
+			"Review Highlights",
 		]);
 	});
 
@@ -761,37 +966,54 @@ describe("FirstSyncPreviewModal book dashboard controls", () => {
 		expect(readText(modal.contentEl)).not.toContain("First Sync Preview");
 	});
 
-	it("renders the Kindle warning as a compact callout", () => {
+	it("renders the Kindle information panel as one concise paragraph", () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 		const callout = elementByClassAt(modal.contentEl, "kls-review-warning-callout", 0);
+		const paragraphs = elementsByTag(callout, "p");
 
+		expect(paragraphs).toHaveLength(1);
+		expect(paragraphs[0]?.children.map((child) => child.tagName)).toEqual(["span", "br", "span"]);
 		expect(paragraphTexts(callout)).toEqual([
-			"Kindle may keep deleted highlights in My Clippings.txt.",
-			"Review before importing to avoid bringing old deleted highlights into Obsidian.",
-			"New or unreviewed highlights are added to Obsidian notes only after you approve them. Highlights you already approved may be refreshed during sync to keep your notes up to date.",
+			"Some highlights deleted on your Kindle may still remain in My Clippings.txt. Review them before importing so only the highlights you want are added to your notes.",
 		]);
-		expect(readText(modal.contentEl)).not.toContain(
-			"Kindle may keep deleted highlights in My Clippings.txt. Review before importing if you want to avoid bringing old deleted highlights into Obsidian."
-		);
 	});
 });
 
 describe("FirstSyncPreviewModal selected decision states", () => {
-	it("renders per-highlight selected decision as a user-facing badge", async () => {
+	it("uses the same shared Skip This Sync base inside and outside book detail", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		const bookSkip = findByText(modal.contentEl, "Skip This Sync");
+
+		expect(bookSkip.classes.has("kls-skip-this-sync-button")).toBe(true);
+		expect(bookSkip.classes.has("kls-action-button")).toBe(true);
+		expect(bookSkip.classes.has("kls-pill-button")).toBe(true);
+		expect(bookSkip.classes.has("kls-glass-subtle")).toBe(true);
+		await findByText(modal.contentEl, "Review Highlights").click();
+		const highlightSkip = findByText(modal.contentEl, "Skip This Sync");
+
+		expect(highlightSkip.classes.has("kls-skip-this-sync-button")).toBe(true);
+		expect(highlightSkip.classes.has("kls-action-button")).toBe(true);
+		expect(highlightSkip.classes.has("kls-pill-button")).toBe(true);
+		expect(highlightSkip.classes.has("kls-glass-subtle")).toBe(true);
+		expect(highlightSkip.classes.has("kls-decision-button-active")).toBe(false);
+	});
+
+	it("renders the selected decision on its button without a duplicate indicator", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Skip This Sync").click();
-		const selected = elementsByClass(modal.contentEl, "kls-selected-decision")[0];
-		const selectedBadge = elementsByClass(selected, "kls-selected-decision-value")[0];
+		const skipButton = findByText(modal.contentEl, "Skip This Sync");
 
-		expect(selected?.text()).toContain("Selected: Skip This Sync");
-		expect(selectedBadge?.classes.has("kls-status-badge")).toBe(true);
-		expect(selectedBadge?.classes.has("kls-selected-decision-value-skip")).toBe(true);
-		expect(readText(modal.contentEl)).not.toContain("Selected: skip");
+		expect(skipButton.classes.has("kls-decision-button-active-skip")).toBe(true);
+		expect(skipButton.attributes.get("aria-pressed")).toBe("true");
+		expect(elementsByClass(modal.contentEl, "kls-selected-decision")).toHaveLength(0);
+		expect(readText(modal.contentEl)).not.toContain("Selected:");
 	});
 
 	it("marks only the selected per-highlight decision button active", async () => {
@@ -802,23 +1024,33 @@ describe("FirstSyncPreviewModal selected decision states", () => {
 		await findByText(modal.contentEl, "Skip This Sync").click();
 
 		expect(buttonByTextAt(modal.contentEl, "Skip This Sync", 0).classes.has("kls-decision-button-active")).toBe(true);
-		expect(buttonByTextAt(modal.contentEl, "Skip This Sync", 0).classes.has("mod-cta")).toBe(true);
+		expect(buttonByTextAt(modal.contentEl, "Skip This Sync", 0).attributes.get("aria-pressed")).toBe("true");
+		expect(buttonByTextAt(modal.contentEl, "Skip This Sync", 0).classes.has("mod-cta")).toBe(false);
+		expect(buttonByTextAt(modal.contentEl, "Skip This Sync", 0).classes.has("kls-glass-subtle")).toBe(true);
 		expect(buttonByTextAt(modal.contentEl, "Import", 0).classes.has("kls-decision-button-active")).toBe(false);
+		expect(buttonByTextAt(modal.contentEl, "Import", 0).attributes.get("aria-pressed")).toBe("false");
 		expect(buttonByTextAt(modal.contentEl, "Ignore", 0).classes.has("kls-decision-button-active")).toBe(false);
+		expect(buttonByTextAt(modal.contentEl, "Ignore", 0).attributes.get("aria-pressed")).toBe("false");
 
 		await buttonByTextAt(modal.contentEl, "Ignore", 0).click();
 
 		expect(buttonByTextAt(modal.contentEl, "Ignore", 0).classes.has("kls-decision-button-active")).toBe(true);
-		expect(buttonByTextAt(modal.contentEl, "Ignore", 0).classes.has("mod-cta")).toBe(true);
+		expect(buttonByTextAt(modal.contentEl, "Ignore", 0).attributes.get("aria-pressed")).toBe("true");
+		expect(buttonByTextAt(modal.contentEl, "Ignore", 0).classes.has("mod-cta")).toBe(false);
+		expect(buttonByTextAt(modal.contentEl, "Ignore", 0).classes.has("kls-glass-subtle")).toBe(true);
 		expect(buttonByTextAt(modal.contentEl, "Skip This Sync", 0).classes.has("kls-decision-button-active")).toBe(false);
+		expect(buttonByTextAt(modal.contentEl, "Skip This Sync", 0).attributes.get("aria-pressed")).toBe("false");
 		expect(buttonByTextAt(modal.contentEl, "Import", 0).classes.has("kls-decision-button-active")).toBe(false);
 
 		await buttonByTextAt(modal.contentEl, "Import", 0).click();
 
 		expect(buttonByTextAt(modal.contentEl, "Import", 0).classes.has("kls-decision-button-active")).toBe(true);
-		expect(buttonByTextAt(modal.contentEl, "Import", 0).classes.has("mod-cta")).toBe(true);
+		expect(buttonByTextAt(modal.contentEl, "Import", 0).attributes.get("aria-pressed")).toBe("true");
+		expect(buttonByTextAt(modal.contentEl, "Import", 0).classes.has("mod-cta")).toBe(false);
+		expect(buttonByTextAt(modal.contentEl, "Import", 0).classes.has("kls-glass-subtle")).toBe(true);
 		expect(buttonByTextAt(modal.contentEl, "Skip This Sync", 0).classes.has("kls-decision-button-active")).toBe(false);
 		expect(buttonByTextAt(modal.contentEl, "Ignore", 0).classes.has("kls-decision-button-active")).toBe(false);
+		expect(buttonByTextAt(modal.contentEl, "Ignore", 0).attributes.get("aria-pressed")).toBe("false");
 	});
 });
 
@@ -875,15 +1107,22 @@ describe("FirstSyncPreviewModal sticky actions", () => {
 		expect(buttonTexts(stickyActions[0])).toEqual(["Finish Sync", "Cancel"]);
 	});
 
-	it("shows sticky Back To Book List and Cancel actions in per-book review", async () => {
+	it("places Back above the detail title and keeps only Cancel in sticky actions", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Highlights").click();
 		const stickyActions = elementsByClass(modal.contentEl, "kls-sticky-actions");
+		const detailHeader = elementByClassAt(modal.contentEl, "kls-book-detail-header", 0);
+		const titleIndex = directChildIndexByClass(detailHeader, "kls-book-title");
+		const navigationIndex = directChildIndexByClass(detailHeader, "kls-review-navigation");
 
 		expect(stickyActions).toHaveLength(1);
-		expect(buttonTexts(stickyActions[0])).toEqual(["Back To Book List", "Cancel"]);
+		expect(buttonTexts(stickyActions[0])).toEqual(["Cancel"]);
+		expect(buttonTexts(elementByClassAt(detailHeader, "kls-review-navigation", 0))).toEqual(["Back"]);
+		expect(findButtonByAriaLabel(detailHeader, "Back to Book List")).toBeDefined();
+		expect(navigationIndex).toBeLessThan(titleIndex);
+		expect(buttonsByAriaLabel(detailHeader, "How choices work")).toHaveLength(0);
 	});
 
 	it("Cancel closes the modal without completing first sync", async () => {
@@ -935,7 +1174,8 @@ describe("FirstSyncPreviewModal book status", () => {
 
 		modal.onOpen();
 
-		expect(readText(modal.contentEl)).toContain("Status: Needs Review");
+		expect(readText(modal.contentEl)).toContain("Needs Review");
+		expect(readText(modal.contentEl)).not.toContain("Status:");
 	});
 
 	it("renders untouched book status as a needs-review badge", () => {
@@ -949,19 +1189,38 @@ describe("FirstSyncPreviewModal book status", () => {
 		expect(statusBadge?.classes.has("kls-book-status-value")).toBe(true);
 		expect(statusBadge?.classes.has("kls-status-badge-needs-review")).toBe(true);
 		expect(statusBadge?.text()).toBe("Needs Review");
-		expect(status?.text()).toContain("Status: Needs Review");
+		expect(status?.text()).toBe("Needs Review");
+		expect(elementsByClass(status, "kls-book-status-label")).toHaveLength(0);
+		const cardControls = elementByClassAt(modal.contentEl, "kls-book-card-controls", 0);
+
+		expect(elementsByClass(cardControls, "kls-book-status")).toEqual([status]);
+		expect(directChildIndexByClass(cardControls, "kls-book-status")).toBe(0);
+		expect(buttonTexts(cardControls)).toEqual([]);
 	});
 
-	it("shows import status after Import All", async () => {
+	it("shows Import All and selects it only after all highlights are marked for Import", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Import All").click();
 
-		expect(readText(modal.contentEl)).toContain("Status: Ready to Import");
+		expect(readText(modal.contentEl)).toContain("Import All");
+		expect(buttonByTextAt(modal.contentEl, "Import All", 0).classes.has("kls-decision-button-active-import")).toBe(true);
+		expect(buttonByTextAt(modal.contentEl, "Import All", 0).attributes.get("aria-pressed")).toBe("true");
+		for (const label of ["Ignore All", "Skip This Sync"]) {
+			const button = buttonByTextAt(modal.contentEl, label, 0);
+
+			expect(button.classes.has("kls-decision-button-active")).toBe(false);
+			expect(button.attributes.get("aria-pressed")).toBe("false");
+		}
+		const reviewButton = findByText(modal.contentEl, "Review Highlights");
+
+		expect(reviewButton.classes.has("kls-glass-subtle")).toBe(true);
+		expect(reviewButton.classes.has("kls-decision-button-active")).toBe(false);
+		expect(readText(modal.contentEl)).not.toContain("Status:");
 	});
 
-	it("renders import book status as a ready-to-import badge", async () => {
+	it("renders all-Import with the matching aggregate badge", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
@@ -969,35 +1228,42 @@ describe("FirstSyncPreviewModal book status", () => {
 		const status = elementsByClass(modal.contentEl, "kls-book-status")[0];
 		const statusBadge = elementsByClass(status, "kls-status-badge")[0];
 
-		expect(status?.classes.has("kls-book-status-ready-to-import")).toBe(true);
+		expect(status?.classes.has("kls-book-status-import")).toBe(true);
 		expect(statusBadge?.classes.has("kls-book-status-value")).toBe(true);
-		expect(statusBadge?.classes.has("kls-status-badge-ready-to-import")).toBe(true);
-		expect(statusBadge?.text()).toBe("Ready to Import");
-		expect(status?.text()).toContain("Status: Ready to Import");
+		expect(statusBadge?.classes.has("kls-status-badge-import")).toBe(true);
+		expect(statusBadge?.text()).toBe("Import All");
+		expect(status?.text()).toBe("Import All");
 	});
 
-	it("shows ignore status after Ignore All Highlights", async () => {
+	it("shows Ignore All as selected without a duplicate decision badge", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
-		await findByText(modal.contentEl, "Ignore All Highlights").click();
+		await chooseIgnoreAll(modal);
 
-		const statusBadge = elementsByClass(modal.contentEl, "kls-status-badge")[0];
-		expect(statusBadge?.classes.has("kls-status-badge-ignored")).toBe(true);
-		expect(statusBadge?.text()).toBe("Ignored");
-		expect(readText(modal.contentEl)).toContain("Status: Ignored");
+		const ignoreAll = findByText(modal.contentEl, "Ignore All");
+
+		expect(readText(modal.contentEl)).toContain("Ignore All");
+		expect(ignoreAll.classes.has("kls-decision-button-active-ignore")).toBe(true);
+		expect(ignoreAll.attributes.get("aria-pressed")).toBe("true");
+		expect(elementsByClass(modal.contentEl, "kls-status-badge-ignore")).toHaveLength(1);
+		expect(readText(modal.contentEl)).not.toContain("Status:");
 	});
 
-	it("shows skip status after Skip This Sync", async () => {
+	it("shows Skip This Sync as selected without a duplicate skipped badge", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Skip This Sync").click();
 
-		const statusBadge = elementsByClass(modal.contentEl, "kls-status-badge")[0];
-		expect(statusBadge?.classes.has("kls-status-badge-skipped-this-sync")).toBe(true);
-		expect(statusBadge?.text()).toBe("Skipped This Sync");
-		expect(readText(modal.contentEl)).toContain("Status: Skipped This Sync");
+		const skip = buttonByTextAt(modal.contentEl, "Skip This Sync", 0);
+
+		expect(readText(modal.contentEl)).toContain("Skipped This Sync");
+		expect(skip.classes.has("kls-decision-button-active-skip")).toBe(true);
+		expect(skip.attributes.get("aria-pressed")).toBe("true");
+		expect(elementsByClass(modal.contentEl, "kls-status-badge-skip")).toHaveLength(1);
+		expect(readText(modal.contentEl)).not.toContain("Status:");
+		expect(skip.classes.has("kls-glass-subtle")).toBe(true);
 	});
 
 	it("shows Needs Review while a book still has undecided highlights", async () => {
@@ -1006,57 +1272,73 @@ describe("FirstSyncPreviewModal book status", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Import").click();
-		await findByText(modal.contentEl, "Back To Book List").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 
 		const statusBadge = elementsByClass(modal.contentEl, "kls-status-badge")[0];
 		expect(statusBadge?.classes.has("kls-status-badge-needs-review")).toBe(true);
 		expect(statusBadge?.text()).toBe("Needs Review");
+		expect(statusBadge?.classes.has("kls-needs-review-attention")).toBe(false);
+		for (const label of ["Import All", "Ignore All", "Skip This Sync"]) {
+			const button = findByText(modal.contentEl, label);
+
+			expect(button.classes.has("kls-decision-button-active")).toBe(false);
+			expect(button.attributes.get("aria-pressed")).toBe("false");
+		}
 	});
 
-	it("shows Mixed Decisions for import and ignore decisions", async () => {
+	it("derives all-Import and complete mixed aggregate states from individual decisions", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Import").click();
+		await buttonByTextAt(modal.contentEl, "Import", 1).click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
+		expect(buttonByTextAt(modal.contentEl, "Import All", 0).classes.has("kls-decision-button-active-import")).toBe(true);
+		expect(elementsByClass(modal.contentEl, "kls-status-badge-import")[0]?.text()).toBe("Import All");
+
+		await findByText(modal.contentEl, "Review Highlights").click();
 		await buttonByTextAt(modal.contentEl, "Ignore", 1).click();
-		await findByText(modal.contentEl, "Back To Book List").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 
 		const statusBadge = elementsByClass(modal.contentEl, "kls-status-badge")[0];
-		expect(statusBadge?.classes.has("kls-status-badge-mixed-decisions")).toBe(true);
-		expect(statusBadge?.text()).toBe("Mixed Decisions");
-		expect(statusBadge?.text()).not.toBe("");
-		expect(readText(modal.contentEl)).toContain("Status: Mixed Decisions");
-		expect(readText(modal.contentEl)).not.toContain("Status: Reviewed");
+		expect(statusBadge?.classes.has("kls-status-badge-reviewed")).toBe(true);
+		expect(statusBadge?.text()).toBe("Reviewed");
+		for (const label of ["Import All", "Ignore All", "Skip This Sync"]) {
+			const button = findByText(modal.contentEl, label);
+
+			expect(button.classes.has("kls-decision-button-active")).toBe(false);
+			expect(button.attributes.get("aria-pressed")).toBe("false");
+		}
+		expect(readText(modal.contentEl)).not.toContain("Status:");
 	});
 
-	it("shows Mixed Decisions for import and skip decisions", async () => {
+	it("shows Reviewed for complete import and skip decisions", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Import").click();
 		await buttonByTextAt(modal.contentEl, "Skip This Sync", 1).click();
-		await findByText(modal.contentEl, "Back To Book List").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 
 		const statusBadge = elementsByClass(modal.contentEl, "kls-status-badge")[0];
-		expect(statusBadge?.classes.has("kls-status-badge-mixed-decisions")).toBe(true);
-		expect(statusBadge?.text()).toBe("Mixed Decisions");
+		expect(statusBadge?.classes.has("kls-status-badge-reviewed")).toBe(true);
+		expect(statusBadge?.text()).toBe("Reviewed");
 	});
 
-	it("shows Mixed Decisions for skip and ignore decisions", async () => {
+	it("shows Reviewed for complete skip and ignore decisions", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Skip This Sync").click();
 		await buttonByTextAt(modal.contentEl, "Ignore", 1).click();
-		await findByText(modal.contentEl, "Back To Book List").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 
 		const statusBadge = elementsByClass(modal.contentEl, "kls-status-badge")[0];
-		expect(statusBadge?.classes.has("kls-status-badge-mixed-decisions")).toBe(true);
-		expect(statusBadge?.classes.has("kls-status-badge-ready-to-import")).toBe(false);
-		expect(statusBadge?.text()).toBe("Mixed Decisions");
+		expect(statusBadge?.classes.has("kls-status-badge-reviewed")).toBe(true);
+		expect(statusBadge?.text()).toBe("Reviewed");
 		expect(statusBadge?.text().trim()).not.toBe("");
 	});
 });
@@ -1079,14 +1361,15 @@ describe("FirstSyncPreviewModal review progress", () => {
 
 		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
 		expect(readText(compactProgress)).toBe(
-			"Checked: 0/2 books · Need Review: 2 books · Ignore: 0 highlights · Skip: 0 highlights"
+			"Reviewed: 0/2 books · Needs Review: 2 books · Ignore: 0 highlights · Skip: 0 highlights"
 		);
 		expect(elementsByClass(compactProgress, "kls-progress-chip").map((chip) => chip.text())).toEqual([
-			"Checked: 0/2 books",
-			"Need Review: 2 books",
+			"Reviewed: 0/2 books",
+			"Needs Review: 2 books",
 			"Ignore: 0 highlights",
 			"Skip: 0 highlights",
 		]);
+		expect(elementsByClass(compactProgress, "kls-needs-review-attention")).toHaveLength(0);
 		expect(elementsByClass(modal.contentEl, "kls-book-list")).toHaveLength(1);
 	});
 
@@ -1097,14 +1380,14 @@ describe("FirstSyncPreviewModal review progress", () => {
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Import All").click();
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Import All").click();
 		await searchBooks(modal, "Deep");
 
 		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
 		expect(readText(compactProgress)).toBe(
-			"Checked: 1/2 books · Need Review: 1 books · Ignore: 0 highlights · Skip: 0 highlights"
+			"Reviewed: 1/2 books · Needs Review: 1 book · Ignore: 0 highlights · Skip: 0 highlights"
 		);
-		expect(bookHeadings(modal)).toEqual(["2 of 2 — Deep Work"]);
+		expect(bookHeadings(modal)).toEqual(["2 / 2 — Deep Work"]);
 	});
 
 	it("updates progress after Import All", async () => {
@@ -1115,20 +1398,20 @@ describe("FirstSyncPreviewModal review progress", () => {
 
 		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
 		expect(readText(compactProgress)).toBe(
-			"Checked: 1/1 books · Need Review: 0 books · Ignore: 0 highlights · Skip: 0 highlights"
+			"Reviewed: 1/1 books · Needs Review: 0 books · Ignore: 0 highlights · Skip: 0 highlights"
 		);
 		expect(readText(modal.contentEl)).not.toContain("Imported");
 	});
 
-	it("updates progress after Ignore All Highlights", async () => {
+	it("updates progress after Ignore All", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
 
 		modal.onOpen();
-		await findByText(modal.contentEl, "Ignore All Highlights").click();
+		await chooseIgnoreAll(modal);
 
 		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
 		expect(readText(compactProgress)).toBe(
-			"Checked: 1/1 books · Need Review: 0 books · Ignore: 2 highlights · Skip: 0 highlights"
+			"Reviewed: 1/1 books · Needs Review: 0 books · Ignore: 2 highlights · Skip: 0 highlights"
 		);
 	});
 
@@ -1140,7 +1423,7 @@ describe("FirstSyncPreviewModal review progress", () => {
 
 		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
 		expect(readText(compactProgress)).toBe(
-			"Checked: 1/1 books · Need Review: 0 books · Ignore: 0 highlights · Skip: 2 highlights"
+			"Reviewed: 1/1 books · Needs Review: 0 books · Ignore: 0 highlights · Skip: 2 highlights"
 		);
 	});
 
@@ -1150,11 +1433,11 @@ describe("FirstSyncPreviewModal review progress", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Highlights").click();
 		await findByText(modal.contentEl, "Import").click();
-		await findByText(modal.contentEl, "Back To Book List").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 
 		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
 		expect(readText(compactProgress)).toBe(
-			"Checked: 0/1 books · Need Review: 1 books · Ignore: 0 highlights · Skip: 0 highlights"
+			"Reviewed: 0/1 books · Needs Review: 1 book · Ignore: 0 highlights · Skip: 0 highlights"
 		);
 	});
 
@@ -1162,13 +1445,13 @@ describe("FirstSyncPreviewModal review progress", () => {
 		const modal = createModal(createPlugin(), [createBookGroup("Atomic Habits"), createBookGroup("Deep Work")]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"), "Review Highlights").click();
+		await findByText(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"), "Review Highlights").click();
 		await findByText(modal.contentEl, "Import").click();
-		await findByText(modal.contentEl, "Back To Book List").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 
 		const compactProgress = elementByClassAt(modal.contentEl, "kls-compact-review-progress", 0);
 		expect(readText(compactProgress)).toBe(
-			"Checked: 0/2 books · Need Review: 2 books · Ignore: 0 highlights · Skip: 0 highlights"
+			"Reviewed: 0/2 books · Needs Review: 2 books · Ignore: 0 highlights · Skip: 0 highlights"
 		);
 		expect(readText(modal.contentEl)).not.toContain("Partially Reviewed");
 	});
@@ -1195,6 +1478,197 @@ describe("FirstSyncPreviewModal review progress", () => {
 	});
 });
 
+describe("FirstSyncPreviewModal unsaved decision confirmation", () => {
+	it("closes immediately when no Import, Skip, or Ignore decision changed", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+		const onClose = vi.spyOn(modal, "onClose");
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Cancel").click();
+
+		expect(onClose).toHaveBeenCalledTimes(1);
+		expect(readText(modal.contentEl)).not.toContain("Discard your selections?");
+	});
+
+	it("asks before Cancel discards a real decision change", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+		const onClose = vi.spyOn(modal, "onClose");
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All").click();
+		await findByText(modal.contentEl, "Cancel").click();
+
+		expect(onClose).not.toHaveBeenCalled();
+		expect(readText(modal.contentEl)).toContain("Discard your selections?");
+		expect(readText(modal.contentEl)).toContain(
+			"Your Import, Skip, and Ignore choices have not been saved."
+		);
+		expect(readText(modal.contentEl)).toContain(
+			"If you leave now, you’ll need to review these highlights again next time."
+		);
+	});
+
+	it("keeps reviewing with the current decisions and view intact", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		await findByText(modal.contentEl, "Skip This Sync").click();
+		await findByText(modal.contentEl, "Cancel").click();
+		await findByText(modal.contentEl, "Keep reviewing").click();
+
+		const skip = findByText(modal.contentEl, "Skip This Sync");
+
+		expect(skip.classes.has("kls-decision-button-active-skip")).toBe(true);
+		expect(skip.attributes.get("aria-pressed")).toBe("true");
+		expect(readText(modal.contentEl)).not.toContain("Selected:");
+		expect(buttonTexts(modal.contentEl)).toContain("Back");
+		expect(findButtonByAriaLabel(modal.contentEl, "Back to Book List")).toBeDefined();
+	});
+
+	it("discards pending decisions only after explicit confirmation", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+		const onClose = vi.spyOn(modal, "onClose");
+
+		modal.onOpen();
+		await chooseIgnoreAll(modal);
+		await findByText(modal.contentEl, "Cancel").click();
+		await findByText(modal.contentEl, "Discard and exit").click();
+
+		expect(onClose).toHaveBeenCalledTimes(1);
+		expect(plugin.completeFirstSync).not.toHaveBeenCalled();
+	});
+
+	it("uses the same guard for native close and Escape-style close requests", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+		const onClose = vi.spyOn(modal, "onClose");
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Skip This Sync").click();
+		modal.close();
+
+		expect(onClose).not.toHaveBeenCalled();
+		expect(readText(modal.contentEl)).toContain("Discard your selections?");
+		modal.close();
+		expect(onClose).not.toHaveBeenCalled();
+		expect(readText(modal.contentEl)).toContain("First Sync Preview");
+	});
+
+	it("does not warn after the completed save path", async () => {
+		const plugin = createPlugin();
+		const modal = createModal(plugin, [createBookGroup()]);
+		const onClose = vi.spyOn(modal, "onClose");
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All").click();
+		await findByText(modal.contentEl, "Finish Sync").click();
+
+		expect(plugin.completeFirstSync).toHaveBeenCalledTimes(1);
+		expect(onClose).toHaveBeenCalledTimes(1);
+		expect(readText(modal.contentEl)).not.toContain("Discard your selections?");
+	});
+
+	it("does not mark search, filters, scroll, book navigation, or Back as dirty", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+		const onClose = vi.spyOn(modal, "onClose");
+
+		modal.onOpen();
+		await searchBooks(modal, "Deep");
+		await findByText(modal.contentEl, "Needs Review").click();
+		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 175);
+		await findByText(modal.contentEl, "Review Highlights").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
+		modal.close();
+
+		expect(onClose).toHaveBeenCalledTimes(1);
+		expect(readText(modal.contentEl)).not.toContain("Discard your selections?");
+	});
+
+	it("uses strong primary and neutral secondary confirmation actions", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Import All").click();
+		await findByText(modal.contentEl, "Cancel").click();
+		const keepReviewing = findByText(modal.contentEl, "Keep reviewing");
+		const discard = findByText(modal.contentEl, "Discard and exit");
+
+		expect(keepReviewing.classes.has("kls-pill-button")).toBe(true);
+		expect(keepReviewing.classes.has("kls-glass-strong")).toBe(true);
+		expect(keepReviewing.classes.has("mod-cta")).toBe(true);
+		expect(discard.classes.has("kls-pill-button")).toBe(true);
+		expect(discard.classes.has("mod-warning")).toBe(false);
+		expect(discard.classes.has("kls-glass-subtle")).toBe(true);
+		expect(discard.classes.has("kls-glass-strong")).toBe(false);
+	});
+});
+
+describe("FirstSyncPreviewModal control registry lifecycle", () => {
+	it("keeps only current book decision controls across repeated search and filter renders", async () => {
+		const modal = createModal(createPlugin(), [
+			createBookGroup("Atomic Habits"),
+			createBookGroup("Deep Work"),
+		]);
+
+		modal.onOpen();
+		const initialFinish = expectCurrentControlRegistries(modal, 6, 1).finishButtons[0];
+
+		await searchBooks(modal, "Deep");
+		expect(expectCurrentControlRegistries(modal, 3, 1).finishButtons).toEqual([initialFinish]);
+		await searchBooks(modal, "");
+		expect(expectCurrentControlRegistries(modal, 6, 1).finishButtons).toEqual([initialFinish]);
+		await findByText(modal.contentEl, "Reviewed").click();
+		expect(expectCurrentControlRegistries(modal, 0, 1).finishButtons).toEqual([initialFinish]);
+		await findByText(modal.contentEl, "Needs Review").click();
+		expect(expectCurrentControlRegistries(modal, 6, 1).finishButtons).toEqual([initialFinish]);
+		await findByText(modal.contentEl, "All Books").click();
+		expect(expectCurrentControlRegistries(modal, 6, 1).finishButtons).toEqual([initialFinish]);
+	});
+
+	it("retains only the current controls after highlight decision renders", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		await findByText(modal.contentEl, "Review Highlights").click();
+		const firstDetailControls = expectCurrentControlRegistries(modal, 6, 0).decisionButtons;
+
+		await buttonByTextAt(modal.contentEl, "Import", 0).click();
+		const secondDetailControls = expectCurrentControlRegistries(modal, 6, 0).decisionButtons;
+
+		expect(secondDetailControls).not.toContain(firstDetailControls[0]);
+		await buttonByTextAt(modal.contentEl, "Skip This Sync", 1).click();
+		const thirdDetailControls = expectCurrentControlRegistries(modal, 6, 0).decisionButtons;
+
+		expect(thirdDetailControls).not.toContain(secondDetailControls[0]);
+	});
+
+	it("retains only the current Finish control across list, detail, and confirmation", async () => {
+		const modal = createModal(createPlugin(), [createBookGroup()]);
+
+		modal.onOpen();
+		const listFinish = expectCurrentControlRegistries(modal, 3, 1).finishButtons[0];
+
+		await findByText(modal.contentEl, "Review Highlights").click();
+		expectCurrentControlRegistries(modal, 6, 0);
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
+		const returnedListFinish = expectCurrentControlRegistries(modal, 3, 1).finishButtons[0];
+
+		expect(returnedListFinish).not.toBe(listFinish);
+		await findByText(modal.contentEl, "Finish Sync").click();
+		const confirmationFinish = expectCurrentControlRegistries(modal, 0, 1).finishButtons[0];
+
+		expect(confirmationFinish).not.toBe(returnedListFinish);
+		await findButtonByAriaLabel(modal.contentEl, "Back to Review").click();
+		const finalListFinish = expectCurrentControlRegistries(modal, 3, 1).finishButtons[0];
+
+		expect(finalListFinish).not.toBe(confirmationFinish);
+	});
+});
+
 describe("FirstSyncPreviewModal finish confirmation", () => {
 	it("shows a confirmation when finishing with highlights not reviewed yet", async () => {
 		const modal = createModal(createPlugin(), [createBookGroup()]);
@@ -1206,7 +1680,8 @@ describe("FirstSyncPreviewModal finish confirmation", () => {
 		expect(readText(modal.contentEl)).toContain(
 			"Highlights not reviewed yet will be skipped only for this sync and may appear again next time."
 		);
-		expect(buttonTexts(modal.contentEl)).toEqual(expect.arrayContaining(["Finish Sync", "Go Back"]));
+		expect(buttonTexts(modal.contentEl)).toEqual(expect.arrayContaining(["Finish Sync", "Back"]));
+		expect(findButtonByAriaLabel(modal.contentEl, "Back to Review")).toBeDefined();
 	});
 
 	it("does not show confirmation when all highlights are reviewed", async () => {
@@ -1221,13 +1696,16 @@ describe("FirstSyncPreviewModal finish confirmation", () => {
 		expect(plugin.completeFirstSync).toHaveBeenCalledTimes(1);
 	});
 
-	it("Go Back returns to the book list without completing sync", async () => {
+	it("Back to Review returns to the book list without completing sync", async () => {
 		const plugin = createPlugin();
 		const modal = createModal(plugin, [createBookGroup()]);
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Finish Sync").click();
-		await findByText(modal.contentEl, "Go Back").click();
+		const backButton = findButtonByAriaLabel(modal.contentEl, "Back to Review");
+
+		expect(backButton.classes.has("kls-review-back-button")).toBe(true);
+		await backButton.click();
 
 		expect(readText(modal.contentEl)).toContain("First Sync Preview");
 		expect(elementsByClass(modal.contentEl, "kls-compact-review-progress")).toHaveLength(1);
@@ -1272,19 +1750,21 @@ describe("FirstSyncPreviewModal per-book review scroll", () => {
 		]);
 
 		modal.onOpen();
-		const deepWorkSection = findSectionByHeading(modal.contentEl, "2 of 2 — Deep Work");
+		const deepWorkSection = findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work");
 		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 320);
 		setScrollTop(modal.contentEl, 320);
 		await findByText(deepWorkSection, "Review Highlights").click();
 
-		expect(elementsByTag(modal.contentEl, "h2").map((element) => element.text())).toContain("2 of 2 — Deep Work");
-		expect(readText(modal.contentEl)).toContain("Location 154: Small habits make a big difference.");
+		expect(elementsByTag(modal.contentEl, "h2").map((element) => element.text())).toContain("Deep Work");
+		expect(elementByClassAt(modal.contentEl, "kls-book-detail-count", 0).text()).toBe("2 highlights");
+		expect(readText(modal.contentEl)).toContain("Location 154");
+		expect(readText(modal.contentEl)).toContain("Small habits make a big difference.");
 		expect(scrollTop(modal.contentEl)).toBe(0);
 		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(0);
 		expect(scrollIntoViewCalls(deepWorkSection)).toHaveLength(0);
 	});
 
-	it("does not break Back To Book List anchor restoration", async () => {
+	it("does not break Back to Book List anchor restoration", async () => {
 		const modal = createModal(createPlugin(), [
 			createBookGroup("Atomic Habits"),
 			createBookGroup("Deep Work"),
@@ -1292,14 +1772,14 @@ describe("FirstSyncPreviewModal per-book review scroll", () => {
 
 		modal.onOpen();
 		setScrollTop(modal.contentEl, 320);
-		await findByText(findSectionByHeading(modal.contentEl, "2 of 2 — Deep Work"), "Review Highlights").click();
+		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"), "Review Highlights").click();
 		setScrollTop(modal.contentEl, 25);
-		await findByText(modal.contentEl, "Back To Book List").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 
-		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "2 of 2 — Deep Work"))).toEqual([
+		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"))).toEqual([
 			{ block: "center" },
 		]);
-		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"))).toHaveLength(0);
+		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"))).toHaveLength(0);
 	});
 
 	it("preserves scroll after selecting a per-highlight decision", async () => {
@@ -1307,12 +1787,10 @@ describe("FirstSyncPreviewModal per-book review scroll", () => {
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Highlights").click();
-		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 180);
-		setScrollTop(modal.contentEl, 180);
+		setScrollTop(elementsByClass(modal.contentEl, "kls-book-detail-highlights")[0], 180);
 		await findByText(modal.contentEl, "Skip This Sync").click();
 
-		expect(scrollTop(modal.contentEl)).toBe(180);
-		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(180);
+		expect(scrollTop(elementsByClass(modal.contentEl, "kls-book-detail-highlights")[0])).toBe(180);
 	});
 });
 
@@ -1334,20 +1812,25 @@ describe("FirstSyncPreviewModal book list navigation", () => {
 
 		modal.onOpen();
 
-		expect(readText(modal.contentEl)).toContain("1 of 2 — Atomic Habits");
-		expect(readText(modal.contentEl)).toContain("2 of 2 — Deep Work");
+		expect(elementsByClass(modal.contentEl, "kls-book-index").map((element) => element.text())).toEqual([
+			"1 / 2",
+			"2 / 2",
+		]);
+		expect(bookHeadings(modal)).toEqual(["1 / 2 — Atomic Habits", "2 / 2 — Deep Work"]);
+		expect(readText(modal.contentEl)).not.toContain("Book 1 / 2");
 	});
 
-	it("shows the current book number in per-book review", async () => {
+	it("shows the highlight count in per-book review", async () => {
 		const modal = createModal(createPlugin(), [
 			createBookGroup("Atomic Habits"),
 			createBookGroup("Deep Work"),
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "2 of 2 — Deep Work"), "Review Highlights").click();
+		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"), "Review Highlights").click();
 
-		expect(elementsByTag(modal.contentEl, "h2").map((element) => element.text())).toContain("2 of 2 — Deep Work");
+		expect(elementsByTag(modal.contentEl, "h2").map((element) => element.text())).toContain("Deep Work");
+		expect(elementByClassAt(modal.contentEl, "kls-book-detail-count", 0).text()).toBe("2 highlights");
 	});
 
 	it("stores the clicked book as a return anchor when Review Highlights is clicked", async () => {
@@ -1357,16 +1840,16 @@ describe("FirstSyncPreviewModal book list navigation", () => {
 		]);
 
 		modal.onOpen();
-		await findByText(findSectionByHeading(modal.contentEl, "2 of 2 — Deep Work"), "Review Highlights").click();
-		await findByText(modal.contentEl, "Back To Book List").click();
+		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"), "Review Highlights").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 
-		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "2 of 2 — Deep Work"))).toEqual([
+		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"))).toEqual([
 			{ block: "center" },
 		]);
-		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "1 of 2 — Atomic Habits"))).toHaveLength(0);
+		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "1 / 2 — Atomic Habits"))).toHaveLength(0);
 	});
 
-	it("scrolls the clicked book back into view when Back To Book List is clicked", async () => {
+	it("scrolls the clicked book back into view when Back to Book List is clicked", async () => {
 		const modal = createModal(createPlugin(), [
 			createBookGroup("Atomic Habits"),
 			createBookGroup("Deep Work"),
@@ -1374,11 +1857,11 @@ describe("FirstSyncPreviewModal book list navigation", () => {
 
 		modal.onOpen();
 		setScrollTop(modal.contentEl, 240);
-		await findByText(findSectionByHeading(modal.contentEl, "2 of 2 — Deep Work"), "Review Highlights").click();
+		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"), "Review Highlights").click();
 		setScrollTop(modal.contentEl, 10);
-		await findByText(modal.contentEl, "Back To Book List").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 
-		const deepWorkSection = findSectionByHeading(modal.contentEl, "2 of 2 — Deep Work");
+		const deepWorkSection = findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work");
 
 		expect(readText(modal.contentEl)).toContain("First Sync Preview");
 		expect(scrollIntoViewCalls(deepWorkSection)).toEqual([{ block: "center" }]);
@@ -1391,14 +1874,14 @@ describe("FirstSyncPreviewModal book list navigation", () => {
 		]);
 
 		modal.onOpen();
-		setScrollTop(modal.contentEl, 240);
-		await findByText(findSectionByHeading(modal.contentEl, "2 of 2 — Deep Work"), "Review Highlights").click();
+		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 240);
+		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"), "Review Highlights").click();
 		(modal as unknown as { bookListReturnAnchorKey: string }).bookListReturnAnchorKey = "missing";
-		setScrollTop(modal.contentEl, 10);
-		await findByText(modal.contentEl, "Back To Book List").click();
+		setScrollTop(elementsByClass(modal.contentEl, "kls-book-detail-highlights")[0], 10);
+		await findButtonByAriaLabel(modal.contentEl, "Back to Book List").click();
 
 		expect(readText(modal.contentEl)).toContain("First Sync Preview");
-		expect(scrollTop(modal.contentEl)).toBe(240);
+		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(240);
 	});
 
 	it("preserves book position after a book-level action", async () => {
@@ -1410,11 +1893,11 @@ describe("FirstSyncPreviewModal book list navigation", () => {
 		modal.onOpen();
 		setScrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0], 275);
 		setScrollTop(modal.contentEl, 275);
-		await findByText(findSectionByHeading(modal.contentEl, "2 of 2 — Deep Work"), "Skip This Sync").click();
+		await findByText(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"), "Skip This Sync").click();
 
 		expect(scrollTop(modal.contentEl)).toBe(275);
 		expect(scrollTop(elementsByClass(modal.contentEl, "kls-modal-scroll-body")[0])).toBe(275);
-		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "2 of 2 — Deep Work"))).toHaveLength(0);
+		expect(scrollIntoViewCalls(findSectionByHeading(modal.contentEl, "2 / 2 — Deep Work"))).toHaveLength(0);
 	});
 });
 
@@ -1434,7 +1917,7 @@ function createPlugin() {
 			_ignoreHighlights: KindleHighlight[],
 			_skippedThisSyncHighlights: SyncSummaryHighlightItem[],
 			_identityIndex: CurrentClippingIdentityIndex
-		) => ({
+		): Promise<SyncCompletionResult> => ({
 			importedCount: importHighlights.length,
 			ignoreCleanupResult: createEmptyCleanupResult(),
 			protectedSelectedHighlightCount: 0,
@@ -1451,7 +1934,10 @@ function createEmptyCleanupResult() {
 	};
 }
 
-function createBookGroup(bookTitle = "Atomic Habits", author = "James Clear"): KindleBookGroup {
+function createBookGroup(
+	bookTitle = "Atomic Habits",
+	author = "James Clear"
+): KindleBookGroup {
 	const firstHighlight = createHighlight({
 		bookTitle,
 		author,
@@ -1527,17 +2013,82 @@ interface TestElement {
 	value: string;
 	iconName: string;
 	focusCalls: number;
+	attributes: Map<string, string>;
+	disabled: boolean;
 	text: () => string;
 	findByText: (text: string) => TestElement | null;
 	click: () => Promise<void>;
 	input: (value: string) => Promise<void>;
+	keydown: (key: string) => Promise<void>;
+}
+
+function expectCurrentControlRegistries(
+	modal: { contentEl: unknown },
+	decisionCount: number,
+	finishCount: number
+): { decisionButtons: TestElement[]; finishButtons: TestElement[] } {
+	const registries = modal as unknown as {
+		decisionMutationButtons: Set<{ buttonEl: TestElement }>;
+		finishSyncButtons: Set<{ buttonEl: TestElement }>;
+	};
+	const decisionButtons = [...registries.decisionMutationButtons]
+		.map((button) => button.buttonEl);
+	const finishButtons = [...registries.finishSyncButtons]
+		.map((button) => button.buttonEl);
+
+	expect(decisionButtons).toHaveLength(decisionCount);
+	expect(finishButtons).toHaveLength(finishCount);
+	expect(decisionButtons).toEqual(elementsByClass(modal.contentEl, "kls-decision-button"));
+	expect(finishButtons).toEqual(buttonsByText(modal.contentEl, "Finish Sync"));
+	return { decisionButtons, finishButtons };
 }
 
 function readText(element: unknown): string {
 	return (element as TestElement).text();
 }
 
+function helpContentSnapshot(element: unknown): {
+	terms: string[];
+	descriptions: string[];
+	opening: string;
+	status: string;
+} {
+	return {
+		terms: elementsByTag(element, "dt").map((item) => item.text()),
+		descriptions: elementsByTag(element, "dd").map((item) => item.text()),
+		opening: elementByClassAt(element, "kls-choice-help-opening", 0).text(),
+		status: elementByClassAt(element, "kls-choice-help-status", 0).text(),
+	};
+}
+
+function helpStructureSnapshot(panel: TestElement): {
+	panelClasses: string[];
+	panelChildren: string[];
+	definitionChildren: string[];
+} {
+	const definitions = elementsByTag(panel, "dl")[0];
+
+	if (!definitions) {
+		throw new Error("Could not find help definitions.");
+	}
+
+	return {
+		panelClasses: [...panel.classes].sort(),
+		panelChildren: panel.children.map((child) => child.tagName),
+		definitionChildren: definitions.children.map((child) => child.tagName),
+	};
+}
+
 function findByText(element: unknown, text: string): TestElement {
+	// Help definitions intentionally repeat action names, so action tests must resolve the interactive element.
+	if (["Finish Sync", "Ignore All", "Import All", "Review Highlights", "Skip This Sync"].includes(text)) {
+		const button = buttonsByText(element, text)[0];
+
+		if (button) {
+			return button;
+		}
+	}
+
 	const match = (element as TestElement).findByText(text);
 
 	if (!match) {
@@ -1545,6 +2096,29 @@ function findByText(element: unknown, text: string): TestElement {
 	}
 
 	return match;
+}
+
+function buttonsByAriaLabel(element: unknown, label: string): TestElement[] {
+	return elementsByTag(element, "button").filter((button) =>
+		button.attributes.get("aria-label") === label
+	);
+}
+
+function findButtonByAriaLabel(element: unknown, label: string): TestElement {
+	const match = buttonsByAriaLabel(element, label)[0];
+
+	if (!match) {
+		throw new Error(`Could not find button with aria-label: ${label}`);
+	}
+
+	return match;
+}
+
+async function chooseIgnoreAll(
+	modal: { contentEl: unknown },
+	buttonContainer: unknown = modal.contentEl
+): Promise<void> {
+	await findByText(buttonContainer, "Ignore All").click();
 }
 
 function buttonTexts(element: unknown): string[] {
@@ -1565,7 +2139,12 @@ async function searchBooks(modal: { contentEl: unknown }, query: string): Promis
 }
 
 function bookHeadings(modal: { contentEl: unknown }): string[] {
-	return elementsByClass(modal.contentEl, "kls-book-title").map((element) => element.text());
+	return elementsByClass(modal.contentEl, "kls-book-section").map((section) => {
+		const title = elementsByClass(section, "kls-book-title")[0]?.text() ?? "";
+		const index = elementsByClass(section, "kls-book-index")[0]?.text();
+
+		return index ? `${index} — ${title}` : title;
+	});
 }
 
 function buttonsByText(element: unknown, text: string): TestElement[] {
@@ -1687,7 +2266,7 @@ function findSectionByHeadingText(element: TestElement, heading: string): TestEl
 		element.tagName === "div" &&
 		(
 			element.children.some((child) => child.tagName === "h3" && child.text() === heading) ||
-			(element.classes.has("kls-book-section") && hasHeadingDescendant(element, heading))
+			(element.classes.has("kls-book-section") && hasBookHeading(element, heading))
 		)
 	) {
 		return element;
@@ -1704,10 +2283,9 @@ function findSectionByHeadingText(element: TestElement, heading: string): TestEl
 	return null;
 }
 
-function hasHeadingDescendant(element: TestElement, heading: string): boolean {
-	if (element.tagName === "h3" && element.text() === heading) {
-		return true;
-	}
+function hasBookHeading(element: TestElement, heading: string): boolean {
+	const title = elementsByClass(element, "kls-book-title")[0]?.text();
+	const index = elementsByClass(element, "kls-book-index")[0]?.text();
 
-	return element.children.some((child) => hasHeadingDescendant(child, heading));
+	return title === heading || (index ? `${index} — ${title}` === heading : false);
 }

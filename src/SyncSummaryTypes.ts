@@ -8,6 +8,7 @@ export interface SyncSummaryHighlightItem {
 	textPreview: string;
 	location?: string;
 	lang?: string;
+	returnReason?: "skipped" | "unreviewed";
 }
 
 export function createSyncSummaryHighlightItem(highlight: KindleHighlight): SyncSummaryHighlightItem {
@@ -17,5 +18,15 @@ export function createSyncSummaryHighlightItem(highlight: KindleHighlight): Sync
 		author: highlight.author,
 		textPreview: highlight.content.replace(/\s+/g, " ").trim().slice(0, 120),
 		location: highlight.location || undefined,
+	};
+}
+
+export function createReturningSyncSummaryHighlightItem(
+	highlight: KindleHighlight,
+	returnReason: NonNullable<SyncSummaryHighlightItem["returnReason"]>
+): SyncSummaryHighlightItem {
+	return {
+		...createSyncSummaryHighlightItem(highlight),
+		returnReason,
 	};
 }

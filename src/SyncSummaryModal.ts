@@ -14,11 +14,20 @@ import {
 import {
 	createBookIdentityKey,
 	createHighlightIdentityKey,
+	createKindleHighlightIdentityKey,
 	createStoredBookIdentityKey,
 	CurrentClippingIdentityIndex,
 	hasSameBookIdentity,
 	hasSameHighlightIdentity,
 } from "./sync/HighlightIdentity";
+import {
+	createReviewActionButton,
+	createReviewBackButton,
+	createReviewHighlightsButton,
+	ReviewButtonTreatment,
+} from "./ui/ReviewActionButton";
+import { renderReviewBookMetadata } from "./ui/ReviewBookMetadata";
+import { renderReviewHighlightDetail, renderReviewHighlightRow } from "./ui/ReviewHighlightDetail";
 
 export interface SyncSummaryModalOptions {
 	classification: SyncClassification;
@@ -30,7 +39,15 @@ export interface SyncSummaryModalOptions {
 	ignoreResults?: IgnoreResultsPresentation;
 }
 
-type SummaryButtonTreatment = "native" | "subtle" | "strong";
+interface MissingRecoveryControl {
+	button: ButtonComponent;
+	identities: string[];
+	showBusy: boolean;
+}
+
+interface RecoveryMutationControl {
+	button: ButtonComponent;
+}
 
 export class SyncSummaryModal extends Modal {
 	private readonly plugin: KindleLocalSyncPlugin;
@@ -40,10 +57,20 @@ export class SyncSummaryModal extends Modal {
 	private ignoreResults: IgnoreResultsPresentation;
 	private importedCount: number;
 	private suspiciousHighlights: KindleHighlight[];
-	private readonly protectedSuspiciousHighlights = new Set<KindleHighlight>();
+	private readonly protectedSuspiciousHighlightIdentities = new Set<string>();
+	private readonly pendingMissingImportIdentities = new Set<string>();
+	private readonly missingRecoveryControls = new Set<MissingRecoveryControl>();
+	private readonly recoveryMutationControls = new Set<RecoveryMutationControl>();
+	private isRecoveryMutationPending = false;
+	private activeRecoveryMutationButton: ButtonComponent | null = null;
+	private activeMissingReviewRenderer: (() => void) | null = null;
 	private skippedThisSyncHighlights: SyncSummaryHighlightItem[];
 	private summaryScrollTop = 0;
-	private suspiciousItemsScrollTop = 0;
+	private suspiciousBooksScrollTop = 0;
+	private suspiciousBookScrollTopByIdentity = new Map<string, number>();
+	private suspiciousBookSectionEls = new Map<string, HTMLElement>();
+	private suspiciousBooksReturnAnchorKey: string | null = null;
+	private shouldRestoreSuspiciousBooksAnchor = false;
 	private protectedBooksScrollTop = 0;
 	private ignoreResultsScrollTop = 0;
 	private ignoredHighlightsScrollTop = 0;
@@ -80,38 +107,70 @@ export class SyncSummaryModal extends Modal {
 	}
 
 	private renderSummary(): void {
+		this.activeMissingReviewRenderer = () => this.renderSummary();
 		this.contentEl.empty();
 		this.contentEl.createEl("h2", {
 			text: this.hasCurrentProtectedWork() ? "Sync finished" : "Sync complete",
 		});
-		this.contentEl.createEl("p", { text: `${this.importedCount} new highlights imported` });
-		this.contentEl.createEl("p", {
-			text: `${this.classification.ignoredHighlights.length} ignored highlights skipped`,
-		});
-		this.contentEl.createEl("p", {
-			text: `${this.classification.duplicateHighlights.length} duplicates skipped`,
-		});
-		this.contentEl.createEl("p", {
-			text: `Missing managed highlights to review: ${this.suspiciousHighlights.length}`,
-		});
-		this.contentEl.createEl("p", {
-			text: "Unreviewed or skipped highlights will appear again next time you sync.",
-		});
+		this.renderSummaryCount(
+			this.importedCount,
+			`${pluralize("new highlight", this.importedCount)} imported`,
+			false,
+			this.importedCount > 0
+		);
+		this.renderSummaryCount(
+			this.classification.ignoredHighlights.length,
+			`${pluralize("persisted Ignore choice", this.classification.ignoredHighlights.length)} kept out of this sync`
+		);
+		const skippedCount = this.skippedThisSyncHighlights.filter((highlight) =>
+			highlight.returnReason !== "unreviewed"
+		).length;
+		const unreviewedCount = this.skippedThisSyncHighlights.length - skippedCount;
+
+		this.renderSummaryCount(
+			skippedCount,
+			`${pluralize("temporary Skip choice", skippedCount)} left for a later sync`
+		);
+		this.renderSummaryCount(
+			unreviewedCount,
+			`${pluralize("unreviewed highlight", unreviewedCount)} left for a later sync`
+		);
+		this.renderSummaryCount(
+			this.classification.duplicateHighlights.length,
+			`${pluralize("duplicate", this.classification.duplicateHighlights.length)} skipped`
+		);
+		this.renderSummaryCount(
+			this.suspiciousHighlights.length,
+			this.suspiciousHighlights.length === 1
+				? "missing highlight needs review"
+				: "missing highlights need review",
+			this.suspiciousHighlights.length > 0
+		);
+		const returnNextSyncExplanation = formatReturnNextSyncExplanation(skippedCount, unreviewedCount);
+
+		if (returnNextSyncExplanation) {
+			this.contentEl.createEl("p", {
+				text: returnNextSyncExplanation,
+			});
+		}
 
 		if (this.protectedBooks.bookCount > 0) {
 			this.renderProtectedBooksPanel();
 		}
 
-		if (this.ignoreResults.highlightCount > 0) {
+		if (this.hasPersistedIgnoreResults()) {
 			this.renderIgnoreResultsPanel();
 		}
 
 		const actions = this.contentEl.createDiv();
-		actions.addClass("kls-button-row");
 		actions.addClass("kls-summary-actions");
+		const navigationActions = actions.createDiv();
+
+		navigationActions.addClass("kls-button-row");
+		navigationActions.addClass("kls-summary-navigation-actions");
 
 		if (this.suspiciousHighlights.length > 0) {
-			this.createActionButton(actions, "Review Missing Managed Highlights", "subtle")
+			this.createActionButton(navigationActions, "Review Missing Highlights", "subtle")
 				.onClick(() => {
 					this.saveSummaryScrollPosition();
 					this.renderSuspiciousItems();
@@ -119,23 +178,23 @@ export class SyncSummaryModal extends Modal {
 		}
 
 		if (this.protectedBooks.bookCount > 0) {
-			this.createActionButton(actions, "View Books Left Unchanged", "subtle")
+			this.createActionButton(navigationActions, "View Books Left Unchanged", "subtle")
 				.onClick(() => {
 					this.saveSummaryScrollPosition();
 					this.renderProtectedBooks();
 				});
 		}
 
-		if (this.ignoreResults.highlightCount > 0) {
-			this.createActionButton(actions, "Review Ignore Results", "subtle")
+		if (this.hasActionableIgnoreResults()) {
+			this.createActionButton(navigationActions, "Review Note Update Issues", "subtle")
 				.onClick(() => {
 					this.saveSummaryScrollPosition();
 					this.renderIgnoreResults();
 				});
 		}
 
-		if (this.classification.ignoredHighlights.length > 0) {
-			this.createActionButton(actions, "View Ignored Highlights", "subtle")
+		if (this.hasPersistedIgnoredHighlights()) {
+			this.createActionButton(navigationActions, "Manage Ignored Highlights", "subtle")
 				.onClick(() => {
 					this.saveSummaryScrollPosition();
 					this.renderIgnoredHighlights();
@@ -143,7 +202,7 @@ export class SyncSummaryModal extends Modal {
 		}
 
 		if (this.skippedThisSyncHighlights.length > 0) {
-			this.createActionButton(actions, "Review Skipped This Sync", "subtle")
+			this.createActionButton(navigationActions, "Review Skipped This Sync", "subtle")
 				.onClick(() => {
 					this.saveSummaryScrollPosition();
 					this.clearSkippedBooksReturnAnchor();
@@ -151,7 +210,11 @@ export class SyncSummaryModal extends Modal {
 				});
 		}
 
-		this.createActionButton(actions, "Close", "subtle")
+		const closeActions = actions.createDiv();
+
+		closeActions.addClass("kls-button-row");
+		closeActions.addClass("kls-summary-close-actions");
+		this.createActionButton(closeActions, "Close", "subtle")
 			.onClick(() => this.close());
 
 		this.restoreScrollPosition(this.summaryScrollTop);
@@ -175,26 +238,42 @@ export class SyncSummaryModal extends Modal {
 		}
 	}
 
+	private renderSummaryCount(
+		count: number,
+		label: string,
+		needsAttention = false,
+		isPrimary = false
+	): void {
+		// Zero rows add visual noise and must not compete with an actual imported result.
+		if (count === 0) {
+			return;
+		}
+
+		const row = this.contentEl.createEl("p");
+
+		row.addClass("kls-summary-count-row");
+		if (isPrimary) {
+			row.addClass("kls-summary-count-row-primary");
+		}
+		if (needsAttention) {
+			row.addClass("kls-summary-count-row-attention");
+		}
+		row.createEl("span", { text: count.toString() }).addClass("kls-summary-count-value");
+		row.createEl("span", { text: label }).addClass("kls-summary-count-label");
+	}
+
 	private renderIgnoreResultsPanel(): void {
 		const panel = this.contentEl.createDiv();
 
 		panel.addClass("kls-outcome-panel");
+		panel.addClass("kls-ignore-results-panel");
 		panel.createEl("h3", { text: "Ignore results" });
 		panel.createEl("p", {
-			text: formatHighlightsIgnoredInFuture(this.ignoreResults.highlightCount),
+			text: formatHighlightsIgnoredInFuture(this.currentIgnoreResultCount()),
 		});
-
-		if (this.ignoreResults.noMatchingNoteCount > 0) {
+		if (this.ignoreResults.unconfirmedCount > 0) {
 			panel.createEl("p", {
-				text: "Your ignore choices were saved for future syncs. No existing-note change was made for highlights without a matching note.",
-			});
-		} else if (this.ignoreResults.failedCount > 0 || this.ignoreResults.unconfirmedCount > 0) {
-			panel.createEl("p", {
-				text: "Your ignore choices were saved for future syncs. Some existing-note results could not be confirmed.",
-			});
-		} else if (this.ignoreResults.nonRemovalCount > 0) {
-			panel.createEl("p", {
-				text: "Your ignore choices were saved for future syncs. Some existing notes were left unchanged.",
+				text: "Some existing-note results could not be confirmed.",
 			});
 		}
 
@@ -235,10 +314,25 @@ export class SyncSummaryModal extends Modal {
 		}
 	}
 
+	private hasPersistedIgnoredHighlights(): boolean {
+		return this.plugin.settings.ignoredHighlights.length > 0;
+	}
+
+	private hasPersistedIgnoreResults(): boolean {
+		return this.ignoreResults.highlightCount > 0
+			|| this.classification.ignoredHighlights.length > 0;
+	}
+
+	private currentIgnoreResultCount(): number {
+		return this.ignoreResults.highlightCount > 0
+			? this.ignoreResults.highlightCount
+			: this.classification.ignoredHighlights.length;
+	}
+
 	private renderProtectedBooks(): void {
 		this.contentEl.empty();
 		this.contentEl.createEl("h2", { text: "Books left unchanged" });
-		this.renderOutcomeDetailActions(() => {
+		this.renderOutcomeDetailActions("Back to Summary", () => {
 			this.protectedBooksScrollTop = this.contentEl.scrollTop;
 			this.renderSummary();
 		});
@@ -251,8 +345,10 @@ export class SyncSummaryModal extends Modal {
 
 			card.addClass("kls-book-section");
 			card.addClass("kls-book-card");
-			card.createEl("h3", { text: book.title }).addClass("kls-book-title");
-			card.createEl("p", { text: formatAuthor(book.author) }).addClass("kls-book-meta");
+			renderReviewBookMetadata(card, {
+				titles: [book.title],
+				author: book.author,
+			});
 			card.createEl("p", {
 				text: formatAffectedHighlights(book.affectedHighlightCount),
 			}).addClass("kls-book-review-summary");
@@ -272,8 +368,8 @@ export class SyncSummaryModal extends Modal {
 
 	private renderIgnoreResults(): void {
 		this.contentEl.empty();
-		this.contentEl.createEl("h2", { text: "Ignore results" });
-		this.renderOutcomeDetailActions(() => {
+		this.contentEl.createEl("h2", { text: "Note update issues" });
+		this.renderOutcomeDetailActions("Back to Summary", () => {
 			this.ignoreResultsScrollTop = this.contentEl.scrollTop;
 			this.renderSummary();
 		});
@@ -281,13 +377,17 @@ export class SyncSummaryModal extends Modal {
 		const resultList = this.contentEl.createDiv();
 
 		resultList.addClass("kls-book-list");
-		for (const item of this.ignoreResults.items) {
+		for (const item of this.ignoreResults.items.filter((candidate) =>
+			candidate.status === "not-removed" || candidate.status === "change-unconfirmed"
+		)) {
 			const card = resultList.createDiv();
 
 			card.addClass("kls-book-section");
 			card.addClass("kls-book-card");
-			card.createEl("h3", { text: item.bookTitle }).addClass("kls-book-title");
-			card.createEl("p", { text: formatAuthor(item.author) }).addClass("kls-book-meta");
+			renderReviewBookMetadata(card, {
+				titles: [item.bookTitle],
+				author: item.author,
+			});
 			if (item.highlightPreview) {
 				card.createEl("p", { text: item.highlightPreview }).addClass("kls-ignored-highlight-text");
 			}
@@ -299,52 +399,215 @@ export class SyncSummaryModal extends Modal {
 		this.restoreScrollPosition(this.ignoreResultsScrollTop);
 	}
 
-	private renderOutcomeDetailActions(onBack: () => void): void {
+	private renderOutcomeDetailActions(accessibleLabel: string, onBack: () => void): void {
 		const actions = this.contentEl.createDiv();
 
 		actions.addClass("kls-button-row");
 		actions.addClass("kls-summary-actions");
-		this.createActionButton(actions, "Back", "subtle").onClick(onBack);
+		createReviewBackButton(actions, accessibleLabel).onClick(onBack);
 		this.createActionButton(actions, "Close", "subtle").onClick(() => this.close());
 	}
 
 	private createActionButton(
 		containerEl: HTMLElement,
 		text: string,
-		treatment: SummaryButtonTreatment = "native"
+		treatment: ReviewButtonTreatment = "subtle"
 	): ButtonComponent {
-		const button = new ButtonComponent(containerEl).setButtonText(text);
-
-		button.buttonEl.addClass("kls-action-button");
-		if (treatment !== "native") {
-			button.buttonEl.addClass(`kls-glass-${treatment}`);
-		}
-
-		return button;
+		return createReviewActionButton(containerEl, text, treatment);
 	}
 
 	private renderSuspiciousItems(): void {
+		this.activeMissingReviewRenderer = () => this.renderSuspiciousItems();
 		this.contentEl.empty();
-		this.contentEl.createEl("h2", { text: "Missing managed highlights" });
-		this.contentEl.createEl("p", {
-			text: "These highlights were previously imported, but their generated marker was not found in your notes. Review them before importing again, ignoring, or skipping.",
-		});
-		this.contentEl.createEl("p", {
-			text: "This can happen if a generated note or sync block was deleted, moved, or edited.",
-		});
-
+		this.suspiciousBookSectionEls.clear();
+		// eslint-disable-next-line obsidianmd/ui/sentence-case
+		this.contentEl.createEl("h2", { text: "Missing Highlights" }).addClass("kls-review-view-title");
 		const backActions = this.contentEl.createDiv();
 		backActions.addClass("kls-button-row");
 		backActions.addClass("kls-summary-actions");
-		this.createActionButton(backActions, "Back to Summary", "subtle")
-			.onClick(() => this.renderSummary());
+		backActions.addClass("kls-review-navigation");
+		createReviewBackButton(backActions, "Back to Summary")
+			.onClick(() => {
+				this.saveSuspiciousBooksScrollPosition();
+				this.renderSummary();
+			});
+		this.contentEl.createEl("p", {
+			text: "These highlights were imported before, but they’re no longer in their Obsidian notes. Review them and choose whether to import them again, ignore them, or skip them for now.",
+		}).addClass("kls-review-view-intro");
+		this.contentEl.createEl("p", {
+			text: "This may happen if a highlight, note, or synced section was deleted or edited.",
+		}).addClass("kls-review-view-intro");
 
-		for (const highlight of this.suspiciousHighlights) {
-			const row = this.contentEl.createDiv();
-			row.addClass("kls-highlight-row");
-			row.createEl("p", { text: createHighlightPreview(highlight) });
+		if (this.suspiciousHighlights.length === 0) {
+			this.contentEl.createEl("p", { text: "No missing highlights left to review." });
+			this.restoreSuspiciousBooksPosition();
+			return;
+		}
 
-			if (this.protectedSuspiciousHighlights.has(highlight)) {
+		const bookListEl = this.contentEl.createDiv();
+
+		bookListEl.addClass("kls-book-list");
+		for (const [bookIdentity, highlights] of groupMissingHighlightsByBook(this.suspiciousHighlights)) {
+			const bookKey = createMissingBookAnchorKey(bookIdentity);
+			const section = bookListEl.createDiv();
+
+			this.suspiciousBookSectionEls.set(bookKey, section);
+			section.addClass("kls-book-section");
+			section.addClass("kls-book-card");
+			const header = section.createDiv();
+			const headingContent = header.createDiv();
+
+			header.addClass("kls-book-header");
+			headingContent.addClass("kls-book-heading-content");
+			renderReviewBookMetadata(headingContent, {
+				titles: highlights.map((highlight) => highlight.bookTitle),
+				author: highlights[0]?.author,
+			});
+			createReviewHighlightsButton(header)
+				.onClick(() => {
+					this.saveSuspiciousBooksScrollPosition();
+					this.suspiciousBooksReturnAnchorKey = bookKey;
+					this.renderSuspiciousBookHighlights(bookIdentity);
+				});
+
+			section.createEl("p", { text: formatMissingHighlights(highlights.length) })
+				.addClass("kls-book-review-summary");
+			const actions = section.createDiv();
+
+			actions.addClass("kls-button-row");
+			actions.addClass("kls-book-actions");
+			const importAllButton = this.registerMissingRecoveryControl(
+				this.createActionButton(
+					actions,
+						"Import All Again",
+					"strong"
+				).setCta(),
+				highlights,
+				true
+			);
+
+			importAllButton.onClick(async () => {
+				if (this.hasPendingMissingImport(highlights)) {
+					return;
+				}
+
+				this.saveSuspiciousBooksScrollPosition();
+				await this.attemptMissingHighlightImport(highlights, importAllButton);
+			});
+			const ignoreAllButton = this.registerMissingRecoveryControl(
+				this.createActionButton(actions, "Ignore All Going Forward", "subtle"),
+				highlights,
+				false
+			);
+
+			ignoreAllButton
+				.onClick(async () => {
+					if (
+						this.isRecoveryMutationPending
+						|| this.hasPendingMissingImport(highlights)
+						|| !this.areCurrentSuspiciousHighlights(highlights)
+					) {
+						return;
+					}
+
+					this.saveSuspiciousBooksScrollPosition();
+					const completed = await this.runPersistedRecoveryMutation(
+						ignoreAllButton,
+						() => this.ignoreMissingHighlights(highlights)
+					);
+
+					if (completed) {
+						this.renderSuspiciousItems();
+					}
+				});
+			const skipAllButton = this.registerMissingRecoveryControl(
+				this.createActionButton(actions, "Skip All This Time", "subtle"),
+				highlights,
+				false
+			);
+
+			skipAllButton.onClick(() => {
+				if (
+					this.isRecoveryMutationPending
+					|| this.hasPendingMissingImport(highlights)
+					|| !this.areCurrentSuspiciousHighlights(highlights)
+				) {
+					return;
+				}
+
+				this.saveSuspiciousBooksScrollPosition();
+				this.removeSuspiciousHighlights(highlights);
+				this.renderSuspiciousItems();
+			});
+		}
+
+		this.restoreSuspiciousBooksPosition();
+	}
+
+	private renderSuspiciousBookHighlights(bookIdentity: string): void {
+		this.activeMissingReviewRenderer = () => this.renderSuspiciousBookHighlights(bookIdentity);
+		this.contentEl.empty();
+		const highlights = this.suspiciousHighlights.filter((highlight) =>
+			createBookIdentityKey(highlight.bookTitle, highlight.author) === bookIdentity
+		);
+		const originalBookHighlight = this.classification.possibleReappearedHighlights.find((highlight) =>
+			createBookIdentityKey(highlight.bookTitle, highlight.author) === bookIdentity
+		);
+		const bookTitle = highlights[0]?.bookTitle
+			?? originalBookHighlight?.bookTitle
+			?? "Untitled Kindle Book";
+
+		// eslint-disable-next-line obsidianmd/ui/sentence-case
+		this.contentEl.createEl("h2", { text: "Missing Highlights" }).addClass("kls-review-view-title");
+		const backActions = this.contentEl.createDiv();
+
+		backActions.addClass("kls-button-row");
+		backActions.addClass("kls-summary-actions");
+		backActions.addClass("kls-review-navigation");
+		createReviewBackButton(backActions, "Back to Missing Highlights")
+			.onClick(() => {
+				this.saveSuspiciousBookScrollPosition(bookIdentity);
+				this.shouldRestoreSuspiciousBooksAnchor = true;
+				this.renderSuspiciousItems();
+			});
+
+		const detailCard = this.contentEl.createDiv();
+
+		detailCard.addClass("kls-book-section");
+		detailCard.addClass("kls-book-card");
+		detailCard.addClass("kls-review-detail-card");
+		renderReviewBookMetadata(detailCard, {
+			titles: highlights.length > 0
+				? highlights.map((highlight) => highlight.bookTitle)
+				: [bookTitle],
+			author: highlights[0]?.author ?? originalBookHighlight?.author,
+		});
+		if (highlights.length === 0) {
+			detailCard.createEl("p", { text: "No missing highlights left in this book." })
+				.addClass("kls-empty-state");
+			this.restoreScrollPosition(this.suspiciousBookScrollTopByIdentity.get(bookIdentity) ?? 0);
+			return;
+		}
+
+		detailCard.createEl("p", { text: formatMissingHighlights(highlights.length) })
+			.addClass("kls-book-review-summary");
+		const highlightListEl = detailCard.createDiv();
+
+		highlightListEl.addClass("kls-ignored-highlight-list");
+		for (const highlight of highlights) {
+			const highlightIdentity = createKindleHighlightIdentityKey(highlight);
+			const row = highlightListEl.createDiv();
+
+			row.addClass("kls-ignored-highlight-item");
+			if (highlight.location) {
+				row.createEl("p", { text: `Location ${highlight.location}` }).addClass("kls-book-meta");
+			}
+			row.createEl("p", { text: highlight.content }).addClass("kls-ignored-highlight-text");
+
+			if (
+				this.protectedSuspiciousHighlightIdentities.has(highlightIdentity)
+				&& !this.pendingMissingImportIdentities.has(highlightIdentity)
+			) {
 				const feedback = row.createEl("p", {
 					text: "This note was left unchanged. This highlight is still available to try again.",
 				});
@@ -355,82 +618,308 @@ export class SyncSummaryModal extends Modal {
 			}
 
 			const actions = row.createDiv();
+
 			actions.addClass("kls-button-row");
+			actions.addClass("kls-book-actions");
+			const importButton = this.registerMissingRecoveryControl(
+				this.createActionButton(
+					actions,
+					"Import Again",
+					"strong"
+				).setCta(),
+				[highlight],
+				true
+			);
 
-			this.createActionButton(actions, "Import Again", "subtle")
+			importButton.onClick(async () => {
+				if (this.hasPendingMissingImport([highlight])) {
+					return;
+				}
+
+				this.saveSuspiciousBookScrollPosition(bookIdentity);
+				await this.attemptMissingHighlightImport([highlight], importButton);
+			});
+			const ignoreButton = this.registerMissingRecoveryControl(
+				this.createActionButton(actions, "Ignore Going Forward", "subtle"),
+				[highlight],
+				false
+			);
+
+			ignoreButton
 				.onClick(async () => {
-					const sameBookHighlights = this.automaticHighlights.filter((candidate) =>
-						hasSameBookIdentity(candidate, highlight)
-					);
-					const result = await this.plugin.importHighlights(
-						[...sameBookHighlights, highlight],
-						this.identityIndex,
-						true,
-						[highlight]
-					);
-					const targetCompleted = result.safelyCompletedHighlights.some((candidate) =>
-						hasSameHighlightIdentity(candidate, highlight)
-					);
-
-					// Keep protected recovery items visible and retryable instead of implying success.
-					if (!targetCompleted) {
-						this.suspiciousItemsScrollTop = this.contentEl.scrollTop;
-						this.protectedSuspiciousHighlights.add(highlight);
-						this.renderSuspiciousItems();
+					if (
+						this.isRecoveryMutationPending
+						|| this.hasPendingMissingImport([highlight])
+						|| !this.areCurrentSuspiciousHighlights([highlight])
+					) {
 						return;
 					}
 
-					this.importedCount++;
-					this.protectedSuspiciousHighlights.delete(highlight);
-					this.removeSuspiciousHighlight(highlight);
-					this.renderSuspiciousItems();
-				});
-
-			this.createActionButton(actions, "Ignore Going Forward")
-				.onClick(async () => {
-					const result = await this.plugin.ignoreHighlights([highlight], this.identityIndex);
-
-					this.ignoreResults = mergeIgnoreResultsPresentations(
-						this.ignoreResults,
-						result.outcomePresentation
+					this.saveSuspiciousBookScrollPosition(bookIdentity);
+					const completed = await this.runPersistedRecoveryMutation(
+						ignoreButton,
+						() => this.ignoreMissingHighlights([highlight])
 					);
-					this.protectedSuspiciousHighlights.delete(highlight);
-					this.removeSuspiciousHighlight(highlight);
-					this.renderSuspiciousItems();
-				})
-				.buttonEl.addClass("mod-warning");
 
-			this.createActionButton(actions, "Skip This Time")
+					if (completed) {
+						this.renderSuspiciousBookHighlights(bookIdentity);
+					}
+				});
+			this.registerMissingRecoveryControl(
+				this.createActionButton(actions, "Skip This Time", "subtle"),
+				[highlight],
+				false
+			)
 				.onClick(() => {
-					this.protectedSuspiciousHighlights.delete(highlight);
-					this.removeSuspiciousHighlight(highlight);
-					this.renderSuspiciousItems();
+					if (
+						this.isRecoveryMutationPending
+						|| this.hasPendingMissingImport([highlight])
+						|| !this.areCurrentSuspiciousHighlights([highlight])
+					) {
+						return;
+					}
+
+					this.saveSuspiciousBookScrollPosition(bookIdentity);
+					this.removeSuspiciousHighlights([highlight]);
+					this.renderSuspiciousBookHighlights(bookIdentity);
 				});
 		}
 
-		if (this.suspiciousHighlights.length === 0) {
-			this.contentEl.createEl("p", { text: "No missing managed highlights left to review." });
-		}
-
-		this.restoreScrollPosition(this.suspiciousItemsScrollTop);
+		this.restoreScrollPosition(this.suspiciousBookScrollTopByIdentity.get(bookIdentity) ?? 0);
 	}
 
-	private removeSuspiciousHighlight(highlight: KindleHighlight): void {
-		this.suspiciousHighlights = this.suspiciousHighlights.filter((candidate) => candidate !== highlight);
+	private async attemptMissingHighlightImport(
+		highlights: KindleHighlight[],
+		button: ButtonComponent
+	): Promise<void> {
+		if (
+			highlights.length === 0
+			|| this.isRecoveryMutationPending
+			|| this.hasPendingMissingImport(highlights)
+			|| !this.areCurrentSuspiciousHighlights(highlights)
+		) {
+			return;
+		}
+
+		for (const highlight of highlights) {
+			const identity = createKindleHighlightIdentityKey(highlight);
+
+			// A new validated attempt replaces any prior protected-result feedback for this identity.
+			this.protectedSuspiciousHighlightIdentities.delete(identity);
+		}
+		if (!this.beginRecoveryMutation(button)) {
+			return;
+		}
+		this.setMissingImportPending(highlights, button, true);
+		this.activeMissingReviewRenderer?.();
+		try {
+			await this.importMissingHighlights(highlights);
+		} finally {
+			this.setMissingImportPending(highlights, button, false);
+			this.endRecoveryMutation(button);
+			this.activeMissingReviewRenderer?.();
+		}
+	}
+
+	private setMissingImportPending(
+		highlights: readonly KindleHighlight[],
+		button: ButtonComponent,
+		pending: boolean
+	): void {
+		const identities = highlights.map(createKindleHighlightIdentityKey);
+
+		if (pending) {
+			for (const identity of identities) {
+				this.pendingMissingImportIdentities.add(identity);
+			}
+			button.buttonEl.setAttribute("aria-busy", "true");
+		} else {
+			for (const identity of identities) {
+				this.pendingMissingImportIdentities.delete(identity);
+			}
+			button.buttonEl.removeAttribute("aria-busy");
+		}
+
+		this.updateMissingRecoveryControlStates();
+	}
+
+	private registerMissingRecoveryControl(
+		button: ButtonComponent,
+		highlights: readonly KindleHighlight[],
+		showBusy: boolean
+	): ButtonComponent {
+		const control: MissingRecoveryControl = {
+			button,
+			identities: highlights.map(createKindleHighlightIdentityKey),
+			showBusy,
+		};
+
+		this.registerRecoveryMutationControl(button);
+		this.missingRecoveryControls.add(control);
+		this.updateMissingRecoveryControlState(control);
+		return button;
+	}
+
+	private updateMissingRecoveryControlStates(): void {
+		for (const control of this.missingRecoveryControls) {
+			this.updateMissingRecoveryControlState(control);
+		}
+	}
+
+	private updateMissingRecoveryControlState(control: MissingRecoveryControl): void {
+		const pending = control.identities.some((identity) => this.pendingMissingImportIdentities.has(identity));
+
+		control.button.setDisabled(this.isRecoveryMutationPending || pending);
+		if (
+			(pending && control.showBusy)
+			|| control.button === this.activeRecoveryMutationButton
+		) {
+			control.button.buttonEl.setAttribute("aria-busy", "true");
+			return;
+		}
+
+		control.button.buttonEl.removeAttribute("aria-busy");
+	}
+
+	private registerRecoveryMutationControl(button: ButtonComponent): ButtonComponent {
+		const control = { button };
+
+		this.recoveryMutationControls.add(control);
+		button.setDisabled(this.isRecoveryMutationPending);
+		return button;
+	}
+
+	private updateRecoveryMutationControlStates(): void {
+		for (const control of this.recoveryMutationControls) {
+			control.button.setDisabled(this.isRecoveryMutationPending);
+		}
+		this.updateMissingRecoveryControlStates();
+	}
+
+	private beginRecoveryMutation(button: ButtonComponent): boolean {
+		if (this.isRecoveryMutationPending) {
+			return false;
+		}
+
+		this.isRecoveryMutationPending = true;
+		this.activeRecoveryMutationButton = button;
+		this.contentEl.setAttribute("aria-busy", "true");
+		button.buttonEl.setAttribute("aria-busy", "true");
+		this.updateRecoveryMutationControlStates();
+		return true;
+	}
+
+	private endRecoveryMutation(button: ButtonComponent): void {
+		button.buttonEl.removeAttribute("aria-busy");
+		this.activeRecoveryMutationButton = null;
+		this.isRecoveryMutationPending = false;
+		this.contentEl.removeAttribute("aria-busy");
+		this.updateRecoveryMutationControlStates();
+	}
+
+	private async runPersistedRecoveryMutation(
+		button: ButtonComponent,
+		mutation: () => Promise<void>
+	): Promise<boolean> {
+		if (!this.beginRecoveryMutation(button)) {
+			return false;
+		}
+
+		try {
+			await mutation();
+			return true;
+		} finally {
+			this.endRecoveryMutation(button);
+		}
+	}
+
+	private hasPendingMissingImport(highlights: readonly KindleHighlight[]): boolean {
+		return highlights.some((highlight) =>
+			this.pendingMissingImportIdentities.has(createKindleHighlightIdentityKey(highlight))
+		);
+	}
+
+	private areCurrentSuspiciousHighlights(highlights: readonly KindleHighlight[]): boolean {
+		const currentIdentities = new Set(
+			this.suspiciousHighlights.map(createKindleHighlightIdentityKey)
+		);
+
+		return highlights.every((highlight) =>
+			currentIdentities.has(createKindleHighlightIdentityKey(highlight))
+		);
+	}
+
+	private async importMissingHighlights(highlights: KindleHighlight[]): Promise<void> {
+		if (highlights.length === 0) {
+			return;
+		}
+
+		const sameBookHighlights = this.automaticHighlights.filter((candidate) =>
+			hasSameBookIdentity(candidate, highlights[0]!)
+		);
+		const result = await this.plugin.importHighlights(
+			[...sameBookHighlights, ...highlights],
+			this.identityIndex,
+			true,
+			highlights
+		);
+		const completedHighlights = highlights.filter((highlight) =>
+			result.safelyCompletedHighlights.some((candidate) => hasSameHighlightIdentity(candidate, highlight))
+		);
+
+		// A protected recovery attempt must stay visible and retryable until the writer confirms it.
+		for (const highlight of highlights) {
+			const identity = createKindleHighlightIdentityKey(highlight);
+
+			if (completedHighlights.includes(highlight)) {
+				this.protectedSuspiciousHighlightIdentities.delete(identity);
+			} else {
+				this.protectedSuspiciousHighlightIdentities.add(identity);
+			}
+		}
+
+		this.importedCount += completedHighlights.length;
+		this.removeSuspiciousHighlights(completedHighlights);
+	}
+
+	private async ignoreMissingHighlights(highlights: KindleHighlight[]): Promise<void> {
+		const result = await this.plugin.ignoreHighlights(highlights, this.identityIndex);
+
+		this.ignoreResults = mergeIgnoreResultsPresentations(this.ignoreResults, result.outcomePresentation);
+		this.removeSuspiciousHighlights(highlights);
+	}
+
+	private removeSuspiciousHighlights(highlights: readonly KindleHighlight[]): void {
+		const removedHighlights = new Set(highlights);
+
+		for (const highlight of highlights) {
+			const identity = createKindleHighlightIdentityKey(highlight);
+
+			this.protectedSuspiciousHighlightIdentities.delete(identity);
+		}
+		this.suspiciousHighlights = this.suspiciousHighlights.filter((candidate) =>
+			!removedHighlights.has(candidate)
+		);
 	}
 
 	private hasCurrentProtectedWork(): boolean {
-		return this.protectedBooks.bookCount > 0 || this.protectedSuspiciousHighlights.size > 0;
+		return this.protectedBooks.bookCount > 0
+			|| this.protectedSuspiciousHighlightIdentities.size > 0;
+	}
+
+	private hasActionableIgnoreResults(): boolean {
+		return this.ignoreResults.failedCount > 0 || this.ignoreResults.unconfirmedCount > 0;
 	}
 
 	private renderIgnoredHighlights(): void {
 		this.contentEl.empty();
 		// eslint-disable-next-line obsidianmd/ui/sentence-case
-		this.contentEl.createEl("h2", { text: "Ignored Highlights" });
+		this.contentEl.createEl("h2", { text: "Ignored Highlights" }).addClass("kls-review-view-title");
 		const backActions = this.contentEl.createDiv();
 		backActions.addClass("kls-button-row");
 		backActions.addClass("kls-summary-actions");
-		this.createActionButton(backActions, "Back to Summary", "subtle")
+		backActions.addClass("kls-review-navigation");
+		createReviewBackButton(backActions, "Back to Summary")
 			.onClick(() => {
 				this.saveIgnoredHighlightsScrollPosition();
 				this.renderSummary();
@@ -448,18 +937,20 @@ export class SyncSummaryModal extends Modal {
 		bookListEl.addClass("kls-book-list");
 
 		for (const [bookIdentity, highlights] of groupIgnoredHighlightsByBook(this.plugin.settings.ignoredHighlights)) {
-			const title = getIgnoredTitle(highlights[0]);
 			const section = bookListEl.createDiv();
 			section.addClass("kls-book-section");
 			section.addClass("kls-book-card");
 
 			const header = section.createDiv();
+			const headingContent = header.createDiv();
 			header.addClass("kls-book-header");
 
-			const titleEl = header.createEl("h3", { text: title });
-			titleEl.addClass("kls-book-title");
-
-			this.createActionButton(header, "Review Highlights", "subtle")
+			headingContent.addClass("kls-book-heading-content");
+			renderReviewBookMetadata(headingContent, {
+				titles: highlights.map((highlight) => highlight.title),
+				author: highlights[0]?.author,
+			});
+			createReviewHighlightsButton(header)
 				.onClick(() => {
 					this.saveIgnoredHighlightsScrollPosition();
 					this.renderIgnoredBookHighlights(bookIdentity);
@@ -473,11 +964,25 @@ export class SyncSummaryModal extends Modal {
 			actions.addClass("kls-button-row");
 			actions.addClass("kls-book-actions");
 
-			this.createActionButton(actions, "Remove All From Ignore List")
+			const removeAllButton = this.registerRecoveryMutationControl(
+				this.createActionButton(actions, "Remove All From Ignore List")
+			);
+
+			removeAllButton
 				.onClick(async () => {
+					if (this.isRecoveryMutationPending) {
+						return;
+					}
+
 					this.saveIgnoredHighlightsScrollPosition();
-					await this.unignoreHighlights(highlights);
-					this.renderIgnoredHighlights();
+					const completed = await this.runPersistedRecoveryMutation(
+						removeAllButton,
+						() => this.unignoreHighlights(highlights)
+					);
+
+					if (completed) {
+						this.renderIgnoredHighlights();
+					}
 				});
 		}
 
@@ -486,64 +991,53 @@ export class SyncSummaryModal extends Modal {
 
 	private renderIgnoredBookHighlights(bookIdentity: string): void {
 		this.contentEl.empty();
-		const header = this.contentEl.createDiv();
-		header.addClass("kls-ignored-detail-header");
-
-		// eslint-disable-next-line obsidianmd/ui/sentence-case
-		const modalTitle = header.createEl("h2", { text: "Ignored Highlights" });
-		modalTitle.addClass("kls-ignored-detail-title");
-
-		const backActions = header.createDiv();
-		backActions.addClass("kls-button-row");
-		backActions.addClass("kls-summary-actions");
-		backActions.addClass("kls-ignored-detail-actions");
-		this.createActionButton(backActions, "Back to Ignored Highlights", "subtle")
-			.onClick(() => {
-				this.saveIgnoredBookScrollPosition(bookIdentity);
-				this.renderIgnoredHighlights();
-			});
-
 		const bookHighlights = this.plugin.settings.ignoredHighlights
 			.filter((highlight) => createStoredBookIdentityKey(highlight) === bookIdentity);
 		const bookTitle = getIgnoredTitle(bookHighlights[0]);
-
-		const detailCard = this.contentEl.createDiv();
-		detailCard.addClass("kls-book-section");
-		detailCard.addClass("kls-book-card");
-		detailCard.addClass("kls-ignored-detail-card");
-
-		const titleEl = detailCard.createEl("h3", { text: bookTitle });
-		titleEl.addClass("kls-book-title");
+		const detail = renderReviewHighlightDetail(this.contentEl, {
+			titles: bookHighlights.length > 0
+				? bookHighlights.map((highlight) => highlight.title)
+				: [bookTitle],
+			author: bookHighlights[0]?.author,
+			countText: `${bookHighlights.length} ignored ${pluralize("highlight", bookHighlights.length)}`,
+			backAccessibleLabel: "Back to Ignored Highlights",
+			onBack: () => {
+				this.saveIgnoredBookScrollPosition(bookIdentity);
+				this.renderIgnoredHighlights();
+			},
+		});
 
 		if (bookHighlights.length === 0) {
-			detailCard.createEl("p", { text: "No ignored highlights left in this book." }).addClass("kls-empty-state");
+			detail.detailEl.createEl("p", { text: "No ignored highlights left in this book." }).addClass("kls-empty-state");
 			this.restoreScrollPosition(this.ignoredBookScrollTopByTitle.get(bookIdentity) ?? 0);
 			return;
 		}
 
-		detailCard.createEl("p", {
-			text: `${bookHighlights.length} ignored ${pluralize("highlight", bookHighlights.length)}`,
-		}).addClass("kls-book-review-summary");
-
-		const highlightsEl = detailCard.createDiv();
-		highlightsEl.addClass("kls-ignored-highlight-list");
-
 		for (const highlight of bookHighlights) {
-			const row = highlightsEl.createDiv();
-			row.addClass("kls-ignored-highlight-item");
-			row.createEl("p", { text: `Ignored ${new Date(highlight.ignoredAt).toLocaleDateString()}` })
-				.addClass("kls-book-meta");
-			row.createEl("p", { text: highlight.textPreview })
-				.addClass("kls-ignored-highlight-text");
+			const { actionsEl: actions } = renderReviewHighlightRow(
+				detail.highlightsEl,
+				highlight.textPreview,
+				`Ignored ${new Date(highlight.ignoredAt).toLocaleDateString()}`
+			);
+			const removeButton = this.registerRecoveryMutationControl(
+				this.createActionButton(actions, "Remove From Ignore List")
+			);
 
-			const actions = row.createDiv();
-			actions.addClass("kls-button-row");
-			actions.addClass("kls-book-actions");
-			this.createActionButton(actions, "Remove From Ignore List")
+			removeButton
 				.onClick(async () => {
+					if (this.isRecoveryMutationPending) {
+						return;
+					}
+
 					this.saveIgnoredBookScrollPosition(bookIdentity);
-					await this.plugin.unignoreHighlight(highlight);
-					this.renderIgnoredBookHighlights(bookIdentity);
+					const completed = await this.runPersistedRecoveryMutation(
+						removeButton,
+						() => this.plugin.unignoreHighlight(highlight)
+					);
+
+					if (completed) {
+						this.renderIgnoredBookHighlights(bookIdentity);
+					}
 				});
 		}
 
@@ -554,19 +1048,19 @@ export class SyncSummaryModal extends Modal {
 		this.contentEl.empty();
 		this.skippedBookSectionEls.clear();
 		// eslint-disable-next-line obsidianmd/ui/sentence-case
-		this.contentEl.createEl("h2", { text: "Skipped This Sync" });
-		this.contentEl.createEl("p", {
-			text: "These highlights were skipped only for this sync. They may appear again next time unless ignored.",
-		});
-
+		this.contentEl.createEl("h2", { text: "Skipped This Sync" }).addClass("kls-review-view-title");
 		const backActions = this.contentEl.createDiv();
 		backActions.addClass("kls-button-row");
 		backActions.addClass("kls-summary-actions");
-		this.createActionButton(backActions, "Back to Summary", "subtle")
+		backActions.addClass("kls-review-navigation");
+		createReviewBackButton(backActions, "Back to Summary")
 			.onClick(() => {
 				this.saveSkippedBooksScrollPosition();
-				this.renderSummary();
-			});
+					this.renderSummary();
+				});
+		this.contentEl.createEl("p", {
+			text: "These highlights were skipped only for this sync. They may appear again next time unless ignored.",
+		}).addClass("kls-review-view-intro");
 
 		if (this.skippedThisSyncHighlights.length === 0) {
 			this.contentEl.createEl("p", { text: "No skipped highlights left to review." });
@@ -578,7 +1072,6 @@ export class SyncSummaryModal extends Modal {
 		bookListEl.addClass("kls-book-list");
 
 		for (const [bookIdentity, highlights] of groupSummaryHighlightsByBook(this.skippedThisSyncHighlights)) {
-			const title = getSummaryTitle(highlights[0]);
 			const bookKey = createSkippedBookAnchorKey(bookIdentity);
 			const section = bookListEl.createDiv();
 
@@ -586,17 +1079,14 @@ export class SyncSummaryModal extends Modal {
 			section.addClass("kls-book-section");
 			section.addClass("kls-book-card");
 			const header = section.createDiv();
+			const headingContent = header.createDiv();
 			header.addClass("kls-book-header");
 
-			const titleEl = header.createEl("h3", { text: title });
-			titleEl.addClass("kls-book-title");
-
-			this.createActionButton(header, "Review Highlights", "subtle")
-				.onClick(() => {
-					this.saveSkippedBooksScrollPosition();
-					this.skippedBooksReturnAnchorKey = bookKey;
-					this.renderSkippedBookHighlights(bookIdentity);
-				});
+			headingContent.addClass("kls-book-heading-content");
+			renderReviewBookMetadata(headingContent, {
+				titles: highlights.map((highlight) => highlight.title),
+				author: highlights[0]?.author,
+			});
 
 			section.createEl("p", {
 				text: `${highlights.length} ${pluralize("highlight", highlights.length)} skipped this sync`,
@@ -606,10 +1096,17 @@ export class SyncSummaryModal extends Modal {
 			actions.addClass("kls-button-row");
 			actions.addClass("kls-book-actions");
 
-			this.createActionButton(actions, "Ignore All Highlights")
+			this.createActionButton(actions, "Ignore All Highlights", "subtle")
 				.onClick(() => {
 					this.saveSkippedBooksScrollPosition();
 					this.renderIgnoreAllSkippedHighlightsConfirmation(highlights);
+				});
+
+			createReviewHighlightsButton(actions)
+				.onClick(() => {
+					this.saveSkippedBooksScrollPosition();
+					this.skippedBooksReturnAnchorKey = bookKey;
+					this.renderSkippedBookHighlights(bookIdentity);
 				});
 		}
 
@@ -627,15 +1124,28 @@ export class SyncSummaryModal extends Modal {
 		actions.addClass("kls-button-row");
 		actions.addClass("kls-summary-actions");
 
-		this.createActionButton(actions, "Cancel", "subtle")
+		createReviewBackButton(actions, "Back to Skipped Books")
 			.onClick(() => this.renderSkippedBooks());
 
-		this.createActionButton(actions, "Ignore All Highlights")
+		const ignoreAllButton = this.registerRecoveryMutationControl(
+			this.createActionButton(actions, "Ignore All Highlights", "subtle")
+		);
+
+		ignoreAllButton
 			.onClick(async () => {
-				await this.ignoreSkippedHighlights(highlights);
-				this.renderSkippedBooks();
-			})
-			.buttonEl.addClass("mod-warning");
+				if (this.isRecoveryMutationPending) {
+					return;
+				}
+
+				const completed = await this.runPersistedRecoveryMutation(
+					ignoreAllButton,
+					() => this.ignoreSkippedHighlights(highlights)
+				);
+
+				if (completed) {
+					this.renderSkippedBooks();
+				}
+			});
 	}
 
 	private renderSkippedBookHighlights(bookIdentity: string): void {
@@ -644,51 +1154,67 @@ export class SyncSummaryModal extends Modal {
 			createBookIdentityKey(highlight.title, highlight.author) === bookIdentity
 		);
 		const bookTitle = getSummaryTitle(highlights[0]);
-
-		this.contentEl.createEl("h2", { text: bookTitle });
-
-		const backActions = this.contentEl.createDiv();
-		backActions.addClass("kls-button-row");
-		backActions.addClass("kls-summary-actions");
-		this.createActionButton(backActions, "Back to Skipped Books", "subtle")
-			.onClick(() => {
+		const detail = renderReviewHighlightDetail(this.contentEl, {
+			titles: highlights.length > 0
+				? highlights.map((highlight) => highlight.title)
+				: [bookTitle],
+			author: highlights[0]?.author,
+			countText: `${highlights.length} ${pluralize("highlight", highlights.length)} skipped this sync`,
+			backAccessibleLabel: "Back to Skipped Books",
+			onBack: () => {
 				this.saveSkippedBookScrollPosition(bookIdentity);
 				this.shouldRestoreSkippedBooksAnchor = true;
 				this.renderSkippedBooks();
-			});
+			},
+		});
 
 		if (highlights.length === 0) {
-			this.contentEl.createEl("p", { text: "No skipped highlights left in this book." });
+			detail.detailEl.createEl("p", { text: "No skipped highlights left in this book." });
 			this.restoreScrollPosition(this.skippedBookScrollTopByTitle.get(bookIdentity) ?? 0);
 			return;
 		}
 
 		for (const highlight of highlights) {
-			const row = this.contentEl.createDiv();
-			row.addClass("kls-highlight-row");
-			row.createEl("p", { text: highlight.textPreview });
+			const { actionsEl: actions } = renderReviewHighlightRow(
+				detail.highlightsEl,
+				highlight.textPreview,
+				highlight.location ? `Location ${highlight.location}` : undefined
+			);
+			const ignoreButton = this.registerRecoveryMutationControl(
+				this.createActionButton(actions, "Ignore Going Forward", "subtle")
+			);
 
-			if (highlight.location) {
-				row.createEl("p", { text: `Location ${highlight.location}` });
-			}
-
-			const actions = row.createDiv();
-			actions.addClass("kls-button-row");
-			this.createActionButton(actions, "Ignore Going Forward")
+			ignoreButton
 				.onClick(async () => {
+					if (this.isRecoveryMutationPending) {
+						return;
+					}
+
 					this.saveSkippedBookScrollPosition(bookIdentity);
-					const result = await this.plugin.ignoreSummaryHighlight(highlight, this.identityIndex);
+					const completed = await this.runPersistedRecoveryMutation(
+						ignoreButton,
+						async () => {
+							const result = await this.plugin.ignoreSummaryHighlight(highlight, this.identityIndex);
 
-					this.ignoreResults = mergeIgnoreResultsPresentations(
-						this.ignoreResults,
-						result.outcomePresentation
-					);
-					const identity = createHighlightIdentityKey(highlight.title, highlight.author, highlight.id);
+							this.ignoreResults = mergeIgnoreResultsPresentations(
+								this.ignoreResults,
+								result.outcomePresentation
+							);
+							const identity = createHighlightIdentityKey(
+								highlight.title,
+								highlight.author,
+								highlight.id
+							);
 
-					this.skippedThisSyncHighlights = this.skippedThisSyncHighlights.filter((candidate) =>
-						createHighlightIdentityKey(candidate.title, candidate.author, candidate.id) !== identity
+							this.skippedThisSyncHighlights = this.skippedThisSyncHighlights.filter((candidate) =>
+								createHighlightIdentityKey(candidate.title, candidate.author, candidate.id) !== identity
+							);
+						}
 					);
-					this.renderSkippedBookHighlights(bookIdentity);
+
+					if (completed) {
+						this.renderSkippedBookHighlights(bookIdentity);
+					}
 				});
 		}
 
@@ -721,6 +1247,14 @@ export class SyncSummaryModal extends Modal {
 
 	private saveSummaryScrollPosition(): void {
 		this.summaryScrollTop = this.contentEl.scrollTop;
+	}
+
+	private saveSuspiciousBooksScrollPosition(): void {
+		this.suspiciousBooksScrollTop = this.contentEl.scrollTop;
+	}
+
+	private saveSuspiciousBookScrollPosition(bookIdentity: string): void {
+		this.suspiciousBookScrollTopByIdentity.set(bookIdentity, this.contentEl.scrollTop);
 	}
 
 	private saveIgnoredHighlightsScrollPosition(): void {
@@ -766,6 +1300,29 @@ export class SyncSummaryModal extends Modal {
 		});
 	}
 
+	private restoreSuspiciousBooksPosition(): void {
+		const anchorKey = this.shouldRestoreSuspiciousBooksAnchor
+			? this.suspiciousBooksReturnAnchorKey
+			: null;
+
+		this.shouldRestoreSuspiciousBooksAnchor = false;
+		if (!anchorKey) {
+			this.restoreScrollPosition(this.suspiciousBooksScrollTop);
+			return;
+		}
+
+		this.afterRender(() => {
+			const section = this.suspiciousBookSectionEls.get(anchorKey);
+
+			if (section && typeof section.scrollIntoView === "function") {
+				section.scrollIntoView({ block: "center" });
+				return;
+			}
+
+			this.contentEl.scrollTop = this.suspiciousBooksScrollTop;
+		});
+	}
+
 	private restoreScrollPosition(scrollTop: number): void {
 		this.afterRender(() => {
 			this.contentEl.scrollTop = scrollTop;
@@ -782,17 +1339,25 @@ export class SyncSummaryModal extends Modal {
 	}
 }
 
-function createHighlightPreview(highlight: KindleHighlight): string {
-	const location = highlight.location ? `Location ${highlight.location}: ` : "";
-
-	return `${highlight.bookTitle}\n${location}${highlight.content.replace(/\s+/g, " ").slice(0, 180)}`;
-}
-
 function groupIgnoredHighlightsByBook(highlights: IgnoredHighlight[]): Map<string, IgnoredHighlight[]> {
 	const groups = new Map<string, IgnoredHighlight[]>();
 
 	for (const highlight of highlights) {
 		const bookIdentity = createStoredBookIdentityKey(highlight);
+		const group = groups.get(bookIdentity) ?? [];
+
+		group.push(highlight);
+		groups.set(bookIdentity, group);
+	}
+
+	return groups;
+}
+
+function groupMissingHighlightsByBook(highlights: KindleHighlight[]): Map<string, KindleHighlight[]> {
+	const groups = new Map<string, KindleHighlight[]>();
+
+	for (const highlight of highlights) {
+		const bookIdentity = createBookIdentityKey(highlight.bookTitle, highlight.author);
 		const group = groups.get(bookIdentity) ?? [];
 
 		group.push(highlight);
@@ -828,7 +1393,25 @@ function pluralize(word: string, count: number): string {
 	return count === 1 ? word : `${word}s`;
 }
 
+function formatReturnNextSyncExplanation(skippedCount: number, unreviewedCount: number): string | null {
+	// These branches describe the live decision mix; neither category should imply the other.
+	if (skippedCount > 0 && unreviewedCount > 0) {
+		return "Unreviewed and temporarily skipped highlights may appear again next time you sync.";
+	}
+	if (skippedCount > 0) {
+		return "Temporarily skipped highlights may appear again next time you sync.";
+	}
+	if (unreviewedCount > 0) {
+		return "Unreviewed highlights may appear again next time you sync.";
+	}
+	return null;
+}
+
 function createSkippedBookAnchorKey(bookIdentity: string): string {
+	return bookIdentity;
+}
+
+function createMissingBookAnchorKey(bookIdentity: string): string {
 	return bookIdentity;
 }
 
@@ -852,26 +1435,26 @@ function formatHighlightsIgnoredInFuture(count: number): string {
 
 function formatHighlightsRemoved(count: number): string {
 	return count === 1
-		? "1 highlight was removed from an existing note."
-		: `${count} highlights were removed from existing notes.`;
+		? "1 highlight was removed from an existing Obsidian note."
+		: `${count} highlights were removed from existing Obsidian notes.`;
 }
 
 function formatNoMatchingNoteResults(count: number): string {
 	return count === 1
-		? "No matching note was found for 1 highlight."
-		: `No matching notes were found for ${count} highlights.`;
+		? "No matching notes were found for 1 highlight, so no note changes were needed."
+		: `No matching notes were found for ${count} highlights, so no note changes were needed.`;
 }
 
 function formatAlreadyAbsentResults(count: number): string {
 	return count === 1
-		? "1 highlight was already absent from its matching note."
-		: `${count} highlights were already absent from their matching notes.`;
+		? "1 ignored highlight had already been removed from its Obsidian note."
+		: `${count} ignored highlights had already been removed from their Obsidian notes.`;
 }
 
 function formatUnchangedResults(count: number): string {
 	return count === 1
-		? "An existing note was left unchanged for 1 highlight."
-		: `Existing notes were left unchanged for ${count} highlights.`;
+		? "No note change was made for 1 highlight because its existing note could not be updated safely or unambiguously."
+		: `No note changes were made for ${count} highlights because their existing notes could not be updated safely or unambiguously.`;
 }
 
 function formatFailedCleanupResults(count: number): string {
@@ -886,12 +1469,12 @@ function formatUnconfirmedCleanupResults(count: number): string {
 		: `The final note state could not be confirmed for ${count} highlights.`;
 }
 
-function formatAuthor(author: string): string {
-	return `Author: ${author || "Unknown author"}`;
-}
-
 function formatAffectedHighlights(count: number): string {
 	return count === 1 ? "1 affected highlight" : `${count} affected highlights`;
+}
+
+function formatMissingHighlights(count: number): string {
+	return count === 1 ? "1 missing highlight" : `${count} missing highlights`;
 }
 
 function formatSelectedHighlightsReturningForBook(count: number): string {
@@ -907,7 +1490,7 @@ function getIgnoreResultCopy(status: IgnoreResultPresentationStatus): string {
 		case "note-not-found":
 			return "No matching note was found. No existing note was changed.";
 		case "already-absent":
-			return "This highlight was already absent from the matching note. No note change was needed.";
+			return "This ignored highlight had already been removed from its Obsidian note. No note change was needed.";
 		case "multiple-notes-unchanged":
 			return "More than one note matched this book, so the existing notes were left unchanged.";
 		case "note-unchanged":

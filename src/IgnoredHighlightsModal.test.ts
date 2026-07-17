@@ -53,6 +53,11 @@ describe("IgnoredHighlightsModal", () => {
 		expect(elementsByClass(header, "kls-action-button").map((button) => button.text())).toEqual([
 			"Review Highlights",
 		]);
+		const reviewButton = findByText(header, "Review Highlights");
+
+		expect(reviewButton.classes.has("kls-review-action-button")).toBe(true);
+		expect(reviewButton.classes.has("kls-pill-button")).toBe(true);
+		expect(reviewButton.classes.has("kls-glass-subtle")).toBe(true);
 		expect(actions?.classes.has("kls-button-row")).toBe(true);
 		expect(elementsByClass(actions, "kls-action-button").map((button) => button.text())).toEqual([
 			"Remove All From Ignore List",
@@ -100,20 +105,30 @@ describe("IgnoredHighlightsModal", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Highlights").click();
 
-		const detailHeader = elementByClass(modal.contentEl, "kls-ignored-detail-header");
-		const detailCard = elementByClass(modal.contentEl, "kls-ignored-detail-card");
+		const detail = elementByClass(modal.contentEl, "kls-book-detail-view");
+		const header = elementByClass(detail, "kls-book-detail-header");
+		const navigation = elementByClass(detail, "kls-book-detail-back");
+		const row = elementByClass(detail, "kls-book-detail-highlight");
 
-		expect(elementByClass(detailHeader, "kls-ignored-detail-title").text()).toBe("Ignored Highlights");
-		expect(buttonTexts(detailHeader)).toContain("Back to Ignored Highlights");
-		expect(readText(modal.contentEl)).toContain("Back to Ignored Highlights");
-		expect(elementByClass(detailCard, "kls-book-title").text()).toBe("Atomic Habits");
-		expect(elementByClass(detailCard, "kls-book-review-summary").text()).toBe("1 ignored highlight");
-		expect(elementByClass(detailCard, "kls-book-meta").text()).toBe("Ignored 7/7/2026");
-		expect(elementByClass(detailCard, "kls-ignored-highlight-text").text()).toBe("one preview");
+		expect(detail.children[0]).toBe(header);
+		expect(header.children[0]).toBe(navigation);
+		expect(header.children[1]?.classes.has("kls-book-title")).toBe(true);
+		expect(elementByClass(detail, "kls-book-title").text()).toBe("Atomic Habits");
+		expect(findButtonByAriaLabel(navigation, "Back to Ignored Highlights").classes.has("kls-review-back-button")).toBe(true);
+		expect(buttonTexts(navigation)).toEqual(["Back"]);
+		expect(elementByClass(detail, "kls-book-detail-count").text()).toBe("1 ignored highlight");
+		expect(row.children.map((child) => [...child.classes][0])).toEqual([
+			"kls-book-detail-highlight-text",
+			"kls-book-detail-highlight-meta",
+			"kls-button-row",
+		]);
+		expect(elementByClass(row, "kls-book-detail-highlight-meta").text()).toBe("Ignored 7/7/2026");
+		expect(elementByClass(row, "kls-book-detail-highlight-text").text()).toBe("one preview");
+		expect(elementsByClass(detail, "kls-book-card")).toHaveLength(0);
 		expect(buttonTexts(modal.contentEl)).toContain("Remove From Ignore List");
 	});
 
-	it("keeps the ignored detail book title inside the detail card", async () => {
+	it("uses the complete ignored book title as the direct detail heading", async () => {
 		const modal = new IgnoredHighlightsModal(new App() as never, createPlugin([
 			createIgnoredHighlight("one", "A Very Long Atomic Habits Title That Should Wrap Cleanly In The Detail Card"),
 		]) as never);
@@ -121,13 +136,15 @@ describe("IgnoredHighlightsModal", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Highlights").click();
 
-		const detailHeader = elementByClass(modal.contentEl, "kls-ignored-detail-header");
-		const detailCard = elementByClass(modal.contentEl, "kls-ignored-detail-card");
+		const detail = elementByClass(modal.contentEl, "kls-book-detail-view");
+		const header = elementByClass(detail, "kls-book-detail-header");
 
-		expect(elementsByClass(detailHeader, "kls-book-title")).toHaveLength(0);
-		expect(elementByClass(detailCard, "kls-book-title").text()).toBe(
+		expect(header.children[0]?.classes.has("kls-book-detail-back")).toBe(true);
+		expect(header.children[1]?.classes.has("kls-book-title")).toBe(true);
+		expect(elementByClass(detail, "kls-book-title").text()).toBe(
 			"A Very Long Atomic Habits Title That Should Wrap Cleanly In The Detail Card"
 		);
+		expect(elementsByClass(detail, "kls-book-card")).toHaveLength(0);
 	});
 
 	it("returns from ignored detail view to ignored summary view", async () => {
@@ -137,7 +154,7 @@ describe("IgnoredHighlightsModal", () => {
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Highlights").click();
-		await findByText(modal.contentEl, "Back to Ignored Highlights").click();
+		await findButtonByAriaLabel(modal.contentEl, "Back to Ignored Highlights").click();
 
 		expect(readText(modal.contentEl)).toContain("1 ignored highlight");
 		expect(readText(modal.contentEl)).not.toContain("one preview");
@@ -196,6 +213,7 @@ interface TestElement {
 	text: () => string;
 	findByText: (text: string) => TestElement | null;
 	click: () => Promise<void>;
+	attributes: Map<string, string>;
 }
 
 function readText(element: unknown): string {
@@ -209,6 +227,17 @@ function findByText(element: unknown, text: string): TestElement {
 		throw new Error(`Could not find text: ${text}`);
 	}
 
+	return match;
+}
+
+function findButtonByAriaLabel(element: unknown, label: string): TestElement {
+	const buttons: TestElement[] = [];
+
+	collectElementsByTag(element as TestElement, "button", buttons);
+	const match = buttons.find((button) => button.attributes.get("aria-label") === label);
+	if (!match) {
+		throw new Error(`Could not find button with aria-label: ${label}`);
+	}
 	return match;
 }
 
@@ -268,5 +297,15 @@ function collectElementsByClass(element: TestElement, className: string, matches
 
 	for (const child of element.children) {
 		collectElementsByClass(child, className, matches);
+	}
+}
+
+function collectElementsByTag(element: TestElement, tagName: string, matches: TestElement[]): void {
+	if (element.tagName === tagName) {
+		matches.push(element);
+	}
+
+	for (const child of element.children) {
+		collectElementsByTag(child, tagName, matches);
 	}
 }

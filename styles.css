@@ -13,6 +13,17 @@ If your plugin does not need CSS, delete this file.
 	max-width: calc(100vw - 32px);
 }
 
+.modal:has(.kls-glass-scope) {
+	box-sizing: border-box;
+	width: min(980px, calc(100vw - 32px));
+	max-width: calc(100vw - 32px);
+}
+
+.kls-glass-scope:not(.kls-first-sync-modal) {
+	max-height: min(84vh, 860px);
+	overflow-y: auto;
+}
+
 .kls-first-sync-modal {
 	display: flex;
 	flex-direction: column;
@@ -47,28 +58,52 @@ If your plugin does not need CSS, delete this file.
 	padding-right: 0.25em;
 }
 
-.kls-review-warning-callout {
+.kls-first-sync-modal .kls-review-warning-callout {
 	box-sizing: border-box;
 	width: 100%;
 	max-width: 100%;
 	min-width: 0;
-	margin-top: 0.75em;
-	padding: 0.55em 0.75em;
-	border-left: 3px solid var(--background-modifier-border-hover, var(--background-modifier-border));
-	border-radius: var(--radius-s);
-	background: var(--background-secondary);
+	margin-top: 0.65em;
+	padding: 0.6em 0.75em;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 72%, transparent);
+	border-radius: 16px;
+	background: linear-gradient(
+		145deg,
+		color-mix(in srgb, var(--background-primary) 88%, var(--background-secondary) 12%),
+		var(--background-primary-alt, var(--background-primary))
+	);
 	color: var(--text-muted);
+	box-shadow:
+		inset 0 1px 0 color-mix(in srgb, var(--text-normal) 5%, transparent),
+		0 1px 4px rgba(0, 0, 0, 0.08);
 	font-size: var(--font-ui-small);
 	line-height: 1.4;
+	overflow-x: hidden;
 	overflow-wrap: anywhere;
 }
 
-.kls-review-warning-callout p {
+.kls-first-sync-modal .kls-review-warning-callout p {
 	margin: 0;
 }
 
-.kls-review-warning-callout p + p {
-	margin-top: 0.25em;
+.kls-first-sync-modal .kls-review-warning-callout p + p {
+	margin-top: 0.3em;
+}
+
+.kls-first-sync-modal .kls-review-warning-callout + .kls-review-sticky-summary {
+	margin-top: 0.55em;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.kls-first-sync-modal .kls-review-warning-callout {
+		background: linear-gradient(
+			145deg,
+			color-mix(in srgb, var(--background-primary) 78%, transparent),
+			color-mix(in srgb, var(--background-secondary) 86%, transparent)
+		);
+		-webkit-backdrop-filter: blur(6px) saturate(1.01);
+		backdrop-filter: blur(6px) saturate(1.01);
+	}
 }
 
 .kls-section,
@@ -103,21 +138,37 @@ If your plugin does not need CSS, delete this file.
 	min-width: 0;
 	margin-top: 0;
 	padding: 0.9em 1em;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 8px;
-	background: var(--background-secondary);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 78%, transparent);
+	border-radius: 22px;
+	background: linear-gradient(
+		145deg,
+		color-mix(in srgb, var(--background-secondary) 94%, var(--text-normal) 6%) 0%,
+		var(--background-secondary) 58%,
+		color-mix(in srgb, var(--background-secondary) 96%, var(--background-primary) 4%) 100%
+	);
+	box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-normal) 8%, transparent);
 	overflow-wrap: anywhere;
 }
 
-.kls-section ul,
-.kls-choice-help {
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.kls-glass-scope .kls-book-card {
+		background: linear-gradient(
+			145deg,
+			color-mix(in srgb, var(--background-secondary) 88%, transparent) 0%,
+			color-mix(in srgb, var(--background-secondary) 96%, transparent) 100%
+		);
+		-webkit-backdrop-filter: blur(8px) saturate(1.02);
+		backdrop-filter: blur(8px) saturate(1.02);
+	}
+}
+
+.kls-section ul {
 	margin-top: 0.45em;
 	margin-bottom: 0.2em;
 	padding-left: 1.5em;
 }
 
-.kls-section li,
-.kls-choice-help li {
+.kls-section li {
 	margin-bottom: 0.3em;
 	line-height: 1.4;
 }
@@ -190,12 +241,9 @@ If your plugin does not need CSS, delete this file.
 	gap: 0.55em;
 	box-sizing: border-box;
 	width: 100%;
-	max-width: 100%;
+	max-width: none;
 	min-width: 0;
-	padding: 0.65em;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 8px;
-	background: var(--background-primary);
+	padding: 0;
 }
 
 .kls-compact-review-progress {
@@ -238,37 +286,98 @@ If your plugin does not need CSS, delete this file.
 	min-width: 0;
 }
 
-.kls-book-search-input {
+.kls-first-sync-modal .kls-book-search-input {
+	display: block;
 	box-sizing: border-box;
 	width: 100%;
 	max-width: 100%;
 	min-width: 0;
-}
-
-.kls-book-filter-row {
-	gap: 0.4em;
-}
-
-.kls-book-filter-button-active {
-	font-weight: 700;
-}
-
-.kls-choice-help-actions {
-	justify-content: flex-start;
-}
-
-.kls-help-button {
-	min-height: 2em;
-	padding: 0.35em 0.65em;
-	background: transparent;
-	color: var(--text-muted);
-	font-weight: 500;
-}
-
-.kls-help-button:hover,
-.kls-help-button:focus-visible {
-	background: var(--background-modifier-hover);
+	min-height: 44px;
+	padding: 0.5em 0.75em;
+	border: 1px solid var(--kls-glass-border);
+	border-radius: 15px;
+	outline: none;
+	background: var(--kls-glass-surface);
 	color: var(--text-normal);
+	--kls-book-search-shadow:
+		inset 0 1px 0 color-mix(in srgb, var(--text-normal) 7%, transparent),
+		0 2px 6px rgba(0, 0, 0, 0.1);
+	box-shadow: var(--kls-book-search-shadow);
+	caret-color: var(--interactive-accent);
+	font-size: var(--font-ui-small);
+	line-height: 1.25;
+}
+
+.kls-first-sync-modal .kls-book-search-input::placeholder {
+	color: var(--text-muted);
+	opacity: 1;
+}
+
+.kls-first-sync-modal .kls-book-search-input:focus {
+	border-color: var(--kls-glass-border);
+	outline: none;
+	box-shadow: var(--kls-book-search-shadow);
+}
+
+.kls-first-sync-modal .kls-book-search-input:focus-visible {
+	border-color: var(--interactive-accent);
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -2px;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.kls-first-sync-modal .kls-book-search-input {
+		background: linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--background-primary) 68%, transparent),
+			color-mix(in srgb, var(--interactive-normal) 88%, transparent)
+		);
+		-webkit-backdrop-filter: blur(8px) saturate(1.03);
+		backdrop-filter: blur(8px) saturate(1.03);
+	}
+}
+
+.kls-review-modal-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75em;
+}
+
+.kls-review-modal-heading h2 {
+	margin: 0;
+}
+
+.kls-review-modal-heading .kls-book-heading-content {
+	min-width: 0;
+}
+
+.kls-book-detail-header {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: none;
+	min-width: 0;
+	padding: 0 0 0.55em;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+}
+
+.kls-book-detail-header .kls-book-title {
+	min-width: 0;
+	margin: 0;
+	overflow-wrap: anywhere;
+	white-space: normal;
+}
+
+.kls-book-detail-header .kls-review-navigation {
+	margin: 0 0 0.55em;
+}
+
+.kls-ignore-results-actions {
+	margin-top: 0.75em;
 }
 
 .kls-book-header {
@@ -281,14 +390,46 @@ If your plugin does not need CSS, delete this file.
 	margin-bottom: 0.55em;
 }
 
+.kls-book-heading-content {
+	flex: 1 1 16rem;
+	min-width: 0;
+}
+
+.kls-book-index {
+	margin: 0 0 0.15em;
+	color: var(--text-faint, var(--text-muted));
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+	line-height: 1.25;
+}
+
 .kls-book-title {
-	flex: 1 1 14em;
 	min-width: 0;
 	max-width: 100%;
 	margin-top: 0;
 	margin-bottom: 0;
 	line-height: 1.3;
-	overflow-wrap: anywhere;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.kls-book-author {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.kls-book-card-controls {
+	display: flex;
+	flex: 0 0 auto;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 0.55em;
+}
+
+.kls-book-card-controls .kls-book-status {
+	margin-top: 0;
 }
 
 .kls-book-meta,
@@ -309,7 +450,29 @@ If your plugin does not need CSS, delete this file.
 }
 
 .kls-book-actions {
+	display: flex;
+	flex-wrap: wrap;
 	margin: 0.9em 0 0;
+}
+
+.kls-glass-scope .kls-review-action-button,
+.kls-glass-scope .kls-review-action-button:hover,
+.kls-glass-scope .kls-review-action-button:active,
+.kls-glass-scope .kls-review-action-button:focus,
+.kls-glass-scope .kls-review-action-button:focus-visible,
+.kls-glass-scope .kls-review-action-button:visited {
+	flex: 0 0 auto;
+	width: auto;
+	min-width: max-content;
+	max-width: 100%;
+	text-decoration: none;
+	text-overflow: clip;
+	white-space: nowrap;
+	overflow-wrap: normal;
+}
+
+.kls-book-actions .kls-review-action-button {
+	margin-inline-start: auto;
 }
 
 .kls-choice-help-details {
@@ -326,35 +489,100 @@ If your plugin does not need CSS, delete this file.
 	font-weight: 600;
 }
 
+.kls-choice-help-button {
+	justify-self: start;
+}
+
+.kls-glass-scope .kls-choice-help-icon {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-end: 0;
+	width: 2.75rem;
+	min-width: 2.75rem;
+	padding: 0;
+	font-size: var(--font-ui-medium);
+	font-weight: 700;
+}
+
 .kls-choice-help-panel {
 	box-sizing: border-box;
 	width: 100%;
-	max-width: 100%;
+	max-width: none;
 	min-width: 0;
 	overflow-x: hidden;
 	overflow-y: visible;
-	margin-top: 0;
+	margin: 0;
 	padding: 0.65em 0.75em;
 	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--button-radius, var(--radius-s));
-	background: var(--background-secondary);
+	border-radius: var(--radius-m);
+	background: color-mix(in srgb, var(--background-secondary) 88%, var(--background-primary));
+	color: var(--text-muted);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.35;
 }
 
-.kls-choice-help-panel-closed {
+.kls-choice-help-panel[hidden] {
 	display: none;
 }
 
-.kls-choice-help-panel h3 {
-	margin: 0.65em 0 0.35em;
-	font-size: var(--font-ui-small);
+.kls-choice-help-opening {
+	margin-top: 0;
+	line-height: 1.4;
 }
 
-.kls-choice-help-panel h3:first-child {
-	margin-top: 0;
+.kls-choice-help-opening strong + span::before,
+.kls-choice-help-status strong + span::before,
+.kls-choice-help-status span + strong::before {
+	content: " ";
 }
 
 .kls-choice-help-panel .kls-choice-help {
-	margin-bottom: 0;
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	column-gap: 0.9em;
+	row-gap: 0.35em;
+	width: 100%;
+	max-width: 100%;
+	margin: 0.55em 0 0;
+}
+
+.kls-choice-help-panel dt {
+	margin: 0;
+	color: var(--text-normal);
+	font-weight: 700;
+	line-height: 1.4;
+}
+
+.kls-choice-help-panel dd {
+	margin: 0;
+	color: var(--text-muted);
+	line-height: 1.4;
+	white-space: pre-line;
+}
+
+.kls-choice-help-status {
+	margin: 0.65em 0 0;
+	padding-top: 0.55em;
+	border-top: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: inherit;
+	line-height: 1.35;
+}
+
+@media (max-width: 640px) {
+	.kls-choice-help-panel .kls-choice-help {
+		grid-template-columns: minmax(0, 1fr);
+		row-gap: 0.15em;
+	}
+
+	.kls-choice-help-panel dt:not(:first-child) {
+		margin-top: 0.35em;
+	}
+
+	.kls-choice-help-panel dd:not(:last-child) {
+		margin-bottom: 0.2em;
+	}
 }
 
 .kls-ignored-highlight-list {
@@ -362,38 +590,6 @@ If your plugin does not need CSS, delete this file.
 	gap: 0.75em;
 	min-width: 0;
 	margin-top: 0.75em;
-}
-
-.kls-ignored-detail-card {
-	overflow-x: hidden;
-}
-
-.kls-ignored-detail-header {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: 0.55em 0.85em;
-	min-width: 0;
-	margin-bottom: 0.85em;
-}
-
-.kls-ignored-detail-title {
-	flex: 1 1 14em;
-	min-width: 0;
-	max-width: 100%;
-	margin: 0;
-	overflow-wrap: anywhere;
-}
-
-.kls-ignored-detail-actions {
-	justify-content: flex-end;
-	flex: 0 1 auto;
-	margin-top: 0;
-}
-
-.kls-ignored-detail-card > .kls-book-title {
-	margin-bottom: 0.55em;
 }
 
 .kls-ignored-highlight-item {
@@ -423,8 +619,249 @@ If your plugin does not need CSS, delete this file.
 	color: var(--text-muted);
 }
 
+.kls-book-detail-view {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: none;
+	min-width: 0;
+}
+
+/* Keep instructions visible while long highlight collections scroll independently. */
+.kls-modal-scroll-body.kls-highlight-review-layout {
+	display: flex;
+	flex-direction: column;
+	overflow-y: hidden;
+}
+
+.kls-highlight-review-layout .kls-book-detail-view {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.kls-highlight-review-layout .kls-book-detail-header,
+.kls-highlight-review-layout .kls-choice-help-panel {
+	flex: 0 0 auto;
+}
+
+.kls-highlight-review-layout .kls-book-detail-header {
+	padding-inline-end: 3.25rem;
+}
+
+.kls-highlight-review-layout .kls-choice-help-panel {
+	margin-top: 0.65em;
+}
+
+.kls-highlight-review-layout .kls-book-detail-highlights {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	scroll-padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.kls-book-detail-header > .kls-book-author,
+.kls-book-detail-count {
+	margin: 0.5em 0 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+}
+
+.kls-book-detail-count {
+	margin-top: 0.25em;
+}
+
+.kls-book-detail-highlights {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: none;
+	min-width: 0;
+	margin-top: 0.8em;
+}
+
+.kls-book-detail-highlight {
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 0;
+	padding: 0.85em 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.kls-book-detail-highlight-text {
+	max-width: 100%;
+	margin: 0;
+	line-height: 1.5;
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+}
+
+.kls-book-detail-highlight-meta {
+	max-width: 100%;
+	margin: 0.35em 0 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.4;
+	overflow-wrap: anywhere;
+}
+
+.kls-book-detail-highlight-actions {
+	justify-content: flex-start;
+	margin-top: 0.6em;
+}
+
 .kls-summary-actions {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 0.75em;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
 	margin-top: 1em;
+}
+
+.kls-summary-navigation-actions {
+	flex: 1 1 auto;
+	align-items: stretch;
+	min-width: 0;
+}
+
+.kls-summary-close-actions {
+	flex: 0 0 auto;
+	align-items: stretch;
+}
+
+.kls-summary-actions .kls-action-button {
+	min-height: 2.75rem;
+	white-space: normal;
+	overflow-wrap: normal;
+	word-break: normal;
+	hyphens: none;
+}
+
+@media (max-width: 700px) {
+	.kls-summary-actions {
+		flex-direction: column;
+	}
+
+	.kls-summary-navigation-actions,
+	.kls-summary-close-actions,
+	.kls-summary-actions .kls-action-button {
+		width: 100%;
+	}
+
+	.kls-summary-navigation-actions,
+	.kls-summary-close-actions {
+		flex-direction: column;
+	}
+}
+
+/* A single DOM layout collapses here so zoomed desktop and mobile keep the same controls and state. */
+@media (max-width: 560px) {
+	.modal:has(.kls-glass-scope) {
+		width: calc(100vw - 16px);
+		max-width: calc(100vw - 16px);
+	}
+
+	.kls-glass-scope {
+		padding-bottom: env(safe-area-inset-bottom);
+	}
+
+	.kls-book-card,
+	.kls-glass-card {
+		padding: 0.8em;
+	}
+
+	.kls-book-card-controls {
+		align-items: flex-start;
+	}
+
+	.kls-book-actions,
+	.kls-book-detail-highlight-actions,
+	.kls-sticky-actions {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.kls-book-actions .kls-action-button,
+	.kls-book-detail-highlight-actions .kls-action-button,
+	.kls-sticky-actions .kls-action-button {
+		width: 100%;
+	}
+
+	.kls-book-actions .kls-review-action-button {
+		margin-inline-start: 0;
+	}
+}
+
+.kls-summary-count-row {
+	display: grid;
+	grid-template-columns: 4ch minmax(0, 1fr);
+	align-items: start;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	margin: 0.4em 0;
+	column-gap: 0.5em;
+	row-gap: 0;
+	color: var(--text-muted);
+	line-height: 1.35;
+}
+
+.kls-summary-count-value {
+	align-self: start;
+	color: var(--text-normal);
+	font-size: 1.08em;
+	font-weight: 700;
+	line-height: 1.35;
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+	white-space: nowrap;
+}
+
+.kls-summary-count-label {
+	min-width: 0;
+	font-size: 1em;
+	font-weight: 400;
+	line-height: 1.35;
+	overflow-wrap: anywhere;
+	word-break: normal;
+}
+
+.kls-summary-count-row-attention {
+	color: var(--text-normal);
+}
+
+.kls-summary-count-row-attention .kls-summary-count-value {
+	color: var(--text-accent);
+}
+
+.kls-summary-count-row-primary {
+	color: var(--text-normal);
+}
+
+.kls-summary-count-row-primary .kls-summary-count-value {
+	color: var(--text-accent);
+}
+
+.kls-review-view-title {
+	margin-bottom: 0.35em;
+}
+
+.kls-review-view-intro {
+	margin-top: 0.35em;
+	margin-bottom: 0.45em;
+	line-height: 1.4;
+}
+
+.kls-review-navigation,
+.kls-review-detail-card {
+	margin-top: 0.85em;
 }
 
 .kls-outcome-panel {
@@ -449,6 +886,15 @@ If your plugin does not need CSS, delete this file.
 	margin-bottom: 0;
 }
 
+.kls-ignore-results-panel {
+	padding-block: 0.7em;
+}
+
+.kls-ignore-results-panel p {
+	margin-bottom: 0.35em;
+	line-height: 1.35;
+}
+
 .kls-inline-status {
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
@@ -462,32 +908,69 @@ If your plugin does not need CSS, delete this file.
 	justify-content: center;
 	box-sizing: border-box;
 	max-width: 100%;
-	min-height: 2.25em;
-	padding: 0.45em 0.8em;
-	border-radius: var(--button-radius, var(--radius-s));
-	font-size: var(--font-ui-small);
-	line-height: 1.2;
 	text-align: center;
 	vertical-align: middle;
 	white-space: normal;
-	overflow-wrap: anywhere;
+	overflow-wrap: normal;
+	word-break: normal;
+	hyphens: none;
+}
+
+.kls-glass-scope .kls-pill-button {
+	min-height: 2.75rem;
+	padding: 0.45em 0.8em;
+	border-radius: 999px;
+	font-size: var(--font-ui-small);
+	line-height: 1.2;
 }
 
 .kls-glass-scope {
-	--kls-glass-blur: 10px;
-	--kls-glass-surface: var(--interactive-normal);
-	--kls-glass-surface-hover: var(--interactive-hover);
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	overflow-x: hidden;
+	scroll-padding-bottom: max(1rem, env(safe-area-inset-bottom));
+	--kls-glass-blur: 12px;
+	--kls-glass-surface: linear-gradient(
+		135deg,
+		var(--background-primary-alt, var(--background-primary)) 0%,
+		var(--interactive-normal) 58%,
+		var(--background-secondary) 100%
+	);
+	--kls-glass-surface-hover: linear-gradient(
+		135deg,
+		var(--background-secondary) 0%,
+		var(--interactive-hover) 100%
+	);
 	--kls-glass-border: var(--background-modifier-border-hover, var(--background-modifier-border));
 	--kls-glass-focus: var(--background-modifier-border-focus, var(--interactive-accent));
-	--kls-glass-shadow: var(--shadow-s, 0 1px 2px var(--background-modifier-border));
+	--kls-glass-shadow-subtle:
+		inset 0 1px 0 var(--background-modifier-border-hover, var(--background-modifier-border)),
+		0 2px 7px rgba(0, 0, 0, 0.14);
+	--kls-glass-shadow-strong:
+		inset 0 1px 0 rgba(255, 255, 255, 0.28),
+		0 4px 12px rgba(0, 0, 0, 0.22);
 	--kls-glass-transition: 120ms ease-out;
+	--kls-decision-import-border: var(--interactive-accent);
+	--kls-decision-import-surface: var(--interactive-accent);
+	--kls-decision-import-text: var(--text-on-accent);
+	--kls-decision-import-shadow: 0 0 0 1px var(--interactive-accent);
+	--kls-decision-ignore-border: var(--background-modifier-border-focus, var(--text-muted));
+	--kls-decision-ignore-surface: var(--background-modifier-hover);
+	--kls-decision-ignore-text: var(--text-normal);
+	--kls-decision-ignore-shadow: 0 0 0 1px var(--background-modifier-border-focus, var(--text-muted));
+	--kls-decision-skip-border: color-mix(in srgb, var(--color-blue) 55%, var(--background-modifier-border));
+	--kls-decision-skip-surface: color-mix(in srgb, var(--color-blue) 16%, var(--background-secondary));
+	--kls-decision-skip-text: color-mix(in srgb, var(--color-blue) 75%, var(--text-normal));
+	--kls-decision-skip-shadow: 0 0 0 1px color-mix(in srgb, var(--color-blue) 45%, var(--background-modifier-border));
 }
 
 .kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]) {
 	border: 1px solid var(--kls-glass-border);
 	background: var(--kls-glass-surface);
 	color: var(--text-normal);
-	box-shadow: var(--kls-glass-shadow);
+	box-shadow: var(--kls-glass-shadow-subtle);
 	transition:
 		background-color var(--kls-glass-transition),
 		border-color var(--kls-glass-transition),
@@ -508,9 +991,9 @@ If your plugin does not need CSS, delete this file.
 
 .kls-glass-scope .kls-glass-strong:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]) {
 	border: 1px solid var(--interactive-accent);
-	background: var(--interactive-accent);
+	background: linear-gradient(135deg, var(--interactive-accent) 0%, var(--interactive-accent-hover) 100%);
 	color: var(--text-on-accent);
-	box-shadow: var(--kls-glass-shadow);
+	box-shadow: var(--kls-glass-shadow-strong);
 	transition:
 		background-color var(--kls-glass-transition),
 		border-color var(--kls-glass-transition),
@@ -530,20 +1013,36 @@ If your plugin does not need CSS, delete this file.
 }
 
 .kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):focus-visible,
-.kls-glass-scope .kls-glass-strong:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):focus-visible {
+.kls-glass-scope .kls-glass-strong:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):focus-visible,
+.kls-glass-scope .kls-pill-button:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):focus-visible {
 	outline: 2px solid var(--kls-glass-focus);
 	outline-offset: 2px;
 }
 
+.kls-glass-scope .kls-pill-button:disabled,
+.kls-glass-scope .kls-pill-button[aria-disabled="true"],
+.kls-glass-scope .kls-pill-button[aria-busy="true"] {
+	opacity: var(--disabled-opacity, 0.55);
+	cursor: not-allowed;
+}
+
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
 	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]) {
-		background: color-mix(in srgb, var(--interactive-normal) 82%, transparent);
+		background: linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--background-primary) 64%, transparent),
+			color-mix(in srgb, var(--interactive-normal) 88%, transparent)
+		);
 		-webkit-backdrop-filter: blur(var(--kls-glass-blur)) saturate(1.05);
 		backdrop-filter: blur(var(--kls-glass-blur)) saturate(1.05);
 	}
 
 	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):hover {
-		background: color-mix(in srgb, var(--interactive-hover) 88%, transparent);
+		background: linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--background-secondary) 70%, transparent),
+			color-mix(in srgb, var(--interactive-hover) 92%, transparent)
+		);
 	}
 }
 
@@ -560,6 +1059,34 @@ If your plugin does not need CSS, delete this file.
 }
 
 @media (prefers-reduced-transparency: reduce) {
+	.kls-glass-scope .kls-book-card {
+		background: var(--background-secondary);
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
+
+	.kls-first-sync-modal .kls-review-warning-callout {
+		background: var(--background-primary-alt, var(--background-secondary));
+		color: var(--text-muted);
+		box-shadow: none;
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
+
+	.kls-first-sync-modal .kls-book-search-input {
+		--kls-book-search-shadow: none;
+		background: var(--background-secondary);
+		color: var(--text-normal);
+		box-shadow: none;
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
+
+	.kls-first-sync-modal .kls-book-search-input::placeholder {
+		color: var(--text-muted);
+		opacity: 1;
+	}
+
 	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]) {
 		background: var(--kls-glass-surface);
 		-webkit-backdrop-filter: none;
@@ -572,6 +1099,44 @@ If your plugin does not need CSS, delete this file.
 }
 
 @media (forced-colors: active) {
+	.kls-glass-scope .kls-book-card {
+		border-color: CanvasText;
+		background: Canvas;
+		box-shadow: none;
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
+
+	.kls-first-sync-modal .kls-review-warning-callout {
+		border-color: CanvasText;
+		background: Canvas;
+		color: CanvasText;
+		box-shadow: none;
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
+
+	.kls-first-sync-modal .kls-book-search-input {
+		--kls-book-search-shadow: none;
+		border-color: CanvasText;
+		background: Canvas;
+		color: CanvasText;
+		box-shadow: none;
+		caret-color: CanvasText;
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
+
+	.kls-first-sync-modal .kls-book-search-input::placeholder {
+		color: GrayText;
+		opacity: 1;
+	}
+
+	.kls-first-sync-modal .kls-book-search-input:focus-visible {
+		border-color: Highlight;
+		outline-color: Highlight;
+	}
+
 	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]),
 	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):hover,
 	.kls-glass-scope .kls-glass-subtle:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):active,
@@ -590,6 +1155,7 @@ If your plugin does not need CSS, delete this file.
 	.kls-glass-scope .kls-glass-strong:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]):focus-visible {
 		outline-color: Highlight;
 	}
+
 }
 
 .kls-book-status {
@@ -602,11 +1168,6 @@ If your plugin does not need CSS, delete this file.
 	margin-top: 0.75em;
 	font-size: var(--font-ui-smaller);
 	line-height: 1.3;
-}
-
-.kls-book-status-label {
-	font-weight: 700;
-	color: var(--text-muted);
 }
 
 .kls-status-badge {
@@ -626,64 +1187,113 @@ If your plugin does not need CSS, delete this file.
 	overflow-wrap: anywhere;
 }
 
-.kls-book-status-ready-to-import .kls-status-badge,
-.kls-status-badge-ready-to-import,
-.kls-selected-decision-value-import {
-	color: var(--text-accent);
-	background: var(--background-modifier-hover);
-	border-color: var(--interactive-accent);
-}
-
-.kls-book-status-ignored .kls-status-badge,
-.kls-status-badge-ignored,
-.kls-selected-decision-value-ignore {
-	color: var(--text-muted);
-	background: var(--background-secondary);
-	border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
-}
-
-.kls-book-status-skipped-this-sync .kls-status-badge,
-.kls-status-badge-skipped-this-sync,
-.kls-selected-decision-value-skip {
+.kls-book-status-needs-review .kls-status-badge {
+	border-color: color-mix(in srgb, var(--color-orange, var(--text-warning)) 42%, var(--background-modifier-border));
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--color-orange, var(--text-warning)) 16%, var(--background-secondary)) 0%,
+		color-mix(in srgb, var(--color-orange, var(--text-warning)) 9%, var(--background-secondary)) 100%
+	);
 	color: var(--text-warning, var(--text-normal));
-	background: var(--background-modifier-warning, var(--background-secondary));
-	border-color: var(--background-modifier-warning, var(--background-modifier-border));
+	box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-orange, var(--text-warning)) 18%, transparent);
+	-webkit-backdrop-filter: blur(8px) saturate(1.04);
+	backdrop-filter: blur(8px) saturate(1.04);
 }
 
-.kls-book-status-mixed-decisions .kls-status-badge,
-.kls-status-badge-mixed-decisions {
+.kls-book-status-import .kls-status-badge {
+	border-color: var(--kls-decision-import-border);
+	background: var(--kls-decision-import-surface);
+	color: var(--kls-decision-import-text);
+	box-shadow: var(--kls-decision-import-shadow);
+}
+
+.kls-book-status-ignore .kls-status-badge {
+	border-color: var(--kls-decision-ignore-border);
+	background: var(--kls-decision-ignore-surface);
+	color: var(--kls-decision-ignore-text);
+	box-shadow: var(--kls-decision-ignore-shadow);
+}
+
+.kls-book-status-skip .kls-status-badge {
+	border-color: var(--kls-decision-skip-border);
+	background: var(--kls-decision-skip-surface);
+	color: var(--kls-decision-skip-text);
+	box-shadow: var(--kls-decision-skip-shadow);
+}
+
+.kls-book-status-reviewed .kls-status-badge {
 	color: var(--text-normal);
 	background: var(--background-secondary);
 	border-color: var(--text-muted);
 }
 
-.kls-book-status-needs-review .kls-status-badge,
-.kls-status-badge-needs-review {
-	color: var(--text-warning, var(--text-normal));
-	background: var(--background-modifier-warning, var(--background-secondary));
-	border-color: var(--background-modifier-warning, var(--background-modifier-border));
+@media (prefers-reduced-transparency: reduce) {
+	.kls-book-status-needs-review .kls-status-badge {
+		background: var(--background-modifier-warning, var(--background-secondary));
+		box-shadow: none;
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
 }
 
-.kls-selected-decision {
-	display: inline-flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 0.4em;
-	max-width: 100%;
-	min-width: 0;
-	margin-top: 0.6em;
-	font-size: var(--font-ui-smaller);
-	line-height: 1.3;
-}
+@media (forced-colors: active) {
+	.kls-book-status-needs-review .kls-status-badge,
+	.kls-book-status-reviewed .kls-status-badge {
+		border-color: ButtonText;
+		background: ButtonFace;
+		color: ButtonText;
+		box-shadow: none;
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
 
-.kls-selected-decision-label {
-	font-weight: 700;
-	color: var(--text-muted);
+	.kls-book-status-import .kls-status-badge,
+	.kls-book-status-ignore .kls-status-badge,
+	.kls-book-status-skip .kls-status-badge {
+		border-color: Highlight;
+		background: Highlight;
+		color: HighlightText;
+		box-shadow: 0 0 0 1px Highlight;
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
 }
 
 .kls-decision-button-active {
-	box-shadow: 0 0 0 1px var(--interactive-accent);
 	font-weight: 700;
+}
+
+.kls-glass-scope .kls-decision-button-active-import,
+.kls-glass-scope .kls-decision-button-active-import:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]) {
+	border-color: var(--kls-decision-import-border);
+	background: var(--kls-decision-import-surface);
+	color: var(--kls-decision-import-text);
+	box-shadow: var(--kls-decision-import-shadow);
+}
+
+.kls-glass-scope .kls-decision-button-active-ignore,
+.kls-glass-scope .kls-decision-button-active-ignore:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]) {
+	border-color: var(--kls-decision-ignore-border);
+	background: var(--kls-decision-ignore-surface);
+	color: var(--kls-decision-ignore-text);
+	box-shadow: var(--kls-decision-ignore-shadow);
+}
+
+.kls-glass-scope .kls-decision-button-active-skip,
+.kls-glass-scope .kls-decision-button-active-skip:not(:disabled):not([aria-disabled="true"]):not([aria-busy="true"]) {
+	border-color: var(--kls-decision-skip-border);
+	background: var(--kls-decision-skip-surface);
+	color: var(--kls-decision-skip-text);
+	box-shadow: var(--kls-decision-skip-shadow);
+}
+
+@media (forced-colors: active) {
+	.kls-glass-scope .kls-decision-button-active {
+		border-color: Highlight;
+		background: Highlight;
+		color: HighlightText;
+		box-shadow: 0 0 0 1px Highlight;
+	}
 }
 
 .kls-sticky-actions {
