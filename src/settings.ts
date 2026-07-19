@@ -41,7 +41,7 @@ export function migrateSettings(loadedData: Partial<KindleSyncSettings> | null):
 	const hasSavedData = loadedData !== null;
 	const hasCompletedFirstSync = hasSavedData && "hasCompletedFirstSync" in loadedData
 		? loadedData.hasCompletedFirstSync ?? false
-		: hasSavedData;
+		: hasSavedData && containsPersistedSyncHistoryFields(loadedData);
 
 	return {
 		...DEFAULT_SETTINGS,
@@ -50,4 +50,10 @@ export function migrateSettings(loadedData: Partial<KindleSyncSettings> | null):
 		ignoredHighlights: loadedData?.ignoredHighlights ?? [],
 		importedHighlights: loadedData?.importedHighlights ?? [],
 	};
+}
+
+function containsPersistedSyncHistoryFields(loadedData: Partial<KindleSyncSettings>): boolean {
+	// Releases through 0.1.2 could save ordinary settings without any sync history.
+	// Field presence distinguishes that shape from later state even when valid history arrays are empty.
+	return "importedHighlights" in loadedData || "ignoredHighlights" in loadedData;
 }

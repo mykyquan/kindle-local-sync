@@ -8,12 +8,19 @@ describe("settings migration", () => {
 		expect(settings.hasCompletedFirstSync).toBe(false);
 	});
 
-	it("migrates existing saved data without hasCompletedFirstSync to true", async () => {
+	it("recognizes authentic 0.1.2 settings-only data as incomplete while preserving every setting", () => {
 		const settings = migrateSettings({
 			clippingsPath: "/Volumes/Kindle/documents/My Clippings.txt",
+			highlightsFolder: "Legacy Kindle Notes",
+			strictLocalOnly: true,
 		});
 
-		expect(settings.hasCompletedFirstSync).toBe(true);
+		expect(settings).toMatchObject({
+			clippingsPath: "/Volumes/Kindle/documents/My Clippings.txt",
+			highlightsFolder: "Legacy Kindle Notes",
+			strictLocalOnly: true,
+			hasCompletedFirstSync: false,
+		});
 	});
 
 	it("initializes missing importedHighlights as an empty array", async () => {
@@ -36,6 +43,49 @@ describe("settings migration", () => {
 		const settings = migrateSettings({ ignoredHighlights });
 
 		expect(settings.ignoredHighlights).toEqual(ignoredHighlights);
+	});
+
+	it("does not confuse explicit current incomplete state with settings-only legacy data", () => {
+		const settings = migrateSettings({
+			hasCompletedFirstSync: false,
+			importedHighlights: [],
+			ignoredHighlights: [],
+		});
+
+		expect(settings.hasCompletedFirstSync).toBe(false);
+	});
+
+	it("keeps a current completed state trusted when both history arrays are empty", () => {
+		const settings = migrateSettings({
+			hasCompletedFirstSync: true,
+			importedHighlights: [],
+			ignoredHighlights: [],
+		});
+
+		expect(settings.hasCompletedFirstSync).toBe(true);
+	});
+
+	it("preserves backward compatibility for saved identity fields that predate the completion flag", () => {
+		const settings = migrateSettings({
+			importedHighlights: [],
+			ignoredHighlights: [],
+		});
+
+		expect(settings.hasCompletedFirstSync).toBe(true);
+	});
+
+	it.each([
+		[{ clippingsPath: "/Volumes/Kindle/documents/My Clippings.txt" }],
+		[{ highlightsFolder: "Older Kindle Notes" }],
+		[{ strictLocalOnly: false }],
+		[{ skipIgnoredHighlights: false }],
+	])("handles a partial historical settings-only object safely", (loadedData) => {
+		const settings = migrateSettings(loadedData);
+
+		expect(settings).toMatchObject(loadedData);
+		expect(settings.hasCompletedFirstSync).toBe(false);
+		expect(settings.importedHighlights).toEqual([]);
+		expect(settings.ignoredHighlights).toEqual([]);
 	});
 
 	it("preserves legacy authorless imported and ignored records byte-for-byte and in order", () => {
