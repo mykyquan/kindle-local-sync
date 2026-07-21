@@ -46,6 +46,13 @@ Primary orchestration: [`src/main.ts`](../src/main.ts), especially `syncHighligh
 | Component | Responsibility |
 | --- | --- |
 | [`src/main.ts`](../src/main.ts) | Orchestrates detection, parsing, user-state routing, review completion, writer validation, verified persistence, reconnect, Ignore cleanup, and summary creation. |
+| [`src/durability/Evidence.ts`](../src/durability/Evidence.ts) | Defines canonical, strictly validated durability evidence and deterministic evidence filenames/digests. |
+| [`src/durability/EvidenceStore.ts`](../src/durability/EvidenceStore.ts) | Creates immutable recovery journals and vault evidence with exclusive creation and read-back verification. |
+| [`src/durability/Identity.ts`](../src/durability/Identity.ts) | Resolves profile, origin, and vault identities and rejects missing, corrupt, or conflicting identity evidence. |
+| [`src/durability/RecoveryStorage.ts`](../src/durability/RecoveryStorage.ts) | Selects platform recovery roots and enforces containment, symlink/junction, POSIX ownership/mode, filesystem-capacity, and evidence-size limits. |
+| [`src/durability/RuntimeCapabilities.ts`](../src/durability/RuntimeCapabilities.ts) | Detects whether the runtime exposes every filesystem, vault-adapter, read-back, `statfs`, and user-data prerequisite required for safe durability work. |
+| [`src/durability/StartupEvidence.ts`](../src/durability/StartupEvidence.ts) | Classifies startup evidence and plans completion-receipt retention without deleting evidence required by visible pending work. |
+| [`src/durability/Foundation.ts`](../src/durability/Foundation.ts) | Scans only identity-scoped evidence, combines capability and startup classification results, and returns the fail-closed write decision used by `main.ts`. |
 | [`src/parser/parseClippings.ts`](../src/parser/parseClippings.ts) | Parses Kindle blocks into `KindleHighlight`; skips bookmarks, empty content, and malformed blocks. |
 | [`src/FirstSyncPreviewModal.ts`](../src/FirstSyncPreviewModal.ts) | First-sync and incremental-review choices, book search/filtering, bulk precedence, unsaved-choice guard, completion retry. |
 | [`src/ExistingNotesWithoutDataModal.ts`](../src/ExistingNotesWithoutDataModal.ts) | Offers `Continue with existing notes` and in-place retry when managed notes exist without trusted state. |
@@ -101,17 +108,49 @@ The relationship is intentionally not a two-way mirror. Absence from `My Clippin
 
 ## Sync lifecycle
 
-1. `syncHighlights()` checks whether trusted state exists and whether valid managed-note evidence requires reconnect.
-2. `readDetectedHighlights()` detects the local path, reads UTF-8 text, parses clippings, and stops with a user notice when the file or usable content is missing.
-3. `CurrentClippingIdentityIndex` is built from the complete current input so legacy authorless records are resolved conservatively.
-4. Highlights are grouped by exact `(bookTitle, author)`.
-5. The plugin routes to first review, reconnect, incremental review, or automatic sync.
-6. Reviewed Import choices and automatic imported history are combined by composite identity. Ignore and Skip are not included in ordinary output.
-7. `writeBookNotesToVault()` returns ordered per-book `created`, `updated`, `confirmed`, or `protected` outcomes.
-8. `validateAndPartitionVaultWriteSummary()` validates the entire result and partitions safely completed versus protected highlights.
-9. High-risk settings are proposed from the latest confirmed live state, JSON-normalized, saved, loaded again, and compared canonically. Live state changes only after an exact read-back match.
-10. Persisted Ignore decisions are followed by a separate best-effort exact-block cleanup.
-11. `SyncSummaryModal` reports confirmed counts and any recovery work.
+1. `onload()` inspects runtime capabilities and identity-scoped recovery evidence. Initialization fails closed; write-capable commands are registered only when the foundation is safe.
+2. `syncHighlights()` performs a fresh durability check, then checks whether trusted state exists and whether valid managed-note evidence requires reconnect.
+3. `readDetectedHighlights()` detects the local path, reads UTF-8 text, parses clippings, and stops with a user notice when the file or usable content is missing.
+4. `CurrentClippingIdentityIndex` is built from the complete current input so legacy authorless records are resolved conservatively.
+5. Highlights are grouped by exact `(bookTitle, author)`.
+6. The plugin routes to first review, reconnect, incremental review, or automatic sync.
+7. Reviewed Import choices and automatic imported history are combined by composite identity. Ignore and Skip are not included in ordinary output.
+8. Durability evidence is rescanned immediately before `writeBookNotesToVault()`; unsafe or unavailable evidence blocks the call rather than falling back to the legacy writer.
+9. `writeBookNotesToVault()` returns ordered per-book `created`, `updated`, `confirmed`, or `protected` outcomes.
+10. `validateAndPartitionVaultWriteSummary()` validates the entire result and partitions safely completed versus protected highlights.
+11. High-risk settings are proposed from the latest confirmed live state and queued. Durability evidence is rescanned immediately before `saveData()`, after which the existing load-and-compare verification runs. Live state changes only after an exact read-back match.
+12. Persisted Ignore decisions are followed by a separate exact-block cleanup. Durability evidence is rescanned immediately before that cleanup can mutate Markdown.
+13. `SyncSummaryModal` reports confirmed counts and any recovery work.
+
+## Gate 2.3 durability foundation
+
+Gate 2.3 establishes a fail-closed prerequisite layer around existing writers. It does not yet replace those writers with a cross-resource transaction coordinator.
+
+### Evidence and storage
+
+- Evidence uses canonical JSON, exact schemas, normalized identifiers and timestamps, deterministic SHA-256 digests, strict filename/body agreement, and rejection of unknown or non-canonical input.
+- Immutable evidence creation uses exclusive file creation, file sync, read-back verification, and parent-directory sync where supported. Existing evidence is never overwritten.
+- Recovery reads are individually and cumulatively bounded. Paths must remain inside their canonical root; symlinks, junction-like escapes, non-regular files, unsafe POSIX ownership/modes, insufficient filesystem capacity, unsupported platform roots, and unavailable `statfs` fail closed.
+
+### Identity-isolated startup discovery
+
+Profile identity selects one profile subtree, origin identity selects one origin subtree, and vault identity selects one vault subtree. Journal discovery occurs only after all three identities resolve uniquely. A missing identity does not broaden discovery into unrelated profiles, origins, vaults, or user directories. Evidence for another vault cannot authorize or block work for the current vault unless it appears as a conflict inside the current identity scope.
+
+`inspectDurabilityFoundation()` combines capability detection, bounded evidence discovery, identity resolution, startup classification, and receipt-retention capacity. Completion receipts remain protected while matching pending work is visible; reaching the retention limit blocks new transactions instead of deleting still-required evidence.
+
+### Write-boundary gating
+
+`main.ts` treats initialization as unsafe until foundation inspection completes. Writes attempted before `onload()`, while inspection is pending, or after failed/unsafe inspection throw `DurabilityWriteBlockedError`. Safe no-evidence startup retains the existing write-capable commands and behavior.
+
+Safety is refreshed at the last available boundary before each current writer category:
+
+- immediately before the Markdown note writer;
+- inside the serialized settings queue, immediately before `saveData()`;
+- immediately before existing-note Ignore cleanup.
+
+These checks prevent stale safe evidence from authorizing a later write. They do not make the note and settings operations atomic and do not execute recovery.
+
+Regression coverage in [`src/main.durability-gating.test.ts`](../src/main.durability-gating.test.ts) directly verifies blocked writes before and during pending `onload()`, a queued settings write whose evidence becomes unsafe, and cleanup whose evidence becomes unsafe at its final boundary. The four-test direct selection passed at the Gate 2.3 checkpoint.
 
 ## Behavior matrix
 
@@ -282,7 +321,7 @@ Tests: [`src/sync/IgnoredHighlightCleanup.test.ts`](../src/sync/IgnoredHighlight
 6. normalize and compare complete canonical JSON, ignoring object key order but preserving arrays and values;
 7. update live settings and trusted-state flags only on exact match.
 
-This exists because `saveData()` promise fulfillment alone does not prove that `data.json` was physically updated. The transaction does not roll back a note write that happened before settings verification; retry paths and idempotent writer behavior contain that risk.
+This exists because `saveData()` promise fulfillment alone does not prove that `data.json` was physically updated. Despite the historical section name, this is a serialized settings persistence boundary, not a Markdown-note/`data.json` transaction coordinator. It does not roll back a note write that happened before settings verification; retry paths and idempotent writer behavior contain that risk.
 
 Tests: the persistence block in [`src/main.sync-review.test.ts`](../src/main.sync-review.test.ts) and [`src/main.test.ts`](../src/main.test.ts).
 
@@ -376,8 +415,16 @@ Runtime source imports only local parsing, filesystem/vault, settings, and Obsid
 10. Runtime writer results are validated completely before downstream trust.
 11. High-risk live settings change only after durable full-state read-back matches.
 12. Errors must not claim success or unchanged physical state when the result is uncertain.
+13. Runtime capability or startup-evidence uncertainty blocks every current write path without a legacy-writer fallback.
+14. A safe result is refreshed immediately before note writes, queued `data.json` writes, and existing-note cleanup; an earlier safe result is not sufficient.
 
 ## Known limitations and blockers
+
+### High: no cross-resource durability transaction yet
+
+Gate 2.3 supplies canonical evidence, secure discovery, startup classification, and fail-closed write gating. It does not yet integrate Markdown-note and `data.json` writes into one transaction, provide atomic cross-resource commit, or execute production recovery. The checkpoint is therefore not a complete durability solution and is not release-ready by itself.
+
+Gate 2.4 is planned to design and implement that transaction integration, including explicit failure ordering, recovery behavior, idempotence, and crash/restart testing. Gate 2.4 has not been implemented.
 
 ### High: same-book 32-bit clipping-ID collision
 
@@ -418,6 +465,9 @@ Automated tests cover DOM/state contracts extensively, but real Obsidian themes,
 | Identity, duplicates, legacy records | [`src/sync/HighlightIdentity.ts`](../src/sync/HighlightIdentity.ts), `dedupeClippings()`, [`src/settings.ts`](../src/settings.ts) | identity, classifier, render, settings, lookup, cleanup, writer, and orchestration suites |
 | Writer-result validation | [`src/sync/VaultWriteContract.ts`](../src/sync/VaultWriteContract.ts) | [`src/sync/VaultWriteContract.test.ts`](../src/sync/VaultWriteContract.test.ts), invalid-contract integration tests |
 | Verified persistence and retries | `persistSettingsMutation()` and recovery orchestration in [`src/main.ts`](../src/main.ts) | persistence blocks in [`src/main.sync-review.test.ts`](../src/main.sync-review.test.ts) and [`src/main.test.ts`](../src/main.test.ts) |
+| Durability evidence, secure storage, and identity isolation | [`src/durability/Evidence.ts`](../src/durability/Evidence.ts), [`src/durability/EvidenceStore.ts`](../src/durability/EvidenceStore.ts), [`src/durability/Identity.ts`](../src/durability/Identity.ts), [`src/durability/RecoveryStorage.ts`](../src/durability/RecoveryStorage.ts) | corresponding durability unit suites |
+| Startup classification and foundation scanning | [`src/durability/StartupEvidence.ts`](../src/durability/StartupEvidence.ts), [`src/durability/Foundation.ts`](../src/durability/Foundation.ts), [`src/durability/RuntimeCapabilities.ts`](../src/durability/RuntimeCapabilities.ts) | corresponding durability unit suites and [`src/main.durability-gating.test.ts`](../src/main.durability-gating.test.ts) |
+| Final write-boundary durability gates | `assertDurabilityWritesAllowed()`, `persistSettingsMutation()`, `importHighlights()`, and `cleanupIgnoredHighlightBlocks()` in [`src/main.ts`](../src/main.ts) | [`src/main.durability-gating.test.ts`](../src/main.durability-gating.test.ts) plus compatibility suites |
 | Local-only behavior | local-only runtime source scan; [`src/sync/ClippingsReader.ts`](../src/sync/ClippingsReader.ts) | No dedicated network-prohibition test; parser/reader/writer tests exercise local paths. |
 
 ## Release verification implications
