@@ -25,8 +25,13 @@ const mocks = vi.hoisted(() => {
 		firstSyncPreviewOptions: [] as Array<{ title?: string } | undefined>,
 		writeBookNotesToVault: vi.fn(),
 		highlightExistsInNote: vi.fn(),
+		inspectDurabilityFoundation: vi.fn(),
 	};
 });
+
+vi.mock("./durability/Foundation", () => ({
+	inspectDurabilityFoundation: mocks.inspectDurabilityFoundation,
+}));
 
 vi.mock("./sync/KindleDetector", () => ({
 	detectClippingsPath: mocks.detectClippingsPath,
@@ -97,11 +102,12 @@ beforeEach(() => {
 		}],
 	});
 	mocks.highlightExistsInNote.mockResolvedValue(true);
+	mocks.inspectDurabilityFoundation.mockResolvedValue(createSafeFoundation());
 });
 
 describe("existing notes without data.json", () => {
 	it("still opens reconnect after the real settings-save path creates config-only data", async () => {
-		const plugin = createPlugin(createVaultWithExistingNotes());
+		const plugin = await createPlugin(createVaultWithExistingNotes());
 
 		plugin.settings.clippingsPath = "/Users/test/QA Input/My Clippings.txt";
 		await plugin.saveSettings();
@@ -113,7 +119,7 @@ describe("existing notes without data.json", () => {
 	});
 
 	it("Continue as existing vault saves hasCompletedFirstSync true", async () => {
-		const plugin = createPlugin(createVaultWithExistingNotes());
+		const plugin = await createPlugin(createVaultWithExistingNotes());
 		const saveCalls = captureSaveCalls(plugin);
 
 		await plugin.continueExistingNotesWithoutDataSync();
@@ -124,7 +130,7 @@ describe("existing notes without data.json", () => {
 	});
 
 	it("Continue as existing vault records matched existing highlights as trusted imports", async () => {
-		const plugin = createPlugin(createVaultWithExistingNotes());
+		const plugin = await createPlugin(createVaultWithExistingNotes());
 		const saveCalls = captureSaveCalls(plugin);
 
 		await plugin.continueExistingNotesWithoutDataSync();
@@ -138,7 +144,7 @@ describe("existing notes without data.json", () => {
 	});
 
 	it("internal review-all method keeps hasCompletedFirstSync false and opens full review", async () => {
-		const plugin = createPlugin(createVaultWithExistingNotes());
+		const plugin = await createPlugin(createVaultWithExistingNotes());
 		const saveCalls = captureSaveCalls(plugin);
 
 		await plugin.reviewExistingNotesWithoutDataAsFirstSync();
@@ -411,8 +417,25 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 	});
 });
 
-function createPlugin(vault: unknown): InstanceType<typeof KindleLocalSyncPlugin> {
-	return new KindleLocalSyncPlugin(new App(vault) as never, {} as never);
+async function createPlugin(vault: unknown): Promise<InstanceType<typeof KindleLocalSyncPlugin>> {
+	const plugin = new KindleLocalSyncPlugin(new App(vault) as never, {} as never);
+	await plugin.onload();
+	return plugin;
+}
+
+function createSafeFoundation() {
+	return {
+		writeAllowed: true,
+		message: "Kindle Local Sync recovery evidence is clear.",
+		capabilities: { supported: true, failures: [], platform: "darwin" },
+		classification: {
+			kind: "no-evidence",
+			status: "clear",
+			issues: [],
+			originInstanceIds: [],
+			completedTransactionIds: [],
+		},
+	};
 }
 
 function createModal(plugin: ReturnType<typeof createTransitionPlugin>) {

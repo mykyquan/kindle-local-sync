@@ -57,6 +57,11 @@ const mocks = vi.hoisted(() => ({
 	firstSyncPreviewInstances: [] as ReviewModalCapture[],
 	syncSummaryInstances: [] as SyncSummaryCapture[],
 	syncSummaryOpen: vi.fn(),
+	inspectDurabilityFoundation: vi.fn(),
+}));
+
+vi.mock("./durability/Foundation", () => ({
+	inspectDurabilityFoundation: mocks.inspectDurabilityFoundation,
 }));
 
 vi.mock("./sync/KindleDetector", () => ({
@@ -150,6 +155,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mocks.inspectDurabilityFoundation.mockResolvedValue(createSafeFoundation());
 	Notice.messages.length = 0;
 	mocks.existingNotesWithoutDataInstances.length = 0;
 	mocks.firstSyncPreviewInstances.length = 0;
@@ -2266,8 +2272,23 @@ async function createPlugin(
 	const plugin = new KindleLocalSyncPlugin(new App() as never, {} as never);
 
 	(plugin as unknown as { setLoadedData(data: unknown): void }).setLoadedData(loadedData);
-	await plugin.loadSettings();
+	await plugin.onload();
 	return plugin;
+}
+
+function createSafeFoundation() {
+	return {
+		writeAllowed: true,
+		message: "Kindle Local Sync recovery evidence is clear.",
+		capabilities: { supported: true, failures: [], platform: "darwin" },
+		classification: {
+			kind: "no-evidence",
+			status: "clear",
+			issues: [],
+			originInstanceIds: [],
+			completedTransactionIds: [],
+		},
+	};
 }
 
 interface PersistenceControl {
@@ -2445,15 +2466,7 @@ function createDeferred<T>(): {
 }
 
 async function waitForMockCall(mock: { mock: { calls: unknown[][] } }): Promise<void> {
-	for (let attempt = 0; attempt < 20; attempt += 1) {
-		if (mock.mock.calls.length > 0) {
-			return;
-		}
-
-		await Promise.resolve();
-	}
-
-	throw new Error("Expected mock to be called.");
+	await vi.waitFor(() => expect(mock.mock.calls.length).toBeGreaterThan(0));
 }
 
 function createHighlight(overrides: Partial<KindleHighlight> = {}): KindleHighlight {

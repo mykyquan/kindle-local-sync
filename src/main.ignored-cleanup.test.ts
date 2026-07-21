@@ -13,6 +13,11 @@ import { SyncSummaryHighlightItem } from "./SyncSummaryTypes";
 const mocks = vi.hoisted(() => ({
 	removeIgnoredHighlightBlocksFromExistingNotes: vi.fn(),
 	writeBookNotesToVault: vi.fn(),
+	inspectDurabilityFoundation: vi.fn(),
+}));
+
+vi.mock("./durability/Foundation", () => ({
+	inspectDurabilityFoundation: mocks.inspectDurabilityFoundation,
 }));
 
 vi.mock("./sync/IgnoredHighlightCleanup", () => ({
@@ -36,6 +41,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mocks.inspectDurabilityFoundation.mockResolvedValue(createSafeFoundation());
 	mocks.writeBookNotesToVault.mockResolvedValue({
 		books: 0,
 		filesCreated: 0,
@@ -56,7 +62,7 @@ beforeEach(() => {
 
 describe("ignored highlight cleanup triggers", () => {
 	it("persists an explicit Ignore and returns a blocked non-removal outcome", async () => {
-		const plugin = createPlugin();
+		const plugin = await createPlugin();
 		const highlight = createHighlight();
 		const target = {
 			bookTitle: highlight.bookTitle,
@@ -103,7 +109,7 @@ describe("ignored highlight cleanup triggers", () => {
 	});
 
 	it("keeps the first-sync summary available when cleanup rejects after Ignore persistence", async () => {
-		const plugin = createPlugin();
+		const plugin = await createPlugin();
 		const ignoredHighlight = createHighlight();
 		const secondIgnoredHighlight = createHighlight({
 			bookTitle: "The Paper Constellation",
@@ -178,7 +184,7 @@ describe("ignored highlight cleanup triggers", () => {
 	});
 
 	it("keeps the reviewed-sync summary available when cleanup rejects after Ignore persistence", async () => {
-		const plugin = createPlugin();
+		const plugin = await createPlugin();
 		const ignoredHighlight = createHighlight();
 		const validDuplicate = createHighlight({
 			bookTitle: "Night Trains to Lumen Bay",
@@ -235,7 +241,7 @@ describe("ignored highlight cleanup triggers", () => {
 	});
 
 	it("First Sync Preview per-highlight Ignore triggers cleanup", async () => {
-		const plugin = createPlugin();
+		const plugin = await createPlugin();
 		const group = createBookGroup();
 		const modal = new FirstSyncPreviewModal(new App() as never, plugin as never, [group]);
 
@@ -263,7 +269,7 @@ describe("ignored highlight cleanup triggers", () => {
 	});
 
 	it("First Sync Preview Ignore All triggers cleanup", async () => {
-		const plugin = createPlugin();
+		const plugin = await createPlugin();
 		const group = createBookGroup();
 		const modal = new FirstSyncPreviewModal(new App() as never, plugin as never, [group]);
 
@@ -283,7 +289,7 @@ describe("ignored highlight cleanup triggers", () => {
 	});
 
 	it("Ignore All persists and cleans up only the selected book when real clipping IDs collide", async () => {
-		const plugin = createPlugin();
+		const plugin = await createPlugin();
 		const bookA = createCollisionBookGroup("Collision 1h0o65e 20hu");
 		const bookB = createCollisionBookGroup("Collision 1y0rlvz 2269");
 		const modal = new FirstSyncPreviewModal(new App() as never, plugin as never, [bookA, bookB]);
@@ -314,7 +320,7 @@ describe("ignored highlight cleanup triggers", () => {
 	});
 
 	it("Sync Summary Ignore Going Forward triggers cleanup", async () => {
-		const plugin = createPlugin();
+		const plugin = await createPlugin();
 		const sourceHighlight = createHighlight();
 		const highlight = createSummaryItem({
 			id: createClippingId(sourceHighlight),
@@ -354,7 +360,7 @@ describe("ignored highlight cleanup triggers", () => {
 	});
 
 	it("Sync Summary Ignore All Highlights triggers cleanup", async () => {
-		const plugin = createPlugin();
+		const plugin = await createPlugin();
 		const highlights = [
 			createSummaryItem({ id: "kls-one" }),
 			createSummaryItem({ id: "kls-two", textPreview: "Second highlight." }),
@@ -381,7 +387,7 @@ describe("ignored highlight cleanup triggers", () => {
 	});
 
 	it("Sync Summary Ignore Going Forward triggers cleanup if applicable", async () => {
-		const plugin = createPlugin();
+		const plugin = await createPlugin();
 		const highlight = createHighlight();
 		const legacyRecord = {
 			id: createClippingId(highlight),
@@ -421,7 +427,7 @@ describe("ignored highlight cleanup triggers", () => {
 	});
 
 	it("retains a UI-safe blocked Missing Managed Ignore result for Phase 3A", async () => {
-		const plugin = createPlugin();
+		const plugin = await createPlugin();
 		const highlight = createHighlight();
 		const target = {
 			bookTitle: highlight.bookTitle,
@@ -467,8 +473,25 @@ describe("ignored highlight cleanup triggers", () => {
 	});
 });
 
-function createPlugin(): InstanceType<typeof KindleLocalSyncPlugin> {
-	return new KindleLocalSyncPlugin(new App() as never, {} as never);
+async function createPlugin(): Promise<InstanceType<typeof KindleLocalSyncPlugin>> {
+	const plugin = new KindleLocalSyncPlugin(new App() as never, {} as never);
+	await plugin.onload();
+	return plugin;
+}
+
+function createSafeFoundation() {
+	return {
+		writeAllowed: true,
+		message: "Kindle Local Sync recovery evidence is clear.",
+		capabilities: { supported: true, failures: [], platform: "darwin" },
+		classification: {
+			kind: "no-evidence",
+			status: "clear",
+			issues: [],
+			originInstanceIds: [],
+			completedTransactionIds: [],
+		},
+	};
 }
 
 function createSyncSummaryModal(

@@ -36,6 +36,11 @@ const mocks = vi.hoisted(() => ({
 	existingNotesModalInstances: [] as ExistingNotesModalCapture[],
 	reviewModalInstances: [] as ReviewModalCapture[],
 	syncSummaryOpen: vi.fn(),
+	inspectDurabilityFoundation: vi.fn(),
+}));
+
+vi.mock("./durability/Foundation", () => ({
+	inspectDurabilityFoundation: mocks.inspectDurabilityFoundation,
 }));
 
 vi.mock("./sync/KindleDetector", () => ({
@@ -111,6 +116,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mocks.inspectDurabilityFoundation.mockResolvedValue(createSafeFoundation());
 	mocks.existingNotesModalInstances.length = 0;
 	mocks.reviewModalInstances.length = 0;
 	mocks.detectClippingsPath.mockResolvedValue("/Volumes/Kindle/documents/My Clippings.txt");
@@ -477,8 +483,23 @@ async function createPlugin(
 	const plugin = new KindleLocalSyncPlugin(new App(vault) as never, {} as never);
 
 	(plugin as unknown as { setLoadedData(data: unknown): void }).setLoadedData(loadedData);
-	await plugin.loadSettings();
+	await plugin.onload();
 	return plugin;
+}
+
+function createSafeFoundation() {
+	return {
+		writeAllowed: true,
+		message: "Kindle Local Sync recovery evidence is clear.",
+		capabilities: { supported: true, failures: [], platform: "darwin" },
+		classification: {
+			kind: "no-evidence",
+			status: "clear",
+			issues: [],
+			originInstanceIds: [],
+			completedTransactionIds: [],
+		},
+	};
 }
 
 function createLegacyVault(

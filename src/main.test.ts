@@ -5,6 +5,12 @@ import { KindleHighlight } from "./parser/parseClippings";
 import { renderClippingMarkdown, SYNC_START_MARKER } from "./render/renderMarkdown";
 import { CurrentClippingIdentityIndex } from "./sync/HighlightIdentity";
 
+const durability = vi.hoisted(() => ({ inspect: vi.fn() }));
+
+vi.mock("./durability/Foundation", () => ({
+	inspectDurabilityFoundation: durability.inspect,
+}));
+
 let KindleLocalSyncPlugin: typeof import("./main").default;
 let SettingsPersistenceVerificationError: typeof import("./main").SettingsPersistenceVerificationError;
 
@@ -15,9 +21,15 @@ beforeAll(async () => {
 	SettingsPersistenceVerificationError = mainModule.SettingsPersistenceVerificationError;
 });
 
-function createPlugin(vault?: Vault): InstanceType<typeof KindleLocalSyncPlugin> {
-	return new KindleLocalSyncPlugin(new App(vault) as never, {} as never);
+async function createPlugin(vault?: Vault): Promise<InstanceType<typeof KindleLocalSyncPlugin>> {
+	const plugin = new KindleLocalSyncPlugin(new App(vault) as never, {} as never);
+	await plugin.onload();
+	return plugin;
 }
+
+beforeEach(() => {
+	durability.inspect.mockResolvedValue(createSafeFoundation());
+});
 
 describe("unignoreHighlight", () => {
 	beforeEach(() => {
@@ -25,7 +37,7 @@ describe("unignoreHighlight", () => {
 	});
 
 	it("removes the highlight with matching id from ignoredHighlights", async () => {
-		const plugin = createPlugin();
+		const plugin = await createPlugin();
 		plugin.settings.ignoredHighlights = [
 			createIgnoredHighlight("one"),
 			createIgnoredHighlight("two"),
@@ -37,7 +49,7 @@ describe("unignoreHighlight", () => {
 	});
 
 	it("does nothing if id is not in the list", async () => {
-		const plugin = createPlugin();
+		const plugin = await createPlugin();
 		const ignoredHighlights = [createIgnoredHighlight("one")];
 		plugin.settings.ignoredHighlights = ignoredHighlights;
 
@@ -47,7 +59,7 @@ describe("unignoreHighlight", () => {
 	});
 
 	it("persists the updated list after unignore", async () => {
-		const plugin = createPlugin();
+		const plugin = await createPlugin();
 		plugin.settings.ignoredHighlights = [createIgnoredHighlight("one")];
 
 		await plugin.unignoreHighlight(plugin.settings.ignoredHighlights[0]!);
@@ -58,7 +70,7 @@ describe("unignoreHighlight", () => {
 	});
 
 	it("keeps live ignored state unchanged when unignore is not durable", async () => {
-		const plugin = createPlugin();
+		const plugin = await createPlugin();
 		const originalHighlight = createIgnoredHighlight("one");
 		const liveSettings = plugin.settings;
 
@@ -78,7 +90,7 @@ describe("unignoreHighlight", () => {
 
 	it("keeps live ignored state unchanged when summary Ignore is not durable", async () => {
 		const highlight = createHighlight();
-		const plugin = createPlugin();
+		const plugin = await createPlugin();
 		const liveSettings = plugin.settings;
 
 		setLoadedData(plugin, plugin.settings);
@@ -123,7 +135,7 @@ describe("blocked explicit Ignore cleanup", () => {
 			read: vi.fn(async () => storedMarkdown),
 			modify,
 		} as unknown as Vault;
-		const plugin = createPlugin(vault);
+		const plugin = await createPlugin(vault);
 
 		const result = await plugin.ignoreHighlights(
 			[highlight],
@@ -158,6 +170,21 @@ function createIgnoredHighlight(id: string) {
 		title: "The Clockwork Orchard",
 		textPreview: `${id} preview`,
 		ignoredAt: "2099-07-07T00:00:00.000Z",
+	};
+}
+
+function createSafeFoundation() {
+	return {
+		writeAllowed: true,
+		message: "Kindle Local Sync recovery evidence is clear.",
+		capabilities: { supported: true, failures: [], platform: "darwin" },
+		classification: {
+			kind: "no-evidence",
+			status: "clear",
+			issues: [],
+			originInstanceIds: [],
+			completedTransactionIds: [],
+		},
 	};
 }
 

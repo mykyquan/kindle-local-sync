@@ -270,6 +270,8 @@ export class Plugin {
 	private persistSaveData = true;
 	savedData: unknown = null;
 	commands: unknown[] = [];
+	ribbonIcons: unknown[] = [];
+	settingTabs: unknown[] = [];
 
 	constructor(app = new App()) {
 		this.app = app;
@@ -321,14 +323,16 @@ export class Plugin {
 		this.persistSaveData = persist;
 	}
 
-	addRibbonIcon(): void {
+	addRibbonIcon(icon: string, title: string, callback: () => void): void {
+		this.ribbonIcons.push({ icon, title, callback });
 	}
 
 	addCommand(command: unknown): void {
 		this.commands.push(command);
 	}
 
-	addSettingTab(): void {
+	addSettingTab(settingTab: unknown): void {
+		this.settingTabs.push(settingTab);
 	}
 }
 

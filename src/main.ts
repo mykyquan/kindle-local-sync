@@ -41,6 +41,10 @@ import {
 	IgnoreResultsPresentation,
 } from "./SyncOutcomePresentation";
 import { createSyncSummaryHighlightItem, SyncSummaryHighlightItem } from "./SyncSummaryTypes";
+import {
+	DurabilityFoundationResult,
+	inspectDurabilityFoundation,
+} from "./durability/Foundation";
 
 export interface HighlightImportResult {
 	writeSummary: VaultWriteSummary;
@@ -80,14 +84,45 @@ export class SettingsPersistenceVerificationError extends Error {
 	}
 }
 
+export class DurabilityWriteBlockedError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "DurabilityWriteBlockedError";
+	}
+}
+
+const DEFAULT_DURABILITY_BLOCKED_MESSAGE =
+	"Kindle Local Sync could not verify that recovery is safe. No notes or settings were changed.";
+
 export default class KindleLocalSyncPlugin extends Plugin {
 	settings: KindleSyncSettings = migrateSettings(null);
 	private hasSavedPluginData = false;
 	private hasTrustedSyncState = false;
 	private settingsMutationQueue: Promise<void> = Promise.resolve();
+	private durabilityFoundationInitialized = false;
+	private durabilityFoundation: DurabilityFoundationResult | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
+		try {
+			this.durabilityFoundation = await inspectDurabilityFoundation(this.app.vault);
+		} catch (error) {
+			console.error("Failed to initialize Kindle Local Sync durability checks.", error);
+			this.durabilityFoundation = createFailedDurabilityFoundation();
+		} finally {
+			this.durabilityFoundationInitialized = true;
+		}
+		this.addSettingTab(new KindleSettingTab(this.app, this));
+
+		if (!this.durabilityFoundation.writeAllowed) {
+			this.addCommand({
+				id: "show-recovery-status",
+				name: "Show recovery status",
+				callback: () => new Notice(this.durabilityFoundation?.message ?? "Kindle Local Sync writes are disabled."),
+			});
+			new Notice(this.durabilityFoundation.message);
+			return;
+		}
 
 		this.addRibbonIcon("book-open", "Sync local kindle highlights", () => {
 			void this.syncHighlights();
@@ -107,7 +142,6 @@ export default class KindleLocalSyncPlugin extends Plugin {
 			callback: () => new IgnoredHighlightsModal(this.app, this).open(),
 		});
 
-		this.addSettingTab(new KindleSettingTab(this.app, this));
 	}
 
 	onunload(): void {
@@ -117,6 +151,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		let syncPhase = "detect";
 
 		try {
+			await this.assertDurabilityWritesAllowed();
 			if (!this.hasTrustedSyncState && await hasExistingHighlightNotes(this.app, this.settings.highlightsFolder)) {
 				new ExistingNotesWithoutDataModal(this.app, this).open();
 				return;
@@ -148,6 +183,10 @@ export default class KindleLocalSyncPlugin extends Plugin {
 
 			await this.syncExistingHighlights(highlights, bookGroups, identityIndex);
 		} catch (error) {
+			if (error instanceof DurabilityWriteBlockedError) {
+				new Notice(error.message);
+				return;
+			}
 			console.error(`Kindle sync failed during ${syncPhase}.`, error);
 			new Notice("Kindle sync wasn’t completed. Please try again.");
 		}
@@ -162,6 +201,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 	}
 
 	async saveSettings(): Promise<void> {
+		await this.assertDurabilityWritesAllowed();
 		const requestedSettings = this.cloneSettingsSnapshot(this.settings);
 
 		await this.persistSettingsMutation((currentSettings) => ({
@@ -179,6 +219,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		skippedThisSyncHighlights: SyncSummaryHighlightItem[],
 		identityIndex: CurrentClippingIdentityIndex
 	): Promise<SyncCompletionResult> {
+		await this.assertDurabilityWritesAllowed();
 		let importResult: HighlightImportResult;
 
 		try {
@@ -244,6 +285,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		classification: SyncClassification,
 		identityIndex: CurrentClippingIdentityIndex
 	): Promise<SyncCompletionResult> {
+		await this.assertDurabilityWritesAllowed();
 		const highlightsToWrite = combineHighlightsByIdentity(automaticHighlights, importHighlights);
 		let importResult: HighlightImportResult;
 
@@ -305,6 +347,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 	}
 
 	async continueExistingNotesWithoutDataSync(): Promise<boolean> {
+		await this.assertDurabilityWritesAllowed();
 		const highlights = await this.readDetectedHighlights();
 
 		if (!highlights) {
@@ -335,6 +378,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 	}
 
 	async reviewExistingNotesWithoutDataAsFirstSync(): Promise<void> {
+		await this.assertDurabilityWritesAllowed();
 		const highlights = await this.readDetectedHighlights();
 
 		if (!highlights) {
@@ -356,7 +400,10 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		persist = true,
 		explicitHighlights: KindleHighlight[] = highlights
 	): Promise<HighlightImportResult> {
+		await this.assertDurabilityWritesAllowed();
 		const bookGroups = groupHighlightsByBook(highlights);
+		// Evidence can change while rendering; re-check at the last boundary before the legacy note writer.
+		await this.assertDurabilityWritesAllowed();
 		const writerResult: unknown = await writeBookNotesToVault(
 			this.app.vault,
 			this.settings.highlightsFolder,
@@ -398,6 +445,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		highlights: KindleHighlight[],
 		identityIndex: CurrentClippingIdentityIndex
 	): Promise<IgnoreOperationResult> {
+		await this.assertDurabilityWritesAllowed();
 		await this.persistSettingsMutation((currentSettings) =>
 			this.createIgnoredSettingsSnapshot(currentSettings, highlights, identityIndex)
 		);
@@ -418,6 +466,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		highlight: SyncSummaryHighlightItem,
 		identityIndex: CurrentClippingIdentityIndex
 	): Promise<IgnoreOperationResult> {
+		await this.assertDurabilityWritesAllowed();
 		await this.persistSettingsMutation((currentSettings) =>
 			this.createIgnoredSummarySettingsSnapshot(currentSettings, [highlight], identityIndex)
 		);
@@ -432,6 +481,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 	}
 
 	async unignoreHighlight(highlight: IgnoredHighlight): Promise<void> {
+		await this.assertDurabilityWritesAllowed();
 		await this.persistSettingsMutation((currentSettings) =>
 			this.createUnignoredSettingsSnapshot(currentSettings, highlight)
 		);
@@ -527,11 +577,14 @@ export default class KindleLocalSyncPlugin extends Plugin {
 	private async persistSettingsMutation(
 		createProposedSettings: (currentSettings: KindleSyncSettings) => KindleSyncSettings
 	): Promise<KindleSyncSettings> {
+		await this.assertDurabilityWritesAllowed();
 		const operation = this.settingsMutationQueue.then(async () => {
 			const proposedSettings = normalizeProposedSettings(
 				createProposedSettings(this.settings)
 			);
 
+			// Queued mutations must not inherit an earlier safe result after evidence becomes unsafe.
+			await this.assertDurabilityWritesAllowed();
 			await this.saveData(proposedSettings);
 
 			let persistedData: unknown;
@@ -637,6 +690,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 	private async cleanupIgnoredHighlightBlocks(
 		targets: IgnoredHighlightCleanupTarget[]
 	): Promise<IgnoredHighlightCleanupSummary> {
+		await this.assertDurabilityWritesAllowed();
 		return removeIgnoredHighlightBlocksFromExistingNotes(
 			this.app.vault,
 			this.settings.highlightsFolder,
@@ -650,6 +704,9 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		try {
 			return await this.cleanupIgnoredHighlightBlocks(targets);
 		} catch (error) {
+			if (error instanceof DurabilityWriteBlockedError) {
+				throw error;
+			}
 			// The Ignore decision is already durable. An unexpected cleanup rejection must not hide its summary.
 			console.error("Failed to confirm existing-note cleanup after saving Ignore choices.", error);
 			return createUnconfirmedIgnoredHighlightCleanupSummary(targets);
@@ -764,6 +821,28 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		return trustedHighlights;
 	}
 
+	isDurabilityWriteBlocked(): boolean {
+		return !this.durabilityFoundationInitialized || this.durabilityFoundation?.writeAllowed !== true;
+	}
+
+	private async assertDurabilityWritesAllowed(): Promise<void> {
+		if (!this.durabilityFoundationInitialized || this.durabilityFoundation?.writeAllowed !== true) {
+			throw new DurabilityWriteBlockedError(
+				this.durabilityFoundation?.message ?? DEFAULT_DURABILITY_BLOCKED_MESSAGE
+			);
+		}
+		// Re-scan before legacy write paths until a later gate migrates them into the transaction coordinator.
+		try {
+			this.durabilityFoundation = await inspectDurabilityFoundation(this.app.vault);
+		} catch (error) {
+			console.error("Failed to refresh Kindle Local Sync durability checks.", error);
+			this.durabilityFoundation = createFailedDurabilityFoundation();
+		}
+		if (!this.durabilityFoundation.writeAllowed) {
+			throw new DurabilityWriteBlockedError(this.durabilityFoundation.message);
+		}
+	}
+
 	private getReviewedHighlightsForAutomaticSync(
 		highlights: KindleHighlight[],
 		classification: SyncClassification,
@@ -792,6 +871,18 @@ export default class KindleLocalSyncPlugin extends Plugin {
 	}
 }
 
+function createFailedDurabilityFoundation(): DurabilityFoundationResult {
+	return {
+		writeAllowed: false,
+		message: DEFAULT_DURABILITY_BLOCKED_MESSAGE,
+		capabilities: {
+			supported: false,
+			failures: ["recovery-root-unavailable"],
+			platform: "unknown",
+		},
+	};
+}
+
 class KindleSettingTab extends PluginSettingTab {
 	plugin: KindleLocalSyncPlugin;
 
@@ -807,6 +898,8 @@ class KindleSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl).setName("Sync").setHeading();
 
+		const writesDisabled = this.plugin.isDurabilityWriteBlocked();
+
 		new Setting(containerEl)
 			.setName("My clippings.txt path")
 			.setDesc(
@@ -814,6 +907,7 @@ class KindleSettingTab extends PluginSettingTab {
 			)
 			.addText((text) =>
 				text
+					.setDisabled(writesDisabled)
 					.setValue(this.plugin.settings.clippingsPath)
 					.onChange(async (value) => {
 						this.plugin.settings.clippingsPath = value.trim();
@@ -826,6 +920,7 @@ class KindleSettingTab extends PluginSettingTab {
 			.setDesc("The folder where synced kindle highlights will be stored.")
 			.addText((text) =>
 				text
+					.setDisabled(writesDisabled)
 					.setValue(this.plugin.settings.highlightsFolder)
 					.onChange(async (value) => {
 						this.plugin.settings.highlightsFolder = value.trim();
@@ -838,6 +933,7 @@ class KindleSettingTab extends PluginSettingTab {
 			.setDesc("Keep all sync behavior local-only, with no external services or network requests.")
 			.addToggle((toggle) =>
 				toggle
+					.setDisabled(writesDisabled)
 					.setValue(this.plugin.settings.strictLocalOnly)
 					.onChange(async (value) => {
 						this.plugin.settings.strictLocalOnly = value;
