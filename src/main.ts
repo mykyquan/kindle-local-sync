@@ -358,6 +358,24 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		persist = true,
 		explicitHighlights: KindleHighlight[] = highlights
 	): Promise<HighlightImportResult> {
+		if (highlights.length === 0) {
+			// A true no-op must not touch either the vault or settings persistence boundary.
+			return {
+				writeSummary: {
+					books: 0,
+					filesCreated: 0,
+					filesUpdated: 0,
+					filesUnchanged: 0,
+					filesProtected: 0,
+					highlightsRendered: 0,
+					duplicatesSkipped: 0,
+					bookOutcomes: [],
+				},
+				safelyCompletedHighlights: [],
+				protectedHighlights: [],
+			};
+		}
+
 		const bookGroups = groupHighlightsByBook(highlights);
 		const writerResult: unknown = await writeBookNotesToVault(
 			this.app.vault,

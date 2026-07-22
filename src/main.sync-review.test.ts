@@ -272,6 +272,42 @@ describe("sync review gate", () => {
 		expect(summary?.automaticHighlights).toEqual([imported]);
 	});
 
+	it("does not write or persist when a same-book legacy collision is the only work", async () => {
+		const [first, second] = createSyntheticSameBookCollision();
+		const legacyRecord: ImportedHighlightRecord = {
+			id: createLegacyClippingId(first),
+			title: first.bookTitle,
+			author: first.author,
+			textPreview: "Ambiguous released state",
+			importedAt: "2099-01-01T00:00:00.000Z",
+		};
+		const plugin = await createPlugin(createSettings({
+			importedHighlights: [legacyRecord],
+		}));
+		const settingsBefore = JSON.stringify(plugin.settings);
+		const durableBefore = persistenceControl(plugin).getDurableData();
+		const saveData = vi.spyOn(plugin, "saveData");
+
+		mocks.parseClippings.mockReturnValue([second, first]);
+		await plugin.syncHighlights();
+
+		const summary = mocks.syncSummaryInstances.at(-1);
+
+		expect(summary?.automaticHighlights).toEqual([]);
+		expect(summary?.classification.identityConflictHighlights?.map(createClippingId))
+			.toEqual([first, second].map(createClippingId).sort());
+		expect(summary?.protectedBooks).toMatchObject({
+			bookCount: 1,
+			affectedHighlightCount: 2,
+		});
+		expect(mocks.writeBookNotesToVault).not.toHaveBeenCalled();
+		expect(saveData).not.toHaveBeenCalled();
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+		expect(plugin.settings.importedHighlights).toEqual([legacyRecord]);
+		expect(plugin.settings.ignoredHighlights).toEqual([]);
+		expect(persistenceControl(plugin).getDurableData()).toEqual(durableBefore);
+	});
+
 	it("quarantines an ambiguous same-book legacy record while an unrelated book continues", async () => {
 		const [first, second] = createSyntheticSameBookCollision();
 		const unrelated = createHighlight({
@@ -279,18 +315,27 @@ describe("sync review gate", () => {
 			author: "Safe Author",
 			content: "This unrelated record can continue safely.",
 		});
+		const collisionLegacyRecord: ImportedHighlightRecord = {
+			id: createLegacyClippingId(first),
+			title: first.bookTitle,
+			author: first.author,
+			textPreview: "Ambiguous released state",
+			importedAt: "2099-01-01T00:00:00.000Z",
+		};
+		const unrelatedLegacyRecord: ImportedHighlightRecord = {
+			id: createLegacyClippingId(unrelated),
+			title: unrelated.bookTitle,
+			author: unrelated.author,
+			textPreview: unrelated.content,
+			importedAt: "2099-01-02T00:00:00.000Z",
+		};
 		const plugin = await createPlugin(createSettings({
 			importedHighlights: [
-				{
-					id: createLegacyClippingId(first),
-					title: first.bookTitle,
-					author: first.author,
-					textPreview: "Ambiguous released state",
-					importedAt: "2099-01-01T00:00:00.000Z",
-				},
-				createImportedRecord(unrelated),
+				collisionLegacyRecord,
+				unrelatedLegacyRecord,
 			],
 		}));
+		const saveData = vi.spyOn(plugin, "saveData");
 
 		mocks.parseClippings.mockReturnValue([second, unrelated, first]);
 		mocks.highlightExistsInNote.mockResolvedValue(true);
@@ -307,7 +352,28 @@ describe("sync review gate", () => {
 			bookCount: 1,
 			affectedHighlightCount: 2,
 		});
+		expect(mocks.writeBookNotesToVault).toHaveBeenCalledTimes(1);
 		expect(writtenHighlightIds()).toEqual([createClippingId(unrelated)]);
+		expect(saveData).toHaveBeenCalledTimes(1);
+		expect(plugin.settings.importedHighlights.slice(0, 2)).toEqual([
+			collisionLegacyRecord,
+			unrelatedLegacyRecord,
+		]);
+		expect(plugin.settings.importedHighlights[2]).toMatchObject({
+			id: createClippingId(unrelated),
+			legacyId: createLegacyClippingId(unrelated),
+			identityVersion: 2,
+			title: unrelated.bookTitle,
+			author: unrelated.author,
+		});
+		expect(plugin.settings.importedHighlights.map((record) => record.id)).not.toContain(
+			createClippingId(first)
+		);
+		expect(plugin.settings.importedHighlights.map((record) => record.id)).not.toContain(
+			createClippingId(second)
+		);
+		expect(plugin.settings.ignoredHighlights).toEqual([]);
+		expect(persistenceControl(plugin).getDurableData()).toEqual(plugin.settings);
 	});
 
 	it("opens review before importing on first sync", async () => {
@@ -395,6 +461,27 @@ describe("sync review gate", () => {
 		);
 		expect(summary?.automaticHighlights).toEqual([]);
 		expect(writtenHighlightIds()).toEqual([]);
+	});
+
+	it("does not write or persist when only missing highlights need review", async () => {
+		const highlight = createHighlight();
+		const importedRecord = createImportedRecord(highlight);
+		const plugin = await createPlugin(createSettings({ importedHighlights: [importedRecord] }));
+		const settingsBefore = JSON.stringify(plugin.settings);
+		const durableBefore = persistenceControl(plugin).getDurableData();
+		const saveData = vi.spyOn(plugin, "saveData");
+
+		mocks.parseClippings.mockReturnValue([highlight]);
+		mocks.highlightExistsInNote.mockResolvedValue(false);
+		await plugin.syncHighlights();
+
+		expect(mocks.syncSummaryInstances.at(-1)?.classification.possibleReappearedHighlights)
+			.toEqual([highlight]);
+		expect(mocks.syncSummaryInstances.at(-1)?.automaticHighlights).toEqual([]);
+		expect(mocks.writeBookNotesToVault).not.toHaveBeenCalled();
+		expect(saveData).not.toHaveBeenCalled();
+		expect(JSON.stringify(plugin.settings)).toBe(settingsBefore);
+		expect(persistenceControl(plugin).getDurableData()).toEqual(durableBefore);
 	});
 
 	it("keeps a skipped missing managed highlight eligible on the next sync", async () => {
