@@ -59,7 +59,13 @@ On your first sync, **First Sync Preview** lets you decide which highlights belo
 | **Skip This Sync** | Nothing is added for that highlight today. | It can appear for review again. |
 | **Ignore** | The highlight is not imported. | It stays ignored until you remove it from the Ignore list. |
 
+![Review books with Import, Skip This Sync, and Ignore](docs/assets/readme/choices-en.png)
+
 You can also use **Import All**, **Ignore All**, or **Import All Books** when reviewing a larger group. Your review choices stay temporary until you select **Finish Sync**.
+
+Use search and the review filters to find a book quickly.
+
+![Search for a book during sync review](docs/assets/readme/search-en.png)
 
 If a highlight later disappears from `My Clippings.txt`, the plugin does not use that as permission to delete the copy in Obsidian. Kindle devices can keep deleted highlights in that file, so the plugin cannot reliably treat it as a deletion list.
 

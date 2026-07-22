@@ -59,7 +59,13 @@ Kindle Local Sync 是仅适用于桌面端的 Obsidian 插件。它读取 Kindle
 | **Skip This Sync** | 今天不添加该标注。 | 它可能再次出现供你审核。 |
 | **Ignore** | 不导入该标注。 | 它会保持忽略状态，直到你从 Ignore 列表中移除它。 |
 
+![在同步审核中选择导入、暂时跳过或忽略书籍](docs/assets/readme/choices-zh.png)
+
 审核较多项目时，也可以使用 **Import All**、**Ignore All** 或 **Import All Books**。在选择 **Finish Sync** 前，所有审核选择都只是临时的。
+
+使用搜索和审核筛选器可以快速找到一本书。
+
+![在同步审核中搜索书籍](docs/assets/readme/search-zh.png)
 
 如果标注之后从 `My Clippings.txt` 中消失，插件不会将此视为删除 Obsidian 副本的许可。Kindle 设备可能仍会在该文件中保留已经删除的标注，因此插件不能把它当作可靠的删除列表。
 

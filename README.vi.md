@@ -59,7 +59,13 @@ Plugin đọc file, nhóm highlight theo sách và ghi highlight đã chấp thu
 | **Skip This Sync** | Hôm nay không thêm highlight đó. | Nó có thể xuất hiện lại để review. |
 | **Ignore** | Highlight không được nhập. | Nó tiếp tục bị Ignore cho đến khi bạn xóa khỏi danh sách Ignore. |
 
+![Xem lại sách với các lựa chọn Import, Skip This Sync và Ignore](docs/assets/readme/choices-en.png)
+
 Bạn cũng có thể dùng **Import All**, **Ignore All** hoặc **Import All Books** khi review nhiều mục. Các lựa chọn vẫn tạm thời cho tới khi bạn chọn **Finish Sync**.
+
+Dùng tìm kiếm và bộ lọc review để nhanh chóng tìm một cuốn sách.
+
+![Tìm sách trong bước xem lại trước khi đồng bộ](docs/assets/readme/search-en.png)
 
 Nếu một highlight sau đó biến mất khỏi `My Clippings.txt`, plugin không coi đó là quyền xóa bản sao trong Obsidian. Kindle có thể vẫn giữ highlight đã xóa trong file này, nên plugin không thể coi file là danh sách xóa đáng tin cậy.
 

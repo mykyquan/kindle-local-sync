@@ -59,7 +59,13 @@ Kindle Local Sync 是僅適用於桌面版的 Obsidian 外掛。它會讀取 Kin
 | **Skip This Sync** | 今天不新增該標註。 | 它可能再次出現供你檢閱。 |
 | **Ignore** | 不匯入該標註。 | 它會保持忽略狀態，直到你從 Ignore 清單中移除它。 |
 
+![在同步審核中選擇匯入、暫時跳過或忽略書籍](docs/assets/readme/choices-zh.png)
+
 檢閱較多項目時，也可以使用 **Import All**、**Ignore All** 或 **Import All Books**。在選擇 **Finish Sync** 前，所有檢閱選擇都只是暫時的。
+
+使用搜尋和檢閱篩選器可以快速找到一本書。
+
+![在同步審核中搜尋書籍](docs/assets/readme/search-zh.png)
 
 如果標註之後從 `My Clippings.txt` 中消失，外掛不會將此視為刪除 Obsidian 副本的許可。Kindle 裝置可能仍會在該檔案中保留已刪除的標註，因此外掛不能把它當作可靠的刪除清單。
 
