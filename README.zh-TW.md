@@ -1,24 +1,20 @@
 # Kindle Local Sync
 
-將 Kindle 標註與筆記匯入 Obsidian，閱讀資料不會傳送到外部。
+將 Kindle 標註帶進 Obsidian，不必把閱讀資料傳送到任何地方。
 
-Kindle Local Sync 是僅適用於桌面端的 Obsidian 外掛。它會讀取透過 USB 連接的 Kindle 上的本機 `My Clippings.txt`，並把你核准的標註寫入資料庫中的 Markdown 筆記。
+Kindle Local Sync 是僅適用於桌面版的 Obsidian 外掛。它會讀取 Kindle 上本機的 `My Clippings.txt` 檔案，並為你選擇保留的標註建立整潔的 Markdown 筆記。
 
 ## 示範
 
 ![Kindle Local Sync demo](docs/assets/demo.gif)
 
-## 功能
+## 📖 為什麼使用它？
 
-- 本機、USB-first 匯入，無需 Amazon 或 Readwise 帳號。
-- 在 macOS、Windows 與 Linux 上自動偵測 Kindle 路徑，也支援手動路徑。
-- 每本書一個 Markdown 筆記。
-- 第一次同步和發現新標註時提供檢閱。
-- 暫時 Skip 與持久化 Ignore 選擇。
-- 儲存的同步資料遺失時，可重新連接既有 Kindle Local Sync 筆記。
-- 已匯入標註在預期 Obsidian 筆記中遺失時，可進行復原檢閱。
-- 保護外掛管理區塊之外的個人內容。
-- 防止重複 clipping，並安全處理檔名。
+- 將 Kindle 標註留在你實際使用的 Obsidian 筆記和專案旁。
+- 在標註加入資料庫之前先檢閱新標註。
+- 每本書使用一份 Markdown 筆記。
+- 更新後或外掛資料遺失時，重新連結現有的 Kindle Local Sync 筆記。
+- 將個人寫作與外掛更新的部分分開。
 
 ## 語言
 
@@ -27,189 +23,83 @@ Kindle Local Sync 是僅適用於桌面端的 Obsidian 外掛。它會讀取透�
 - [简体中文](README.zh-CN.md)
 - [繁體中文](README.zh-TW.md)
 
-## 從 Obsidian Community Plugins 安裝
+## 開始前需要準備
 
-外掛通過社群目錄審核後：
+- 桌面版 Obsidian。
+- 含有本機 `My Clippings.txt` 檔案的 Kindle；通常以 USB 連接 Kindle 後即可存取。
+- 一個用來保存書籍筆記的 Obsidian 資料庫。
 
-Settings → Community plugins → Browse → 搜尋 **Kindle Local Sync** → Install → Enable。
+## 安裝
 
-在此之前，僅在測試 beta 版本時使用 BRAT 或 GitHub Release ZIP。
+當外掛可在 Obsidian Community Plugins 中使用後：
 
-## 快速開始
+1. 開啟 **Settings** → **Community plugins** → **Browse**。
+2. 搜尋 **Kindle Local Sync**。
+3. 選擇 **Install**，然後選擇 **Enable**。
 
-1. 用 USB 連接 Kindle。
-2. 開啟 Obsidian 並啟用 **Kindle Local Sync**。
-3. 如果沒有偵測到 Kindle，請在外掛設定中填寫 **My clippings.txt path**。
-4. 選取 ribbon 中的書本圖示，或從 command palette 執行 **Sync local kindle highlights**。
-5. 檢閱需要選擇的標註。
-6. 選取 **Finish Sync**，然後開啟已設定的 highlights 資料夾查看結果。
+如需測試 beta 版本，僅在你主動測試預發布建置時使用 BRAT 或 GitHub Release ZIP。
 
-## Kindle Local Sync 如何運作
+## 🧭 快速開始
 
-1. 外掛從 Kindle 或你設定的本機路徑讀取 `My Clippings.txt`。
-2. 它解析標註與筆記，略過 bookmark 與格式損壞的項目，並依書籍分組。
-3. 需要檢閱時，你可以選擇 Import、僅本次 Skip 或 Ignore。
-4. 在你選取 **Finish Sync** 前，檢閱中的選擇都不會套用。
-5. 已核准的標註會寫入相符的 Obsidian 書籍筆記。只有已核准的 Import 確實需要時，才會建立新筆記。
-6. 後續同步會比較目前 Kindle 檔案、已儲存的選擇，以及現有筆記中的外掛管理區塊。
-7. 外掛管理區塊之外的個人內容會保留。
+1. 以 USB 連接 Kindle。
+2. 在外掛設定中確認 **My clippings.txt path**。如果沒有偵測到 Kindle，請自行選擇本機 `My Clippings.txt` 檔案。
+3. 為 Markdown 筆記選擇 **Highlights folder**。
+4. 從命令面板執行 **Sync local kindle highlights**，或使用功能區中的書本圖示。
+5. 檢閱需要選擇的標註，然後選擇 **Finish Sync**。
 
-`My Clippings.txt` 是匯入來源，不是可靠的刪除記錄。某條標註未出現在目前 Kindle 檔案中，並不表示外掛可以自動刪除 Obsidian 中的副本。
+外掛會讀取檔案、依書籍分組標註，並將已核准的標註寫入所選資料夾。只有核准的匯入確實需要時，才會建立筆記。
 
-## 新使用者
+## 同步時會發生什麼
 
-如果沒有可信的同步歷史，也沒有既有 Kindle Local Sync 筆記，第一次同步會開啟 **First Sync Preview**。每條標註一開始都沒有選擇，由你決定哪些內容進入 Obsidian。
+首次同步時，**First Sync Preview** 會讓你決定哪些標註要進入 Obsidian。之後的同步通常會辨識已匯入的標註，只詢問新的或遺失的項目。
 
-- **Import**：完成同步時加入標註。
-- **Skip This Sync**：本次不變更，下次可能再次出現。
-- **Ignore**：在你從 Ignore 清單移除前，不再參與後續同步。
-
-僅開啟檢閱或選擇暫時操作不會建立書籍筆記。外掛只會在 **Finish Sync** 後寫入內容並儲存選擇。未檢閱的標註會按本次暫時 Skip 處理，下次可能再次出現。
-
-## 回訪使用者
-
-### 有已儲存的同步歷史
-
-當 `data.json` 包含可信的 Import 或 Ignore 歷史時，已匯入且 marker 仍存在的標註會自動重新整理；已 Ignore 的標註不參與同步。通常只有新標註，以及已匯入但在預期筆記中遺失的標註需要處理。
-
-外掛不會把 `My Clippings.txt` 當作刪除 Obsidian 舊標註的授權。如果無法在保留現有 managed 內容的前提下安全重新整理某本書，外掛會保持該筆記不變，並在結果摘要中說明。
-
-### 有現有筆記，但沒有可信的 `data.json`
-
-如果已設定的 highlights 資料夾中存在有效 Kindle Local Sync managed 區塊，但缺少可信同步歷史，外掛會顯示 **Existing Kindle notes found**。
-
-選取 **Continue with existing notes** 重新連接：
-
-- 在預期書籍筆記中找到的精確 marker 會記錄為既有匯入。
-- 無法相符的標註會進入 **Review New Highlights**。
-- 現有筆記保持原位，managed 區塊之外的個人內容會保留。
-- 僅憑 Markdown 無法復原舊 Ignore 選擇，因此外掛不會猜測。
-
-因此，正常情況下你只需檢閱無法相符的標註，而不是重新核准所有舊標註。
-
-### 從舊版本更新後
-
-舊版本可能儲存了外掛設定，但沒有儲存標註歷史。更新後，你可能會看到 **Existing Kindle notes found**。選取 **Continue with existing notes** 重新連接：外掛會保留現有筆記，識別 marker 相符的標註，並且只要求你檢閱無法相符的標註。
-
-如果沒有找到有效的現有 Kindle Local Sync 筆記，外掛會改用 **First Sync Preview**。
-
-## 每個選擇的含義
-
-| 選擇 | 實際行為 | 範例 |
+| 選擇 | 現在會發生什麼 | 下次同步會發生什麼 |
 | --- | --- | --- |
-| **Import** | 暫時選取一條標註，在選取 **Finish Sync** 時寫入。 | 匯入專案筆記中要引用的一段話。 |
-| **Skip This Sync** | 本次略過一條標註；在書籍卡片上使用時，會略過該書所有標註。下次可能再次出現。 | 把一段長文留到下次再決定。 |
-| **Ignore** | 在 **Finish Sync** 後儲存持久 Ignore；從 Ignore 清單移除前不再參與後續同步。 | 隱藏無用 clipping。 |
-| **Import All** | 把該書所有目前暫時選擇改為 Import。 | 匯入一本書的全部目前 clipping。 |
-| **Ignore All** | 把該書所有目前暫時選擇改為 Ignore。 | 讓一本書的目前標註不再參與後續同步。 |
-| **Import All Books** | 把目前檢閱中的所有選擇（包括被篩選隱藏的書）改為 Import。已有 Skip 或 Ignore 時會先確認；以前儲存的 Ignore 不受影響。 | 一次核准整個第一次檢閱。 |
-| **Finish Sync** | 套用目前選擇、儲存已確認狀態，並開啟 **Sync complete** 或 **Sync finished**。未檢閱標註本次會被 Skip。 | 今天只檢閱關心的書後完成同步。 |
-| **Cancel** | 沒有變更選擇時直接關閉；存在未儲存選擇時，詢問繼續檢閱或放棄。搜尋、篩選、捲動與導覽不會觸發該警告。 | 不儲存誤選並離開。 |
+| **Import** | 選擇 **Finish Sync** 後新增所選標註。 | 它們會被辨識為已匯入。 |
+| **Skip This Sync** | 今天不新增該標註。 | 它可能再次出現供你檢閱。 |
+| **Ignore** | 不匯入該標註。 | 它會保持忽略狀態，直到你從 Ignore 清單中移除它。 |
 
-後執行的批次操作會覆蓋先前的暫時選擇。例如，先 Ignore 一條標註，再為該書選取 **Import All**，該書目前所有標註都會變為 Import。確認後，**Import All Books** 會對整個檢閱做同樣的事。任何檢閱選擇都不會在 **Finish Sync** 前儲存。
+檢閱較多項目時，也可以使用 **Import All**、**Ignore All** 或 **Import All Books**。在選擇 **Finish Sync** 前，所有檢閱選擇都只是暫時的。
 
-### 尋找和檢閱
+如果標註之後從 `My Clippings.txt` 中消失，外掛不會將此視為刪除 Obsidian 副本的許可。Kindle 裝置可能仍會在該檔案中保留已刪除的標註，因此外掛不能把它當作可靠的刪除清單。
 
-- **Search books...** 依書名和作者搜尋，不變更選擇；它不會搜尋標註正文。
-- **All Books**、**Needs Review** 與 **Reviewed** 只篩選書籍清單，並保留完整檢閱狀態。
-- **How choices work** 與 `?` 按鈕顯示同一份簡短說明。
-- **Review Highlights** 開啟某本書的逐條選擇。
+## 現有 Kindle 筆記
 
-## Sync Summary 和後續操作
+如果你已有 Kindle Local Sync 筆記，但外掛找不到儲存的歷史記錄，它會顯示 **Existing Kindle notes found**。
 
-同步完成後，摘要會報告 Import、Ignore、Skip、未檢閱、重複與 missing 的數量。依結果可能提供：
+選擇 **Continue with existing notes** 來重新連結。外掛會保留這些筆記、辨識可以比對的標註，並只要求你檢閱無法比對的項目。你不需要重新核准每一條舊標註。
 
-- **Review Skipped This Sync**：查看暫時 Skip。可以繼續暫時略過，也可以選取 **Ignore Going Forward**；書籍層級 **Ignore All Highlights** 需要確認。
-- **Manage Ignored Highlights**：依書查看 Ignore 項目，使用 **Remove From Ignore List** 或 **Remove All From Ignore List**。移除 Ignore 不會立即重寫筆記；如果 clipping 仍在 `My Clippings.txt`，後續同步會按 new 或 missing 重新處理。
-- **Review Missing Highlights**：處理以前已匯入、目前卻不在預期筆記中的標註。
-- **View Books Left Unchanged**：查看因無法安全更新而保持不變的書籍。
-- **Review Note Update Issues**：查看 Ignore 清理失敗或無法確認的結果。
-
-## Missing Highlights
-
-只有同時符合以下條件，標註才會被視為 missing：
-
-1. 目前 `My Clippings.txt` 仍包含它。
-2. `data.json` 中存在本次同步可信任的相符 imported-highlight 記錄。
-3. 在預期書籍筆記路徑的有效 managed 區塊中找不到它的精確 marker。
-
-此檢查在回訪使用者同步中、解析 Kindle 檔案後執行。如果無法安全讀取預期筆記，外掛不會自動把標註判定為 missing。
-
-你可以為每條 missing 標註選擇：
-
-- **Import Again**：嘗試復原。只有 writer 確認結果安全後，該項目才會從 missing 清單消失；否則仍可重試。
-- **Ignore Going Forward**：儲存 Ignore 並讓它不再參與後續同步。舊 imported 記錄仍保留，但 Ignore 優先；以後移除 Ignore 且 marker 仍遺失時，它可能再次成為 missing。
-- **Skip This Time**：只從目前摘要移除，不儲存任何決定，因此下次可能再次出現。
-
-書籍層級對應操作為 **Import All Again**、**Ignore All Going Forward** 與 **Skip All This Time**。
-
-限制：missing 偵測依賴已儲存的 imported metadata、目前檔案中仍有該 clipping、預期筆記路徑，以及可讀取的 managed 區塊。手動移動筆記可能產生 missing；如果標註同時從目前 Kindle 檔案與可信身分資料中消失，則無法檢查。
-
-## 如果標註被刪除
-
-### 從 Obsidian 筆記中刪除
-
-如果你手動刪除外掛管理的標註，但 marker 結構與筆記其餘部分仍有效，那麼在已儲存 Import 記錄和 Kindle 檔案項目仍存在時，它會在下次同步出現在 **Missing Highlights**。刪除整個 managed 區塊可能使該筆記中所有受追蹤標註都顯示為 missing。
-
-之後可以再次 Import、以後 Ignore，或本次 Skip。managed marker 之外的個人內容不屬於此檢查。
-
-### 從 Kindle 刪除
-
-Kindle Local Sync 沒有 Kindle 刪除 API，只能讀取 `My Clippings.txt`；Kindle 裝置可能繼續把已刪除標註保留在該檔案中。
-
-- 如果標註已不在 `My Clippings.txt`，外掛不會把這種缺少視為刪除 Obsidian 副本的授權。
-- 如果它仍在 `My Clippings.txt`，外掛仍會把它視為一般 clipping。依已儲存狀態和筆記，它可能被重新整理、檢閱、Ignore 或顯示為 missing。
-
-因此，外掛無法保證偵測到 Kindle 裝置上的每一次刪除。
+如果先前匯入的標註不再出現在預期筆記中，**Missing Highlights** 可以提供 **Import Again**、**Ignore Going Forward** 或 **Skip This Time**。如果外掛無法安全檢查筆記，它會保持該書不變，並在同步摘要中說明原因。
 
 ## 保護個人筆記
 
-Kindle Local Sync 只管理以下 marker 之間的區塊：
+Kindle Local Sync 只更新它在以下標記之間建立的部分：
 
 ```markdown
 <!-- kindle-local-sync:start -->
 <!-- kindle-local-sync:end -->
 ```
 
-managed 區塊可能在同步時重新整理。請把個人內容放在 marker 之前或之後；marker 之外的內容會保留。
+請將自己的文字放在這個部分之前或之後。標記外的內容會被保留。如果外掛無法安全更新書籍筆記，它會保持筆記不變，而不是猜測如何處理。
 
-如果 marker 結構損壞，或更新會在沒有明確授權的情況下移除現有 managed 標註，外掛會讓該書筆記保持不變，而不會猜測。
+## 🔒 隱私
 
-## 重複處理
+你的標註始終留在本機。Kindle Local Sync 從電腦讀取 `My Clippings.txt`，並在資料庫中寫入 Markdown 筆記和外掛設定。它不會上傳你的標註或資料庫內容，也沒有雲端同步、遙測、Amazon 或 Readwise 連線。
 
-完全相同的 clipping 重複副本只寫入一次。新記錄使用完整 SHA-256 `kls2-...` 身分，因此不同 clipping 即使舊的 32 位元 `kls-...` ID 發生碰撞，也會保持獨立。
+## 🛠️ 疑難排解
 
-舊筆記與已儲存選擇只會在舊 ID 及其實體區塊或狀態唯一符合目前 clipping 後延遲遷移。如果同一本書內的舊 ID 有歧義，外掛會保持該書與已儲存決定不變，並在摘要中說明衝突；不相關書籍仍可繼續。
+| 你看到的情況 | 通常表示什麼 | 可以嘗試什麼 |
+| --- | --- | --- |
+| **Could not find My Clippings.txt** | 未偵測到 Kindle，或檔案路徑已改變。 | 連接 Kindle，然後手動設定 **My clippings.txt path**。 |
+| 找不到標註 | 檔案可能只有書籤或不支援的項目。 | 檢查檔案是否包含 Kindle Highlight 或 Note 項目。 |
+| 後續同步沒有變化 | 相同標註已被辨識。 | 這是正常情況；新標註會提供給你檢閱。 |
+| 一本書保持不變 | 外掛無法證明更新它是安全的。 | 保留備份，檢查外掛區域，解決筆記問題後再試。 |
+| **Existing Kindle notes found** | 找到了現有筆記，但沒有可用的儲存歷史。 | 選擇 **Continue with existing notes** 重新連結。 |
 
-如果舊 collision 中目前只出現一則標註，外掛無法知道先前的 Import 或 Ignore 選擇實際指向哪一則。外掛會保留舊證據；如果第二則標註之後出現並讓衝突可見，該書筆記會保持不變並等待檢閱。
+## 進階文件和支援
 
-降級警告：`0.1.2` 及更早版本不具碰撞安全性，也不理解新的權威身分。請勿用舊版本重寫或清理由此版本寫入的筆記或狀態。
+- [技術架構](docs/ARCHITECTURE.md)為維護者和進階使用者說明同步行為、遷移、相容性和安全規則。
+- [發行清單](docs/release-checklist.md)涵蓋測試和發行工作。
+- [Support](SUPPORT.md)說明如何在不分享私人閱讀資料的情況下回報問題。
 
-## 已知限制
-
-存在歧義的舊版衝突會被安全隔離；引導式復原功能將延後提供。
-
-## 隱私
-
-所有標註處理都在本機完成。執行階段原始碼沒有網路請求、雲端同步、analytics、telemetry、Amazon API 或 Readwise API 路徑。外掛不會透過網路傳送標註文字或資料庫內容。
-
-外掛從本機檔案系統讀取 `My Clippings.txt`，並在 Obsidian 資料庫內寫入 Markdown 和外掛狀態。**Strict local only** 設定會儲存，但目前執行階段即使變更該切換仍保持本機，因為不存在網路功能。
-
-## 疑難排解
-
-- **找不到 My Clippings.txt**：用 USB 連接 Kindle，然後手動填寫絕對 **My clippings.txt path**。
-- **找不到標註**：確認檔案包含 Highlight 或 Note，而不只是 bookmark。
-- **後續同步沒有變更**：相同的已匯入 marker 仍存在時，這是正常行為。
-- **某本書保持不變**：外掛無法證明取代 managed 區塊是安全的。檢查 marker，並在編輯 managed 區塊前備份。
-- **更新後出現 Existing Kindle notes found**：這是[從舊版本更新後](#從舊版本更新後)所述的正常重新連接步驟。現有筆記會保留。
-- **個人內容在產生的筆記中**：將它移到 `kindle-local-sync` marker 之外，避免後續 managed 重新整理時被取代。
-
-## 技術文件
-
-架構、同步狀態、持久化、安全約束、已知限制以及原始碼/測試對照請參閱[技術架構](docs/ARCHITECTURE.md)。
-
-## Roadmap
-
-- 在乾淨資料庫中完成 new、returning、reconnect、missing、Ignore、Skip、cancel 和 managed-region 手動 QA。
-- 以經驗證的隱私安全錄影取代目前 demo。
-- 發行前驗證可重現、可安裝的 release artifact。
+Kindle Local Sync 依 [MIT License](LICENSE) 發行。

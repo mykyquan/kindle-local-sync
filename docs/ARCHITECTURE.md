@@ -409,7 +409,7 @@ When only one member of a legacy-ID collision is present, the current input cann
 
 ### High: release artifacts are stale
 
-The ignored `release/` artifacts present during the audit are from May 2026 and do not match the current source/style bundle. They cannot be used as a release candidate. Packaging must be recreated and verified from the exact intended commit without adding generated artifacts to source control.
+Release artifacts must be recreated and verified from the exact intended commit. Generated artifacts must not be used as a release candidate until that verification is complete, and they must not be added to source control.
 
 ### Medium: path-based note matching
 
