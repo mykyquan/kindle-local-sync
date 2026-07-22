@@ -288,7 +288,13 @@ Tests: the persistence block in [`src/main.sync-review.test.ts`](../src/main.syn
 
 ## Identity and duplicate handling
 
-`createClippingId()` hashes trimmed title, author, type, location, date, and content using 32-bit FNV-1a, then encodes base 36 as `kls-...`.
+`createClippingId()` is authoritative identity version 2. It serializes a fixed JSON object with schema `kindle-local-sync/clipping-identity`, version `2`, and named `title`, `author`, `type`, `location`, `dateAdded`, and `content` fields. Each field retains the released trim and CRLF-to-LF normalization semantics. The complete UTF-8 serialization is hashed with full SHA-256 and encoded as `kls2-<64 lowercase hex characters>`.
+
+The implementation uses Node's built-in `crypto.createHash("sha256")`. This is compatible with the supported runtime because `manifest.json` declares the plugin desktop-only, the plugin already depends on Node's `fs/promises` to read `My Clippings.txt`, and the production esbuild configuration externalizes Node built-ins for Obsidian's Electron runtime. The build and runtime bundle therefore do not silently rely on an unsupported mobile/browser-only path.
+
+Page remains intentionally absent. Released versions did not parse or identify clippings by page, while location is already explicit. Adding page now would change identity semantics for existing records without providing compatible source data for every clipping. Two source records whose only difference is page are therefore intentionally treated as one logical highlight; a location difference still produces a different identity.
+
+`createLegacyClippingId()` preserves the released 32-bit FNV-1a/base-36 `kls-...` value as migration metadata only. Each `CurrentClippingIdentityIndex` checks the complete current input and throws if one strong fingerprint maps to different canonical bytes. The registry is operation-scoped, so it is garbage-collected with that input instead of accumulating across syncs or tests.
 
 Three scopes are used:
 
@@ -296,9 +302,11 @@ Three scopes are used:
 - current/authored highlight: exact `[title, author, id]`;
 - legacy authorless lookup: `[title, id]`, resolved only through the complete current input.
 
-Duplicate current clippings with the same ID inside one book are collapsed before writing. Composite identity prevents a raw-ID collision in different books from sharing import, Ignore, lookup, or cleanup state.
+Exact duplicate current clippings with the same strong ID inside one book are collapsed before writing. Distinct canonical records that share a legacy ID retain different strong IDs and independent review, Import, Ignore, missing, retry, and summary state.
 
-Legacy records without `author` are preserved byte-for-byte and in order. They are trusted for one sync only when the complete current input resolves exactly one distinct authored candidate. An explicit later Import or Ignore appends an authored record without rewriting legacy history.
+Legacy records and arrays are preserved byte-for-byte and in order. A legacy state record is trusted only when the complete current input resolves exactly one canonical candidate. A released note block is upgraded only when its marker resolves uniquely and the complete physical generated block exactly matches that candidate. Confirmed writes and later explicit decisions append versioned strong records instead of rewriting old array entries.
+
+If one same-book legacy ID maps to multiple canonical records, the entire affected book is quarantined: it is removed from new, duplicate, ignored, missing, automatic-write, and decision-persistence subsets; the summary identifies a legacy identity conflict; and unrelated books continue. Raw legacy Ignore-cleanup targets perform zero writes because cleanup cannot prove which canonical record the old ID means.
 
 Tests: [`src/sync/HighlightIdentity.test.ts`](../src/sync/HighlightIdentity.test.ts), [`src/render/renderMarkdown.test.ts`](../src/render/renderMarkdown.test.ts), [`src/settings.test.ts`](../src/settings.test.ts), and collision regressions across classifier, lookup, writer, cleanup, and orchestration suites.
 
@@ -311,7 +319,14 @@ Managed content is bounded by:
 <!-- kindle-local-sync:end -->
 ```
 
-Generated clipping blocks contain `<!-- kindle-local-sync-id: kls-... -->` markers.
+New generated clipping blocks contain both migration metadata and authoritative identity:
+
+```markdown
+<!-- kindle-local-sync-legacy-id: kls-... -->
+<!-- kindle-local-sync-id: kls2-<full SHA-256 hex digest> -->
+```
+
+Readers accept released `<!-- kindle-local-sync-id: kls-... -->` markers and new strong markers. New writes never use the legacy ID as authoritative identity.
 
 `analyzeManagedRegion()` classifies:
 
@@ -337,9 +352,11 @@ Tests: [`src/sync/ManagedRegion.test.ts`](../src/sync/ManagedRegion.test.ts), [`
 - missing imported/ignored arrays become empty arrays;
 - legacy authorless records remain unchanged and use conservative per-sync identity resolution.
 
-No schema version is added for this fix. The explicit completion field already distinguishes current completed/incomplete snapshots, including completed users with empty history arrays. Adding a version would expand validation and persistence migration scope without improving this legacy decision.
+No global settings schema version is added: the explicit completion field still distinguishes completed/incomplete snapshots. Identity is versioned independently by the `kls2-` marker prefix and `identityVersion: 2` on every newly persisted imported/ignored record; each new record also stores `legacyId` for verified compatibility.
 
 After legacy reconnect, only clipping IDs found inside valid managed regions at deterministic expected note paths become imported records. Successful reconnect or First Sync completion writes the complete current shape through the verified transaction boundary; after restart, `hasCompletedFirstSync: true` routes the user through normal returning-user sync.
+
+Downgrading is not collision-safe. Versions through `0.1.2` do not understand strong identity semantics and must not be used to make Import, Ignore, cleanup, or rewrite decisions for notes/state already written by this version.
 
 Regression coverage: [`src/settings.test.ts`](../src/settings.test.ts) and [`src/main.legacy-settings-migration.test.ts`](../src/main.legacy-settings-migration.test.ts).
 
@@ -376,12 +393,19 @@ Runtime source imports only local parsing, filesystem/vault, settings, and Obsid
 10. Runtime writer results are validated completely before downstream trust.
 11. High-risk live settings change only after durable full-state read-back matches.
 12. Errors must not claim success or unchanged physical state when the result is uncertain.
+13. Ambiguous released identity never authorizes classification, persistence, cleanup, or a note rewrite.
 
 ## Known limitations and blockers
 
-### High: same-book 32-bit clipping-ID collision
+### High: downgrade identity safety
 
-Two distinct clippings within the same exact `(title, author)` can share the 32-bit ID. In-book deduplication and on-disk markers then collapse them or make exact cleanup ambiguous. Cross-book collisions are covered; same-book collisions are not solved.
+Versions through `0.1.2` use the legacy 32-bit ID as authority. They cannot safely interpret collision-separated state written by this version and may reject the new managed marker format or make unsafe identity decisions. Downgrade is unsupported for note rewrites and Ignore cleanup.
+
+### Medium: ambiguous released records require review
+
+When a real released `kls-...` marker or state record maps to multiple current canonical records in one book, the plugin deliberately performs no automatic migration or decision. The book remains unchanged and is surfaced in the summary; a backup-assisted manual review is still required.
+
+When only one member of a legacy-ID collision is present, the current input cannot prove which highlight an earlier Import or Ignore decision represented. KLS may temporarily resolve legacy state against the sole visible candidate, but it preserves the original legacy record, and legacy note migration still requires an exact physical block match. If the missing peer later reappears, the preserved evidence becomes observably ambiguous and the book is quarantined instead of being rewritten or cleaned up automatically. KLS cannot identify a hidden peer before it returns.
 
 ### High: release artifacts are stale
 

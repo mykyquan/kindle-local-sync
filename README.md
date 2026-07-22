@@ -177,9 +177,13 @@ If marker structure is broken or an update would remove an existing managed high
 
 ## Duplicate handling
 
-Repeated copies of the same clipping are written once. Identity also includes the exact book title and author, so the same generated ID in two different books does not mix their saved choices.
+Repeated copies of the exact same clipping are written once. New records use a full SHA-256 `kls2-...` identity, so distinct clippings remain independent even when their older 32-bit `kls-...` IDs collide.
 
-Known limitation: IDs use a 32-bit hash. Two different clippings in the same exact title-and-author pair can still collide and be treated as one clipping. This remains unresolved and must be tested or fixed before a release claims complete collision safety.
+Older notes and saved choices are migrated lazily only after one old ID and its physical block or state match exactly one current clipping. If an old ID is ambiguous within a book, that book and its saved decisions are left unchanged and the summary explains the conflict; unrelated books can continue.
+
+If only one member of an older collision is currently present, the plugin cannot know which highlight an earlier Import or Ignore choice described. It preserves the older evidence; if the second highlight later appears and makes the conflict observable, the book is left unchanged for review.
+
+Downgrade warning: versions through `0.1.2` are not collision-safe and do not understand the new authoritative identity. Do not use an older version to rewrite or clean up notes/state written by this version.
 
 ## Privacy
 
@@ -202,7 +206,6 @@ For architecture, sync-state rules, persistence, safety invariants, known limita
 
 ## Roadmap
 
-- Resolve the same-book ID-collision blocker.
 - Complete clean-vault manual QA for new, returning, reconnect, missing, Ignore, Skip, cancel, and managed-region flows.
 - Replace the current demo with a verified privacy-safe recording.
 - Verify reproducible, installable release artifacts before publication.

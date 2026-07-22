@@ -177,9 +177,13 @@ Nếu cấu trúc marker bị hỏng hoặc update sẽ loại bỏ một highli
 
 ## Xử lý trùng lặp
 
-Các bản sao lặp lại của cùng một clipping chỉ được ghi một lần. Định danh cũng gồm title và author chính xác, nên cùng một ID được tạo ở hai sách khác nhau không làm lẫn lựa chọn đã lưu.
+Các bản sao hoàn toàn giống nhau của cùng một clipping chỉ được ghi một lần. Record mới dùng định danh SHA-256 đầy đủ `kls2-...`, nên các clipping khác nhau vẫn độc lập ngay cả khi ID 32-bit `kls-...` cũ của chúng collision.
 
-Giới hạn đã biết: ID dùng hash 32-bit. Hai clipping khác nhau trong cùng một cặp title-author chính xác vẫn có thể collision và bị xử lý như một clipping. Vấn đề này chưa được giải quyết và phải được test hoặc sửa trước khi release tuyên bố an toàn collision hoàn chỉnh.
+Note và lựa chọn cũ chỉ được migrate từng phần sau khi một ID cũ cùng block vật lý hoặc state của nó khớp duy nhất với một clipping hiện tại. Nếu ID cũ bị mơ hồ trong cùng sách, sách đó và các quyết định đã lưu được giữ nguyên, phần tổng kết giải thích xung đột, còn sách không liên quan vẫn có thể tiếp tục.
+
+Nếu hiện chỉ có một thành viên của collision cũ, plugin không thể biết lựa chọn Import hoặc Ignore trước đây nói đến highlight nào. Plugin giữ lại bằng chứng cũ; nếu highlight thứ hai xuất hiện về sau và làm lộ xung đột, note của sách được giữ nguyên để review.
+
+Cảnh báo downgrade: các phiên bản đến `0.1.2` không an toàn trước collision và không hiểu định danh authoritative mới. Không dùng phiên bản cũ để ghi lại hoặc cleanup note/state đã được phiên bản này ghi.
 
 ## Quyền riêng tư
 
@@ -202,7 +206,6 @@ Xem [Kiến trúc kỹ thuật](docs/ARCHITECTURE.md) để đọc về kiến t
 
 ## Roadmap
 
-- Giải quyết blocker collision ID trong cùng sách.
 - Hoàn tất manual QA trên vault sạch cho các luồng new, returning, reconnect, missing, Ignore, Skip, cancel và managed region.
 - Thay demo hiện tại bằng bản ghi đã xác minh an toàn quyền riêng tư.
 - Xác minh release artifact có thể tái tạo và cài đặt trước khi phát hành.
