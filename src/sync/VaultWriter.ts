@@ -4,11 +4,17 @@ import {
 	KindleBookGroup,
 	createClippingId,
 	renderBookMarkdown,
+	renderLegacyClippingMarkdown,
 	renderSyncRegion,
 	replaceOrAppendSyncRegion,
 } from "../render/renderMarkdown";
 import { sanitizeMarkdownFilename, sanitizeVaultFolderPath } from "../utils/sanitizePath";
-import { analyzeManagedRegion } from "./ManagedRegion";
+import {
+	createClippingId as createStrongClippingId,
+	createLegacyClippingId,
+	CurrentClippingIdentityIndex,
+} from "./HighlightIdentity";
+import { analyzeManagedRegion, hasExactManagedHighlightBlock } from "./ManagedRegion";
 
 export interface VaultWriteSummary {
 	books: number;
@@ -68,7 +74,8 @@ type ExistingMarkdownUpdate =
 export async function writeBookNotesToVault(
 	vault: Vault,
 	highlightsFolder: string,
-	bookGroups: KindleBookGroup[]
+	bookGroups: KindleBookGroup[],
+	identityIndex = new CurrentClippingIdentityIndex(bookGroups.flatMap((group) => group.clippings))
 ): Promise<VaultWriteSummary> {
 	const folderPath = normalizeVaultPath(sanitizeVaultFolderPath(highlightsFolder));
 
@@ -87,7 +94,7 @@ export async function writeBookNotesToVault(
 	};
 
 	for (const bookPlan of writePlan.bookPlans) {
-		const writeResult = await writeBookNote(vault, bookPlan.notePath, bookPlan.group);
+		const writeResult = await writeBookNote(vault, bookPlan.notePath, bookPlan.group, identityIndex);
 		const outcome: VaultBookWriteOutcome = {
 			bookTitle: bookPlan.group.bookTitle,
 			author: bookPlan.group.author,
@@ -166,7 +173,12 @@ export function allocateBookNotePaths(
 	return bookGroups.map((group) => createBookNotePath(highlightsFolder, group, usedNotePaths));
 }
 
-async function writeBookNote(vault: Vault, notePath: string, group: KindleBookGroup): Promise<FileWriteResult> {
+async function writeBookNote(
+	vault: Vault,
+	notePath: string,
+	group: KindleBookGroup,
+	identityIndex: CurrentClippingIdentityIndex
+): Promise<FileWriteResult> {
 	const newMarkdown = renderBookMarkdown(group);
 	const existingFile = vault.getAbstractFileByPath(notePath);
 
@@ -175,11 +187,11 @@ async function writeBookNote(vault: Vault, notePath: string, group: KindleBookGr
 			throw new Error(`Cannot sync Kindle highlights because "${notePath}" is a folder.`);
 		}
 
-		return updateExistingVaultFile(vault, existingFile, group);
+		return updateExistingVaultFile(vault, existingFile, group, identityIndex);
 	}
 
 	if (await adapterPathExists(vault, notePath)) {
-		return updateExistingAdapterFile(vault, notePath, group);
+		return updateExistingAdapterFile(vault, notePath, group, identityIndex);
 	}
 
 	try {
@@ -190,14 +202,15 @@ async function writeBookNote(vault: Vault, notePath: string, group: KindleBookGr
 			throw error;
 		}
 
-		return updateExistingFileAfterCreateConflict(vault, notePath, group);
+		return updateExistingFileAfterCreateConflict(vault, notePath, group, identityIndex);
 	}
 }
 
 async function updateExistingFileAfterCreateConflict(
 	vault: Vault,
 	notePath: string,
-	group: KindleBookGroup
+	group: KindleBookGroup,
+	identityIndex: CurrentClippingIdentityIndex
 ): Promise<FileWriteResult> {
 	const existingFile = vault.getAbstractFileByPath(notePath);
 
@@ -206,11 +219,11 @@ async function updateExistingFileAfterCreateConflict(
 			throw new Error(`Cannot sync Kindle highlights because "${notePath}" is a folder.`);
 		}
 
-		return updateExistingVaultFile(vault, existingFile, group);
+		return updateExistingVaultFile(vault, existingFile, group, identityIndex);
 	}
 
 	if (await adapterPathExists(vault, notePath)) {
-		return updateExistingAdapterFile(vault, notePath, group);
+		return updateExistingAdapterFile(vault, notePath, group, identityIndex);
 	}
 
 	throw new Error(`Cannot sync Kindle highlights because "${notePath}" already exists but could not be resolved.`);
@@ -219,10 +232,11 @@ async function updateExistingFileAfterCreateConflict(
 async function updateExistingVaultFile(
 	vault: Vault,
 	existingFile: TFile,
-	group: KindleBookGroup
+	group: KindleBookGroup,
+	identityIndex: CurrentClippingIdentityIndex
 ): Promise<FileWriteResult> {
 	const existingMarkdown = await vault.read(existingFile);
-	const update = prepareSafeManagedRegionUpdate(existingMarkdown, group);
+	const update = prepareSafeManagedRegionUpdate(existingMarkdown, group, identityIndex);
 
 	if (update.kind === "protected" || update.markdown === existingMarkdown) {
 		return update.kind === "protected"
@@ -237,7 +251,8 @@ async function updateExistingVaultFile(
 async function updateExistingAdapterFile(
 	vault: Vault,
 	notePath: string,
-	group: KindleBookGroup
+	group: KindleBookGroup,
+	identityIndex: CurrentClippingIdentityIndex
 ): Promise<FileWriteResult> {
 	const stat = await vault.adapter.stat(notePath);
 
@@ -250,7 +265,7 @@ async function updateExistingAdapterFile(
 	}
 
 	const existingMarkdown = await vault.adapter.read(notePath);
-	const update = prepareSafeManagedRegionUpdate(existingMarkdown, group);
+	const update = prepareSafeManagedRegionUpdate(existingMarkdown, group, identityIndex);
 
 	if (update.kind === "protected" || update.markdown === existingMarkdown) {
 		return update.kind === "protected"
@@ -264,7 +279,8 @@ async function updateExistingAdapterFile(
 
 function prepareSafeManagedRegionUpdate(
 	existingMarkdown: string,
-	group: KindleBookGroup
+	group: KindleBookGroup,
+	identityIndex: CurrentClippingIdentityIndex
 ): ExistingMarkdownUpdate {
 	const analysis = analyzeManagedRegion(existingMarkdown);
 
@@ -276,11 +292,35 @@ function prepareSafeManagedRegionUpdate(
 	}
 
 	if (analysis.kind === "valid-with-ids") {
-		const proposedIds = new Set(group.clippings.map(createClippingId));
+		const proposedIds = new Set(group.clippings.map(createStrongClippingId));
+		const uniqueClippingsByIdentity = new Map(
+			group.clippings.map((clipping) => [createStrongClippingId(clipping), clipping])
+		);
 
 		// Ordinary sync is not deletion authority. If the proposed group is incomplete,
 		// preserve the entire note instead of guessing which managed blocks may be removed.
-		if (analysis.highlightIds.some((id) => !proposedIds.has(id))) {
+		const cannotRetainExistingId = analysis.highlightIds.some((id) => {
+			if (proposedIds.has(id)) {
+				return false;
+			}
+
+			if (identityIndex.isLegacyIdAmbiguousForBook(group.bookTitle, group.author, id)) {
+				return true;
+			}
+
+			const legacyCandidates = Array.from(uniqueClippingsByIdentity.values()).filter(
+				(clipping) => createLegacyClippingId(clipping) === id
+			);
+
+			// A released marker is upgraded only when one canonical record and its exact physical block agree.
+			return legacyCandidates.length !== 1
+				|| !hasExactManagedHighlightBlock(
+					existingMarkdown,
+					renderLegacyClippingMarkdown(legacyCandidates[0]!)
+				);
+		});
+
+		if (cannotRetainExistingId) {
 			return {
 				kind: "protected",
 				reason: "existing-highlights-not-retained",

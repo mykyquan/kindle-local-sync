@@ -1,9 +1,24 @@
 import type { TFile, Vault } from "obsidian";
 import { KindleHighlight } from "../parser/parseClippings";
-import { createClippingId, KindleBookGroup } from "../render/renderMarkdown";
-import { createKindleHighlightIdentityKey } from "./HighlightIdentity";
-import { analyzeManagedRegion } from "./ManagedRegion";
+import {
+	KindleBookGroup,
+	renderLegacyClippingMarkdown,
+} from "../render/renderMarkdown";
+import {
+	createBookIdentityKey,
+	createClippingId,
+	createKindleHighlightIdentityKey,
+	createLegacyClippingId,
+} from "./HighlightIdentity";
+import { analyzeManagedRegion, hasExactManagedHighlightBlock } from "./ManagedRegion";
 import { allocateBookNotePaths } from "./VaultWriter";
+
+export class AmbiguousLegacyClippingIdentityError extends Error {
+	constructor(readonly bookTitle: string, readonly author: string, readonly legacyId: string) {
+		super("A legacy clipping ID maps to multiple current records in the same book.");
+		this.name = "AmbiguousLegacyClippingIdentityError";
+	}
+}
 
 export function createVaultHighlightLookup(
 	vault: Vault,
@@ -11,7 +26,9 @@ export function createVaultHighlightLookup(
 	bookGroups: KindleBookGroup[]
 ): (id: string, highlight: KindleHighlight) => Promise<boolean> {
 	const notePathsByHighlightIdentity = new Map<string, string>();
+	const distinctStrongIdsByLegacyBookKey = new Map<string, Set<string>>();
 	const notePaths = allocateBookNotePaths(highlightsFolder, bookGroups);
+	const markdownByNotePath = new Map<string, Promise<string | null>>();
 
 	for (const [groupIndex, group] of bookGroups.entries()) {
 		const notePath = notePaths[groupIndex];
@@ -22,6 +39,11 @@ export function createVaultHighlightLookup(
 
 		for (const clipping of group.clippings) {
 			notePathsByHighlightIdentity.set(createKindleHighlightIdentityKey(clipping), notePath);
+			const legacyKey = createLegacyBookMarkerKey(clipping);
+			const strongIds = distinctStrongIdsByLegacyBookKey.get(legacyKey) ?? new Set<string>();
+
+			strongIds.add(createClippingId(clipping));
+			distinctStrongIdsByLegacyBookKey.set(legacyKey, strongIds);
 		}
 	}
 
@@ -36,7 +58,14 @@ export function createVaultHighlightLookup(
 			return false;
 		}
 
-		const markdown = await readVaultMarkdown(vault, notePath);
+		let markdownPromise = markdownByNotePath.get(notePath);
+
+		if (!markdownPromise) {
+			markdownPromise = readVaultMarkdown(vault, notePath);
+			markdownByNotePath.set(notePath, markdownPromise);
+		}
+
+		const markdown = await markdownPromise;
 
 		if (markdown === null) {
 			return false;
@@ -49,9 +78,38 @@ export function createVaultHighlightLookup(
 			throw new Error(`Cannot reconcile an unsafe managed region: ${managedRegion.reason}.`);
 		}
 
-		return managedRegion.kind === "valid-with-ids"
-			&& managedRegion.highlightIds.includes(id);
+		if (managedRegion.kind !== "valid-with-ids") {
+			return false;
+		}
+
+		if (managedRegion.highlightIds.includes(id)) {
+			return true;
+		}
+
+		const legacyId = createLegacyClippingId(highlight);
+
+		if (!managedRegion.highlightIds.includes(legacyId)) {
+			return false;
+		}
+
+		if ((distinctStrongIdsByLegacyBookKey.get(createLegacyBookMarkerKey(highlight))?.size ?? 0) !== 1) {
+			throw new AmbiguousLegacyClippingIdentityError(
+				highlight.bookTitle,
+				highlight.author,
+				legacyId
+			);
+		}
+
+		// A marker alone is insufficient for migration: the complete released block must match this record.
+		return hasExactManagedHighlightBlock(markdown, renderLegacyClippingMarkdown(highlight));
 	};
+}
+
+function createLegacyBookMarkerKey(highlight: KindleHighlight): string {
+	return JSON.stringify([
+		createBookIdentityKey(highlight.bookTitle, highlight.author),
+		createLegacyClippingId(highlight),
+	]);
 }
 
 async function readVaultMarkdown(vault: Vault, notePath: string): Promise<string | null> {

@@ -1,5 +1,10 @@
 import { KindleHighlight } from "../parser/parseClippings";
-import { createBookIdentityKey, createClippingId } from "../sync/HighlightIdentity";
+import {
+	createBookIdentityKey,
+	createClippingIdentity,
+	createClippingId,
+	createLegacyClippingId,
+} from "../sync/HighlightIdentity";
 
 export { createClippingId } from "../sync/HighlightIdentity";
 
@@ -101,6 +106,22 @@ export function renderSyncRegion(group: KindleBookGroup): string {
 }
 
 export function renderClippingMarkdown(clipping: KindleHighlight): string {
+	const identity = createClippingIdentity(clipping);
+
+	return renderClippingMarkdownWithMarkers(clipping, [
+		`<!-- kindle-local-sync-legacy-id: ${identity.legacyId} -->`,
+		`<!-- kindle-local-sync-id: ${identity.id} -->`,
+	]);
+}
+
+/** Renders the exact released 0.1.x block shape for verified, one-record legacy migration. */
+export function renderLegacyClippingMarkdown(clipping: KindleHighlight): string {
+	return renderClippingMarkdownWithMarkers(clipping, [
+		`<!-- kindle-local-sync-id: ${createLegacyClippingId(clipping)} -->`,
+	]);
+}
+
+function renderClippingMarkdownWithMarkers(clipping: KindleHighlight, markers: string[]): string {
 	const locationSuffix = clipping.location ? ` - Location ${clipping.location}` : "";
 	const addedLine = clipping.dateAdded ? [`Added: ${clipping.dateAdded}`, ""] : [];
 
@@ -110,7 +131,7 @@ export function renderClippingMarkdown(clipping: KindleHighlight): string {
 		renderClippingContent(clipping),
 		"",
 		...addedLine,
-		`<!-- kindle-local-sync-id: ${createClippingId(clipping)} -->`,
+		...markers,
 	].join("\n");
 }
 

@@ -5,7 +5,10 @@ import {
 	SYNC_END_MARKER,
 	SYNC_START_MARKER,
 	renderSyncRegion,
+	renderLegacyClippingMarkdown,
 } from "../render/renderMarkdown";
+import { createSyntheticSameBookCollision } from "../testFixtures/syntheticSameBookCollision";
+import { CurrentClippingIdentityIndex } from "./HighlightIdentity";
 import {
 	allocateBookNotePaths,
 	createVaultWritePlan,
@@ -1047,6 +1050,102 @@ describe("writeBookNotesToVault", () => {
 				highlightIds: [createClippingId(orchardHighlight)],
 			}],
 		});
+	});
+
+	it("writes both true same-book collision blocks and preserves personal text byte-for-byte", async () => {
+		const vault = new MockVault();
+		const [first, second] = createSyntheticSameBookCollision();
+		const notePath = "Kindle Highlights/Synthetic Atlas of Quiet Machines - Example Author.md";
+		const personalMarkdown = "# Personal heading\r\n\r\nPrivate notes stay exactly here.\r\n";
+
+		await vault.createFolder("Kindle Highlights");
+		await vault.create(notePath, personalMarkdown);
+		const summary = await writeBookNotesToVault(vault as unknown as Vault, "Kindle Highlights", [{
+			bookTitle: first.bookTitle,
+			author: first.author,
+			clippings: [first, second],
+		}]);
+		const markdown = vault.readFile(notePath) ?? "";
+
+		expect(markdown.slice(0, personalMarkdown.length)).toBe(personalMarkdown);
+		expect(markdown).toContain(first.content);
+		expect(markdown).toContain(second.content);
+		expect(markdown.match(/kindle-local-sync-id: kls2-/g)).toHaveLength(2);
+		expect(summary.highlightsRendered).toBe(2);
+		expect(summary.duplicatesSkipped).toBe(0);
+	});
+
+	it("upgrades one exact legacy block lazily but protects an ambiguous same-book legacy marker", async () => {
+		const [first, second] = createSyntheticSameBookCollision();
+		const notePath = "Kindle Highlights/Synthetic Atlas of Quiet Machines - Example Author.md";
+		const before = "Personal before.\n\n";
+		const after = "\n\nPersonal after.";
+		const createLegacyNote = (block: string) => [
+			before,
+			SYNC_START_MARKER,
+			"",
+			block,
+			"",
+			SYNC_END_MARKER,
+			after,
+		].join("\n");
+		const uniqueVault = new MockVault();
+
+		await uniqueVault.createFolder("Kindle Highlights");
+		await uniqueVault.create(notePath, createLegacyNote(renderLegacyClippingMarkdown(first)));
+		const uniqueSummary = await writeBookNotesToVault(uniqueVault as unknown as Vault, "Kindle Highlights", [{
+			bookTitle: first.bookTitle,
+			author: first.author,
+			clippings: [first],
+		}]);
+		const migrated = uniqueVault.readFile(notePath) ?? "";
+
+		expect(uniqueSummary.filesUpdated).toBe(1);
+		expect(migrated.startsWith(before)).toBe(true);
+		expect(migrated.endsWith(after)).toBe(true);
+		expect(migrated).toContain(`kindle-local-sync-id: ${createClippingId(first)}`);
+
+		const ambiguousVault = new MockVault();
+		const ambiguousMarkdown = createLegacyNote(renderLegacyClippingMarkdown(first));
+
+		await ambiguousVault.createFolder("Kindle Highlights");
+		await ambiguousVault.create(notePath, ambiguousMarkdown);
+		const ambiguousSummary = await writeBookNotesToVault(
+			ambiguousVault as unknown as Vault,
+			"Kindle Highlights",
+			[{
+				bookTitle: first.bookTitle,
+				author: first.author,
+				clippings: [first, second],
+			}]
+		);
+
+		expect(ambiguousVault.readFile(notePath)).toBe(ambiguousMarkdown);
+		expect(ambiguousSummary.bookOutcomes).toMatchObject([{
+			status: "protected",
+			reason: "existing-highlights-not-retained",
+		}]);
+
+		const subsetVault = new MockVault();
+
+		await subsetVault.createFolder("Kindle Highlights");
+		await subsetVault.create(notePath, ambiguousMarkdown);
+		const subsetSummary = await writeBookNotesToVault(
+			subsetVault as unknown as Vault,
+			"Kindle Highlights",
+			[{
+				bookTitle: first.bookTitle,
+				author: first.author,
+				clippings: [first],
+			}],
+			new CurrentClippingIdentityIndex([first, second])
+		);
+
+		expect(subsetVault.readFile(notePath)).toBe(ambiguousMarkdown);
+		expect(subsetSummary.bookOutcomes).toMatchObject([{
+			status: "protected",
+			reason: "existing-highlights-not-retained",
+		}]);
 	});
 
 	it("uses sanitized filenames and author names for stable same-title books", async () => {

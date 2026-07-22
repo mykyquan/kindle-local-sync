@@ -1,15 +1,91 @@
 import { describe, expect, it } from "vitest";
 import { KindleHighlight } from "../parser/parseClippings";
+import { createSyntheticSameBookCollision } from "../testFixtures/syntheticSameBookCollision";
 import { createClippingId } from "../render/renderMarkdown";
-import { CurrentClippingIdentityIndex } from "./HighlightIdentity";
+import { createLegacyClippingId, CurrentClippingIdentityIndex } from "./HighlightIdentity";
 import { classifyHighlightsForSync } from "./SyncClassifier";
 
 describe("classifyHighlightsForSync", () => {
+	it("keeps true same-book legacy-collision records independent under strong identity", async () => {
+		const [first, second] = createSyntheticSameBookCollision();
+		const identityIndex = new CurrentClippingIdentityIndex([first, second]);
+		const unreviewed = await classifyHighlightsForSync([first, second], {
+			ignoredHighlights: [],
+			importedHighlights: [],
+			identityIndex,
+			highlightExistsInNote: () => false,
+		});
+		const withFirstImported = await classifyHighlightsForSync([first, second], {
+			ignoredHighlights: [],
+			importedHighlights: [createImportedRecord(first)],
+			identityIndex,
+			highlightExistsInNote: (_id, highlight) => highlight === first,
+		});
+		const withFirstIgnored = await classifyHighlightsForSync([first, second], {
+			ignoredHighlights: [{
+				id: createClippingId(first),
+				title: first.bookTitle,
+				author: first.author,
+				textPreview: first.content,
+				ignoredAt: "2099-01-01T00:00:00.000Z",
+			}],
+			importedHighlights: [],
+			identityIndex,
+			highlightExistsInNote: () => false,
+		});
+
+		expect(unreviewed.newHighlights).toEqual([first, second]);
+		expect(unreviewed.duplicateHighlights).toEqual([]);
+		expect(withFirstImported.duplicateHighlights).toEqual([first]);
+		expect(withFirstImported.newHighlights).toEqual([second]);
+		expect(withFirstIgnored.ignoredHighlights).toEqual([first]);
+		expect(withFirstIgnored.newHighlights).toEqual([second]);
+	});
+
+	it("quarantines a same-book ambiguous legacy state record without false summary categories", async () => {
+		const [first, second] = createSyntheticSameBookCollision();
+		const identityIndex = new CurrentClippingIdentityIndex([first, second]);
+		const classification = await classifyHighlightsForSync([second, first], {
+			ignoredHighlights: [],
+			importedHighlights: [{
+				id: createLegacyClippingId(first),
+				title: first.bookTitle,
+				author: first.author,
+				textPreview: "Ambiguous released record",
+				importedAt: "2099-01-01T00:00:00.000Z",
+			}],
+			identityIndex,
+			highlightExistsInNote: () => true,
+		});
+
+		expect(classification.newHighlights).toEqual([]);
+		expect(classification.duplicateHighlights).toEqual([]);
+		expect(classification.ignoredHighlights).toEqual([]);
+		expect(classification.possibleReappearedHighlights).toEqual([]);
+		expect(classification.identityConflictHighlights?.map(createClippingId))
+			.toEqual([first, second].map(createClippingId).sort());
+	});
+
+	it("orders Missing Highlights by strong identity regardless of clipping input order", async () => {
+		const [first, second] = createSyntheticSameBookCollision();
+		const classify = (highlights: KindleHighlight[]) => classifyHighlightsForSync(highlights, {
+			ignoredHighlights: [],
+			importedHighlights: [createImportedRecord(first), createImportedRecord(second)],
+			identityIndex: new CurrentClippingIdentityIndex(highlights),
+			highlightExistsInNote: () => false,
+		});
+
+		const forward = await classify([first, second]);
+		const reverse = await classify([second, first]);
+
+		expect(forward.possibleReappearedHighlights.map(createClippingId))
+			.toEqual(reverse.possibleReappearedHighlights.map(createClippingId));
+	});
 	it("classifies ignored highlights as ignored", async () => {
 		const highlight = createHighlight();
 		const classification = await classifyHighlightsForSync([highlight], {
 			ignoredHighlights: [{
-				id: createClippingId(highlight),
+				id: createLegacyClippingId(highlight),
 				title: highlight.bookTitle,
 				textPreview: highlight.content,
 				ignoredAt: "2099-07-07T00:00:00.000Z",
@@ -73,7 +149,9 @@ describe("classifyHighlightsForSync", () => {
 			highlightExistsInNote: () => false,
 		});
 
-		expect(classification.possibleReappearedHighlights).toEqual(highlights);
+		expect(classification.possibleReappearedHighlights).toEqual(
+			[...highlights].sort((left, right) => createClippingId(left).localeCompare(createClippingId(right)))
+		);
 		expect(classification.duplicateHighlights).toEqual([]);
 	});
 
@@ -103,7 +181,8 @@ describe("classifyHighlightsForSync", () => {
 			highlightExistsInNote: (_id, highlight) => highlight === safe,
 		});
 
-		expect(createClippingId(safe)).toBe(createClippingId(protectedHighlight));
+		expect(createLegacyClippingId(safe)).toBe(createLegacyClippingId(protectedHighlight));
+		expect(createClippingId(safe)).not.toBe(createClippingId(protectedHighlight));
 		expect(classification.duplicateHighlights).toEqual([safe]);
 		expect(classification.newHighlights).toEqual([protectedHighlight]);
 	});
@@ -133,7 +212,7 @@ describe("classifyHighlightsForSync", () => {
 			highlightExistsInNote: () => true,
 		});
 
-		expect(createClippingId(first)).toBe(createClippingId(second));
+		expect(createLegacyClippingId(first)).toBe(createLegacyClippingId(second));
 		expect(classification.newHighlights).toEqual([first, second]);
 		expect(classification.duplicateHighlights).toEqual([]);
 	});
@@ -143,7 +222,7 @@ describe("classifyHighlightsForSync", () => {
 		const second = createSameTitleAuthorCollision("Author 1lqf5c4 1t7ix5f");
 		const classification = await classifyHighlightsForSync([first, second], {
 			ignoredHighlights: [{
-				id: createClippingId(first),
+				id: createLegacyClippingId(first),
 				title: first.bookTitle,
 				textPreview: "Legacy ignored preview",
 				ignoredAt: "2099-07-07T00:00:00.000Z",
@@ -184,7 +263,7 @@ function createImportedRecord(highlight: KindleHighlight) {
 
 function createLegacyImportedRecord(highlight: KindleHighlight) {
 	return {
-		id: createClippingId(highlight),
+		id: createLegacyClippingId(highlight),
 		title: highlight.bookTitle,
 		textPreview: highlight.content,
 		importedAt: "2099-07-07T00:00:00.000Z",

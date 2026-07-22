@@ -2,12 +2,14 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { App } from "../__mocks__/obsidian";
 import type { HighlightImportResult } from "./main";
 import { KindleHighlight } from "./parser/parseClippings";
+import { createSyntheticSameBookCollision } from "./testFixtures/syntheticSameBookCollision";
 import { createClippingId, groupHighlightsByBook } from "./render/renderMarkdown";
 import { IgnoredHighlight } from "./settings";
 import { SyncClassification } from "./sync/SyncClassifier";
 import {
 	createBookIdentityKey,
 	createKindleHighlightIdentityKey,
+	createLegacyClippingId,
 	CurrentClippingIdentityIndex,
 } from "./sync/HighlightIdentity";
 import {
@@ -899,7 +901,8 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 			skippedThisSyncHighlights: [itemA, itemB],
 		});
 
-		expect(itemA.id).toBe(itemB.id);
+		expect(createLegacyClippingId(bookA)).toBe(createLegacyClippingId(bookB));
+		expect(itemA.id).not.toBe(itemB.id);
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
 		await findByText(bookCardByTitle(modal.contentEl, itemA.title), "Review Highlights").click();
@@ -929,6 +932,31 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 });
 
 describe("SyncSummaryModal protected-book outcomes", () => {
+	it("surfaces an actionable legacy identity conflict without reporting false duplicates", async () => {
+		const collisionHighlights = createSyntheticSameBookCollision();
+		const modal = createModal({
+			classification: createClassification({
+				identityConflictHighlights: collisionHighlights,
+			}),
+			protectedBooks: createProtectedBooksPresentation([], [], collisionHighlights),
+		});
+
+		modal.onOpen();
+
+		expect(readText(modal.contentEl)).toContain(
+			"It protected those books and made no changes to their notes or saved choices."
+		);
+		expect(readText(modal.contentEl)).toContain("Back up the affected notes");
+		expect(readText(modal.contentEl)).not.toContain("duplicate skipped");
+		expect(readText(modal.contentEl)).not.toContain("hash");
+		expect(readText(modal.contentEl)).not.toContain("canonical identity");
+		await findByText(modal.contentEl, "View Books Left Unchanged").click();
+		expect(readText(modal.contentEl)).toContain(
+			"This book was not changed, and no Import or Ignore choice was saved."
+		);
+		expect(readText(modal.contentEl)).toContain("compare these highlights with My Clippings.txt");
+	});
+
 	it("omits protected outcome UI when no book was protected", () => {
 		const modal = createModal();
 
@@ -1377,7 +1405,8 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 			}),
 		});
 
-		expect(createClippingId(bookA)).toBe(createClippingId(bookB));
+		expect(createLegacyClippingId(bookA)).toBe(createLegacyClippingId(bookB));
+		expect(createClippingId(bookA)).not.toBe(createClippingId(bookB));
 		modal.onOpen();
 		await findByText(modal.contentEl, "Review Missing Highlights").click();
 		await findByText(bookCardByTitle(modal.contentEl, bookA.bookTitle), "Review Highlights").click();

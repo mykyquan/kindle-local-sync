@@ -1,10 +1,11 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { App, Notice } from "../__mocks__/obsidian";
 import type { KindleHighlight } from "./parser/parseClippings";
+import { createSyntheticSameBookCollision } from "./testFixtures/syntheticSameBookCollision";
 import { createClippingId, KindleBookGroup } from "./render/renderMarkdown";
 import type { IgnoredHighlight, ImportedHighlightRecord, KindleSyncSettings } from "./settings";
 import type { SyncSummaryHighlightItem } from "./SyncSummaryTypes";
-import { CurrentClippingIdentityIndex } from "./sync/HighlightIdentity";
+import { createLegacyClippingId, CurrentClippingIdentityIndex } from "./sync/HighlightIdentity";
 import type { IgnoredHighlightCleanupSummary } from "./sync/IgnoredHighlightCleanup";
 import type { SyncClassification } from "./sync/SyncClassifier";
 import { createVaultWritePlan, type VaultWriteSummary } from "./sync/VaultWriter";
@@ -233,6 +234,82 @@ describe("automatic sync failure presentation", () => {
 });
 
 describe("sync review gate", () => {
+	it("preserves separate same-book collision decisions after restart", async () => {
+		const [imported, ignored] = createSyntheticSameBookCollision();
+		const highlights = [imported, ignored];
+		const firstPlugin = await createPlugin(createSettings());
+		const identityIndex = createIdentityIndex(highlights);
+
+		await firstPlugin.importHighlights([imported], identityIndex);
+		await firstPlugin.ignoreHighlights([ignored], identityIndex);
+		expect(firstPlugin.settings.importedHighlights).toMatchObject([{
+			id: createClippingId(imported),
+			legacyId: createLegacyClippingId(imported),
+			identityVersion: 2,
+		}]);
+		expect(firstPlugin.settings.ignoredHighlights).toMatchObject([{
+			id: createClippingId(ignored),
+			legacyId: createLegacyClippingId(ignored),
+			identityVersion: 2,
+		}]);
+
+		const reloaded = await createPlugin(
+			JSON.parse(JSON.stringify(firstPlugin.settings)) as KindleSyncSettings
+		);
+
+		mocks.syncSummaryInstances.length = 0;
+		mocks.parseClippings.mockReturnValue(highlights);
+		mocks.highlightExistsInNote.mockImplementation(
+			async (_id: string, highlight: KindleHighlight) => highlight === imported
+		);
+		await reloaded.syncHighlights();
+
+		const summary = mocks.syncSummaryInstances.at(-1);
+
+		expect(summary?.classification.duplicateHighlights).toEqual([imported]);
+		expect(summary?.classification.ignoredHighlights).toEqual([ignored]);
+		expect(summary?.classification.newHighlights).toEqual([]);
+		expect(summary?.automaticHighlights).toEqual([imported]);
+	});
+
+	it("quarantines an ambiguous same-book legacy record while an unrelated book continues", async () => {
+		const [first, second] = createSyntheticSameBookCollision();
+		const unrelated = createHighlight({
+			bookTitle: "Independent Safe Book",
+			author: "Safe Author",
+			content: "This unrelated record can continue safely.",
+		});
+		const plugin = await createPlugin(createSettings({
+			importedHighlights: [
+				{
+					id: createLegacyClippingId(first),
+					title: first.bookTitle,
+					author: first.author,
+					textPreview: "Ambiguous released state",
+					importedAt: "2099-01-01T00:00:00.000Z",
+				},
+				createImportedRecord(unrelated),
+			],
+		}));
+
+		mocks.parseClippings.mockReturnValue([second, unrelated, first]);
+		mocks.highlightExistsInNote.mockResolvedValue(true);
+		await plugin.syncHighlights();
+
+		const summary = mocks.syncSummaryInstances.at(-1);
+
+		expect(mocks.firstSyncPreviewInstances).toHaveLength(0);
+		expect(summary?.automaticHighlights).toEqual([unrelated]);
+		expect(summary?.classification.duplicateHighlights).toEqual([unrelated]);
+		expect(summary?.classification.identityConflictHighlights?.map(createClippingId))
+			.toEqual([first, second].map(createClippingId).sort());
+		expect(summary?.protectedBooks).toMatchObject({
+			bookCount: 1,
+			affectedHighlightCount: 2,
+		});
+		expect(writtenHighlightIds()).toEqual([createClippingId(unrelated)]);
+	});
+
 	it("opens review before importing on first sync", async () => {
 		const highlight = createHighlight();
 		const plugin = await createPlugin(null);
@@ -313,7 +390,9 @@ describe("sync review gate", () => {
 
 		const summary = mocks.syncSummaryInstances.at(-1);
 
-		expect(summary?.classification.possibleReappearedHighlights).toEqual(highlights);
+		expect(summary?.classification.possibleReappearedHighlights).toEqual(
+			[...highlights].sort((left, right) => createClippingId(left).localeCompare(createClippingId(right)))
+		);
 		expect(summary?.automaticHighlights).toEqual([]);
 		expect(writtenHighlightIds()).toEqual([]);
 	});
@@ -383,24 +462,30 @@ describe("sync review gate", () => {
 		expect(writtenHighlightIds()).toEqual([]);
 	});
 
-	it("uses unique legacy trust for automatic sync without backfilling an authored record", async () => {
+	it("lazily appends a strong record after unique legacy trust and a confirmed write", async () => {
 		const highlight = createHighlight();
 		const legacyRecord: ImportedHighlightRecord = {
-			id: createClippingId(highlight),
+			id: createLegacyClippingId(highlight),
 			title: highlight.bookTitle,
 			textPreview: "Legacy preview",
 			importedAt: "2025-01-01T00:00:00.000Z",
 		};
 		const plugin = await createPlugin(createSettings({ importedHighlights: [legacyRecord] }));
-		const before = JSON.stringify(plugin.settings.importedHighlights);
+		const before = JSON.stringify(legacyRecord);
 
 		mocks.parseClippings.mockReturnValue([highlight]);
 		await plugin.syncHighlights();
 
 		expect(mocks.firstSyncPreviewInstances).toHaveLength(0);
 		expect(writtenHighlightIds()).toEqual([createClippingId(highlight)]);
-		expect(JSON.stringify(plugin.settings.importedHighlights)).toBe(before);
+		expect(JSON.stringify(plugin.settings.importedHighlights[0])).toBe(before);
 		expect(plugin.settings.importedHighlights[0]?.author).toBeUndefined();
+		expect(plugin.settings.importedHighlights[1]).toMatchObject({
+			id: createClippingId(highlight),
+			legacyId: createLegacyClippingId(highlight),
+			identityVersion: 2,
+			author: highlight.author,
+		});
 	});
 
 	it("opens review only for newly detected later-sync highlights and waits for Finish Sync before importing them", async () => {
@@ -571,7 +656,8 @@ describe("protected writer result propagation", () => {
 			])
 		);
 
-		expect(createClippingId(protectedCollision)).toBe(createClippingId(safeCollision));
+		expect(createLegacyClippingId(protectedCollision)).toBe(createLegacyClippingId(safeCollision));
+		expect(createClippingId(protectedCollision)).not.toBe(createClippingId(safeCollision));
 		const collisionInput = [protectedCollision, safeCollision];
 		const result = await plugin.importHighlights(collisionInput, createIdentityIndex(collisionInput));
 
@@ -626,13 +712,13 @@ describe("protected writer result propagation", () => {
 		const second = createSameTitleAuthorCollision("Author 1lqf5c4 1t7ix5f");
 		const completeInput = [first, second];
 		const legacyImported: ImportedHighlightRecord = {
-			id: createClippingId(first),
+			id: createLegacyClippingId(first),
 			title: first.bookTitle,
 			textPreview: "Legacy imported preview",
 			importedAt: "2025-01-01T00:00:00.000Z",
 		};
 		const legacyIgnored: IgnoredHighlight = {
-			id: createClippingId(first),
+			id: createLegacyClippingId(first),
 			title: first.bookTitle,
 			textPreview: "Legacy ignored preview",
 			ignoredAt: "2025-01-02T00:00:00.000Z",
@@ -645,7 +731,7 @@ describe("protected writer result propagation", () => {
 		const ignoredBefore = JSON.stringify(legacyIgnored);
 		const identityIndex = createIdentityIndex(completeInput);
 
-		expect(createClippingId(first)).toBe(createClippingId(second));
+		expect(createLegacyClippingId(first)).toBe(createLegacyClippingId(second));
 		expect(identityIndex.resolveStoredIdentity(legacyImported)).toBeNull();
 		expect(identityIndex.resolveStoredIdentity(legacyIgnored)).toBeNull();
 		await plugin.importHighlights([first], identityIndex);
@@ -660,7 +746,7 @@ describe("protected writer result propagation", () => {
 	it("appends one authored import after unique legacy trust without changing the legacy record", async () => {
 		const highlight = createHighlight();
 		const legacyRecord: ImportedHighlightRecord = {
-			id: createClippingId(highlight),
+			id: createLegacyClippingId(highlight),
 			title: highlight.bookTitle,
 			textPreview: "Legacy preview",
 			importedAt: "2025-01-01T00:00:00.000Z",
@@ -685,7 +771,7 @@ describe("protected writer result propagation", () => {
 	it("appends one authored Ignore after unique legacy trust without changing the legacy record", async () => {
 		const highlight = createHighlight();
 		const legacyRecord: IgnoredHighlight = {
-			id: createClippingId(highlight),
+			id: createLegacyClippingId(highlight),
 			title: highlight.bookTitle,
 			textPreview: "Legacy ignored preview",
 			ignoredAt: "2025-01-01T00:00:00.000Z",
@@ -1486,6 +1572,7 @@ describe("protected writer result propagation", () => {
 				bookTitle: ignoredHighlight.bookTitle,
 				author: ignoredHighlight.author,
 				id: createClippingId(ignoredHighlight),
+				legacyId: createLegacyClippingId(ignoredHighlight),
 			}]
 		);
 		expect(saveData).toHaveBeenCalledTimes(1);
@@ -1567,7 +1654,7 @@ describe("protected writer result propagation", () => {
 		const importedHighlight = createHighlight({ bookTitle: "Import A", author: "Author A" });
 		const ignoredHighlight = createHighlight({ bookTitle: "Ignore B", author: "Author B" });
 		const legacyIgnored: IgnoredHighlight = {
-			id: createClippingId(ignoredHighlight),
+			id: createLegacyClippingId(ignoredHighlight),
 			title: ignoredHighlight.bookTitle,
 			textPreview: "Legacy ignored preview",
 			ignoredAt: "2025-01-01T00:00:00.000Z",
@@ -1886,7 +1973,8 @@ describe("existing notes without data review choices", () => {
 
 		await plugin.continueExistingNotesWithoutDataSync();
 
-		expect(createClippingId(trusted)).toBe(createClippingId(unmatched));
+		expect(createLegacyClippingId(trusted)).toBe(createLegacyClippingId(unmatched));
+		expect(createClippingId(trusted)).not.toBe(createClippingId(unmatched));
 		expect(plugin.settings.importedHighlights).toMatchObject([{
 			title: trusted.bookTitle,
 			author: trusted.author,
@@ -2162,6 +2250,8 @@ describe("durable settings persistence verification", () => {
 					textPreview: record.textPreview,
 					author: record.author,
 					title: record.title,
+					identityVersion: record.identityVersion,
+					legacyId: record.legacyId,
 					id: record.id,
 				})),
 				ignoredHighlights: snapshot.ignoredHighlights,

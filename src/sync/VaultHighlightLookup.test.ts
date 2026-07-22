@@ -4,10 +4,16 @@ import { KindleHighlight } from "../parser/parseClippings";
 import {
 	createClippingId,
 	KindleBookGroup,
+	renderLegacyClippingMarkdown,
 	SYNC_END_MARKER,
 	SYNC_START_MARKER,
 } from "../render/renderMarkdown";
-import { createVaultHighlightLookup } from "./VaultHighlightLookup";
+import { createSyntheticSameBookCollision } from "../testFixtures/syntheticSameBookCollision";
+import { createLegacyClippingId } from "./HighlightIdentity";
+import {
+	AmbiguousLegacyClippingIdentityError,
+	createVaultHighlightLookup,
+} from "./VaultHighlightLookup";
 import { allocateBookNotePaths, createVaultWritePlan } from "./VaultWriter";
 
 class MockFile {
@@ -151,7 +157,8 @@ describe("createVaultHighlightLookup", () => {
 			throw new Error("Expected a path for Book A.");
 		}
 
-		expect(createClippingId(bookA)).toBe(createClippingId(bookB));
+		expect(createLegacyClippingId(bookA)).toBe(createLegacyClippingId(bookB));
+		expect(createClippingId(bookA)).not.toBe(createClippingId(bookB));
 		vault.addFile(bookAPath, renderManagedMarkers([createClippingId(bookA)]));
 		const lookup = createVaultHighlightLookup(
 			vault as unknown as Vault,
@@ -191,6 +198,45 @@ describe("createVaultHighlightLookup", () => {
 
 		expect(await lookup(createClippingId(first), first)).toBe(true);
 		expect(await lookup(createClippingId(second), second)).toBe(true);
+	});
+
+	it("trusts one exact released block but never reuses an ambiguous legacy marker for collision peers", async () => {
+		const [first, second] = createSyntheticSameBookCollision();
+		const notePath = allocateBookNotePaths("Kindle Highlights", [createGroup(first)])[0];
+		const vault = new MockVault();
+
+		if (!notePath) {
+			throw new Error("Expected an allocated note path.");
+		}
+
+		vault.addFile(notePath, [
+			SYNC_START_MARKER,
+			"",
+			renderLegacyClippingMarkdown(first),
+			"",
+			SYNC_END_MARKER,
+		].join("\n"));
+
+		const uniqueLookup = createVaultHighlightLookup(
+			vault as unknown as Vault,
+			"Kindle Highlights",
+			[createGroup(first)]
+		);
+		const ambiguousLookup = createVaultHighlightLookup(
+			vault as unknown as Vault,
+			"Kindle Highlights",
+			[{
+				bookTitle: first.bookTitle,
+				author: first.author,
+				clippings: [first, second],
+			}]
+		);
+
+		expect(await uniqueLookup(createClippingId(first), first)).toBe(true);
+		await expect(ambiguousLookup(createClippingId(first), first))
+			.rejects.toBeInstanceOf(AmbiguousLegacyClippingIdentityError);
+		await expect(ambiguousLookup(createClippingId(second), second))
+			.rejects.toBeInstanceOf(AmbiguousLegacyClippingIdentityError);
 	});
 });
 

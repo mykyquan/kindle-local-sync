@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { parseClippings } from "./parseClippings";
+import {
+	createSyntheticSameBookCollision,
+	renderSyntheticSameBookCollisionClippings,
+} from "../testFixtures/syntheticSameBookCollision";
 
 describe("parseClippings", () => {
+	it("preserves both distinct records in the verified same-book legacy collision fixture", () => {
+		expect(parseClippings(renderSyntheticSameBookCollisionClippings()))
+			.toEqual(createSyntheticSameBookCollision());
+	});
 	it("returns an empty array for empty input", () => {
 		expect(parseClippings("")).toEqual([]);
 	});

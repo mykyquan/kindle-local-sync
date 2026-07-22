@@ -15,6 +15,7 @@ export interface ProtectedBookPresentation {
 	author: string;
 	affectedHighlightCount: number;
 	selectedHighlightCount: number;
+	identityConflict?: boolean;
 }
 
 export interface ProtectedBooksPresentation {
@@ -58,12 +59,21 @@ export interface IgnoreResultsPresentation {
  */
 export function createProtectedBooksPresentation(
 	protectedHighlights: readonly KindleHighlight[],
-	explicitlySelectedHighlights: readonly KindleHighlight[]
+	explicitlySelectedHighlights: readonly KindleHighlight[],
+	identityConflictHighlights: readonly KindleHighlight[] = []
 ): ProtectedBooksPresentation {
 	const booksByIdentity = new Map<string, ProtectedBookPresentation>();
 	let selectedHighlightCount = 0;
 
 	for (const highlight of protectedHighlights) {
+		addProtectedHighlight(highlight, false);
+	}
+
+	for (const highlight of identityConflictHighlights) {
+		addProtectedHighlight(highlight, true);
+	}
+
+	function addProtectedHighlight(highlight: KindleHighlight, identityConflict: boolean): void {
 		const identity = createBookIdentityKey(highlight.bookTitle, highlight.author);
 		const book = booksByIdentity.get(identity) ?? {
 			title: highlight.bookTitle,
@@ -76,6 +86,9 @@ export function createProtectedBooksPresentation(
 		);
 
 		book.affectedHighlightCount++;
+		if (identityConflict) {
+			book.identityConflict = true;
+		}
 		if (wasExplicitlySelected) {
 			book.selectedHighlightCount++;
 			selectedHighlightCount++;
@@ -86,7 +99,7 @@ export function createProtectedBooksPresentation(
 
 	return {
 		bookCount: booksByIdentity.size,
-		affectedHighlightCount: protectedHighlights.length,
+		affectedHighlightCount: protectedHighlights.length + identityConflictHighlights.length,
 		selectedHighlightCount,
 		books: Array.from(booksByIdentity.values()),
 	};
@@ -182,6 +195,8 @@ function mapIgnoreCleanupStatus(
 			return "already-absent";
 		case "ambiguous-note-ownership":
 			return "multiple-notes-unchanged";
+		case "legacy-identity-unresolved":
+			return "note-unchanged";
 		case "unsafe-managed-region":
 			return "note-unchanged";
 		case "cleanup-failed":

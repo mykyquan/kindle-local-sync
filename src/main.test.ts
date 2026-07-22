@@ -4,6 +4,7 @@ import { App } from "../__mocks__/obsidian";
 import { KindleHighlight } from "./parser/parseClippings";
 import { renderClippingMarkdown, SYNC_START_MARKER } from "./render/renderMarkdown";
 import { CurrentClippingIdentityIndex } from "./sync/HighlightIdentity";
+import { createClippingIdentity } from "./sync/HighlightIdentity";
 
 let KindleLocalSyncPlugin: typeof import("./main").default;
 let SettingsPersistenceVerificationError: typeof import("./main").SettingsPersistenceVerificationError;
@@ -83,9 +84,12 @@ describe("unignoreHighlight", () => {
 
 		setLoadedData(plugin, plugin.settings);
 		setSaveDataPersists(plugin, false);
+		const identity = createClippingIdentity(highlight);
 
 		await expect(plugin.ignoreSummaryHighlight({
-			id: "summary-id",
+			id: identity.id,
+			legacyId: identity.legacyId,
+			identityVersion: identity.identityVersion,
 			title: highlight.bookTitle,
 			author: highlight.author,
 			textPreview: highlight.content,

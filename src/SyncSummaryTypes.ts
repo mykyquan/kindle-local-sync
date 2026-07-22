@@ -1,8 +1,10 @@
 import { KindleHighlight } from "./parser/parseClippings";
-import { createClippingId } from "./render/renderMarkdown";
+import { createClippingIdentity } from "./sync/HighlightIdentity";
 
 export interface SyncSummaryHighlightItem {
 	id: string;
+	legacyId?: string;
+	identityVersion?: 2;
 	title: string;
 	author: string;
 	textPreview: string;
@@ -12,8 +14,12 @@ export interface SyncSummaryHighlightItem {
 }
 
 export function createSyncSummaryHighlightItem(highlight: KindleHighlight): SyncSummaryHighlightItem {
+	const identity = createClippingIdentity(highlight);
+
 	return {
-		id: createClippingId(highlight),
+		id: identity.id,
+		legacyId: identity.legacyId,
+		identityVersion: identity.identityVersion,
 		title: highlight.bookTitle,
 		author: highlight.author,
 		textPreview: highlight.content.replace(/\s+/g, " ").trim().slice(0, 120),

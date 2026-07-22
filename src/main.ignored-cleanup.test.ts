@@ -5,7 +5,7 @@ import { KindleHighlight } from "./parser/parseClippings";
 import { createClippingId, KindleBookGroup } from "./render/renderMarkdown";
 import { SyncSummaryModal } from "./SyncSummaryModal";
 import { SyncClassification } from "./sync/SyncClassifier";
-import { CurrentClippingIdentityIndex } from "./sync/HighlightIdentity";
+import { createLegacyClippingId, CurrentClippingIdentityIndex } from "./sync/HighlightIdentity";
 import { IgnoredHighlightCleanupSummary } from "./sync/IgnoredHighlightCleanup";
 import { IgnoreResultsPresentation } from "./SyncOutcomePresentation";
 import { SyncSummaryHighlightItem } from "./SyncSummaryTypes";
@@ -258,6 +258,7 @@ describe("ignored highlight cleanup triggers", () => {
 				bookTitle: firstHighlight.bookTitle,
 				author: firstHighlight.author,
 				id: createClippingId(firstHighlight),
+				legacyId: createLegacyClippingId(firstHighlight),
 			}]
 		);
 	});
@@ -278,6 +279,7 @@ describe("ignored highlight cleanup triggers", () => {
 				bookTitle: highlight.bookTitle,
 				author: highlight.author,
 				id: createClippingId(highlight),
+				legacyId: createLegacyClippingId(highlight),
 			}))
 		);
 	});
@@ -288,7 +290,8 @@ describe("ignored highlight cleanup triggers", () => {
 		const bookB = createCollisionBookGroup("Collision 1y0rlvz 2269");
 		const modal = new FirstSyncPreviewModal(new App() as never, plugin as never, [bookA, bookB]);
 
-		expect(createClippingId(bookA.clippings[0]!)).toBe(createClippingId(bookB.clippings[0]!));
+		expect(createLegacyClippingId(bookA.clippings[0]!)).toBe(createLegacyClippingId(bookB.clippings[0]!));
+		expect(createClippingId(bookA.clippings[0]!)).not.toBe(createClippingId(bookB.clippings[0]!));
 		modal.onOpen();
 		await findByText(modal.contentEl, "Ignore All").click();
 		await findByText(modal.contentEl, "Finish Sync").click();
@@ -309,6 +312,7 @@ describe("ignored highlight cleanup triggers", () => {
 				bookTitle: bookA.bookTitle,
 				author: bookA.author,
 				id: createClippingId(bookA.clippings[0]!),
+				legacyId: createLegacyClippingId(bookA.clippings[0]!),
 			}]
 		);
 	});
@@ -322,7 +326,7 @@ describe("ignored highlight cleanup triggers", () => {
 			author: sourceHighlight.author,
 		});
 		const legacyRecord = {
-			id: highlight.id,
+			id: createLegacyClippingId(sourceHighlight),
 			title: highlight.title,
 			textPreview: "Legacy ignored preview",
 			ignoredAt: "2025-01-01T00:00:00.000Z",
@@ -342,7 +346,12 @@ describe("ignored highlight cleanup triggers", () => {
 		expect(mocks.removeIgnoredHighlightBlocksFromExistingNotes).toHaveBeenCalledWith(
 			plugin.app.vault,
 			"Kindle Highlights",
-			[{ bookTitle: highlight.title, author: highlight.author, id: highlight.id }]
+			[{
+				bookTitle: highlight.title,
+				author: highlight.author,
+				id: highlight.id,
+				legacyId: createLegacyClippingId(sourceHighlight),
+			}]
 		);
 		expect(plugin.settings.ignoredHighlights).toHaveLength(2);
 		expect(plugin.settings.ignoredHighlights[0]).toEqual(legacyRecord);
@@ -355,12 +364,26 @@ describe("ignored highlight cleanup triggers", () => {
 
 	it("Sync Summary Ignore All Highlights triggers cleanup", async () => {
 		const plugin = createPlugin();
+		const sourceHighlights = [
+			createHighlight(),
+			createHighlight({ location: "160", content: "Second highlight." }),
+		];
 		const highlights = [
-			createSummaryItem({ id: "kls-one" }),
-			createSummaryItem({ id: "kls-two", textPreview: "Second highlight." }),
+			createSummaryItem({
+				id: createClippingId(sourceHighlights[0]!),
+				legacyId: createLegacyClippingId(sourceHighlights[0]!),
+				identityVersion: 2,
+			}),
+			createSummaryItem({
+				id: createClippingId(sourceHighlights[1]!),
+				legacyId: createLegacyClippingId(sourceHighlights[1]!),
+				identityVersion: 2,
+				textPreview: "Second highlight.",
+			}),
 		];
 		const modal = createSyncSummaryModal(plugin, {
 			skippedThisSyncHighlights: highlights,
+			identityHighlights: sourceHighlights,
 		});
 
 		modal.onOpen();
@@ -371,12 +394,22 @@ describe("ignored highlight cleanup triggers", () => {
 		expect(mocks.removeIgnoredHighlightBlocksFromExistingNotes).toHaveBeenCalledWith(
 			plugin.app.vault,
 			"Kindle Highlights",
-			[{ bookTitle: highlights[0]!.title, author: highlights[0]!.author, id: "kls-one" }]
+			[{
+				bookTitle: highlights[0]!.title,
+				author: highlights[0]!.author,
+				id: highlights[0]!.id,
+				legacyId: highlights[0]!.legacyId,
+			}]
 		);
 		expect(mocks.removeIgnoredHighlightBlocksFromExistingNotes).toHaveBeenCalledWith(
 			plugin.app.vault,
 			"Kindle Highlights",
-			[{ bookTitle: highlights[1]!.title, author: highlights[1]!.author, id: "kls-two" }]
+			[{
+				bookTitle: highlights[1]!.title,
+				author: highlights[1]!.author,
+				id: highlights[1]!.id,
+				legacyId: highlights[1]!.legacyId,
+			}]
 		);
 	});
 
@@ -384,7 +417,7 @@ describe("ignored highlight cleanup triggers", () => {
 		const plugin = createPlugin();
 		const highlight = createHighlight();
 		const legacyRecord = {
-			id: createClippingId(highlight),
+			id: createLegacyClippingId(highlight),
 			title: highlight.bookTitle,
 			textPreview: "Legacy ignored preview",
 			ignoredAt: "2025-01-01T00:00:00.000Z",
@@ -409,6 +442,7 @@ describe("ignored highlight cleanup triggers", () => {
 				bookTitle: highlight.bookTitle,
 				author: highlight.author,
 				id: createClippingId(highlight),
+				legacyId: createLegacyClippingId(highlight),
 			}]
 		);
 		expect(plugin.settings.ignoredHighlights).toHaveLength(2);

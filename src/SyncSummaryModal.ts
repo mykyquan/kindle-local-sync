@@ -230,6 +230,13 @@ export class SyncSummaryModal extends Modal {
 		panel.createEl("p", {
 			text: formatExistingBookNotesLeftUnchanged(this.protectedBooks.bookCount),
 		});
+		if (this.protectedBooks.books.some((book) => book.identityConflict)) {
+			panel.createEl("p", {
+				// Keep the product name and recovery steps recognizable in this multi-sentence warning.
+				// eslint-disable-next-line obsidianmd/ui/sentence-case
+				text: "Kindle Local Sync found conflicting older highlight information in one or more books. It protected those books and made no changes to their notes or saved choices. Back up the affected notes, then review each book below before syncing again.",
+			});
+		}
 
 		if (this.protectedBooks.selectedHighlightCount > 0) {
 			panel.createEl("p", {
@@ -357,6 +364,12 @@ export class SyncSummaryModal extends Modal {
 			if (book.selectedHighlightCount > 0) {
 				card.createEl("p", {
 					text: formatSelectedHighlightsReturningForBook(book.selectedHighlightCount),
+				}).addClass("kls-book-review-summary");
+			} else if (book.identityConflict) {
+				card.createEl("p", {
+					// Keep Import, Ignore, and My Clippings.txt consistent with the rest of the review UI.
+					// eslint-disable-next-line obsidianmd/ui/sentence-case
+					text: "This book was not changed, and no Import or Ignore choice was saved. Back up the note and compare these highlights with My Clippings.txt before trying again.",
 				}).addClass("kls-book-review-summary");
 			} else {
 				card.createEl("p", {

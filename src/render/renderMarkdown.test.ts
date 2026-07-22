@@ -58,7 +58,7 @@ describe("groupHighlightsByBook", () => {
 describe("createClippingId", () => {
 	it("creates stable deterministic IDs from clipping content", () => {
 		expect(createClippingId(orchardHighlight)).toBe(createClippingId({ ...orchardHighlight }));
-		expect(createClippingId(orchardHighlight)).toMatch(/^kls-[a-z0-9]+$/);
+		expect(createClippingId(orchardHighlight)).toMatch(/^kls2-[0-9a-f]{64}$/);
 	});
 
 	it("changes the ID when an important clipping field changes", () => {
@@ -87,7 +87,8 @@ describe("renderClippingMarkdown", () => {
 		expect(markdown).toContain("### Highlight - Location 154-155");
 		expect(markdown).toContain("> Clockwork apples chime at midnight.");
 		expect(markdown).toContain("Added: Monday, October 5, 2099 9:41 AM");
-		expect(markdown).toContain("<!-- kindle-local-sync-id: kls-");
+		expect(markdown).toContain("<!-- kindle-local-sync-legacy-id: kls-");
+		expect(markdown).toContain("<!-- kindle-local-sync-id: kls2-");
 	});
 
 	it("renders missing location and date gracefully", () => {

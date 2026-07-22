@@ -1,8 +1,9 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { App, Notice } from "../__mocks__/obsidian";
 import { KindleHighlight } from "./parser/parseClippings";
+import { createSyntheticSameBookCollision } from "./testFixtures/syntheticSameBookCollision";
 import { createClippingId, KindleBookGroup } from "./render/renderMarkdown";
-import { CurrentClippingIdentityIndex } from "./sync/HighlightIdentity";
+import { createLegacyClippingId, CurrentClippingIdentityIndex } from "./sync/HighlightIdentity";
 import { SyncSummaryHighlightItem } from "./SyncSummaryTypes";
 import type { SyncCompletionResult } from "./FirstSyncPreviewModal";
 import { InvalidVaultWriteContractError } from "./sync/VaultWriteContract";
@@ -132,7 +133,8 @@ describe("FirstSyncPreviewModal skip and ignore behavior", () => {
 		const bookB = createCollisionBookGroup("Collision 1y0rlvz 2269");
 		const modal = createModal(plugin, [bookA, bookB]);
 
-		expect(createClippingId(bookA.clippings[0]!)).toBe(createClippingId(bookB.clippings[0]!));
+		expect(createLegacyClippingId(bookA.clippings[0]!)).toBe(createLegacyClippingId(bookB.clippings[0]!));
+		expect(createClippingId(bookA.clippings[0]!)).not.toBe(createClippingId(bookB.clippings[0]!));
 		modal.onOpen();
 		await findByText(findSectionByHeading(modal.contentEl, `1 / 2 — ${bookA.bookTitle}`), "Review Highlights").click();
 		await findByText(modal.contentEl, "Ignore").click();
@@ -170,6 +172,49 @@ describe("FirstSyncPreviewModal skip and ignore behavior", () => {
 		expect(imports).toEqual(bookB.clippings);
 		expect(ignores).toEqual(bookA.clippings);
 		expect(skipped).toEqual([]);
+	});
+
+	it("keeps same-book collision choices independent and submits both through Import All Books", async () => {
+		const [first, second] = createSyntheticSameBookCollision();
+		const group: KindleBookGroup = {
+			bookTitle: first.bookTitle,
+			author: first.author,
+			clippings: [first, second],
+		};
+		const selectivePlugin = createPlugin();
+		const selectiveModal = createModal(selectivePlugin, [group]);
+
+		selectiveModal.onOpen();
+		await findByText(selectiveModal.contentEl, "Review Highlights").click();
+		await buttonByTextAt(selectiveModal.contentEl, "Ignore", 0).click();
+		await buttonByTextAt(selectiveModal.contentEl, "Import", 1).click();
+		await findButtonByAriaLabel(selectiveModal.contentEl, "Back to Book List").click();
+		await findByText(selectiveModal.contentEl, "Finish Sync").click();
+
+		const [imports, ignores] = selectivePlugin.completeFirstSync.mock.calls[0]!;
+
+		expect(imports).toEqual([second]);
+		expect(ignores).toEqual([first]);
+
+		const returningPlugin = createPlugin();
+		const returningModal = createModal(returningPlugin, [group], { title: "Review New Highlights" });
+
+		returningModal.onOpen();
+		await findByText(returningModal.contentEl, "Review Highlights").click();
+		await buttonByTextAt(returningModal.contentEl, "Import", 0).click();
+		await buttonByTextAt(returningModal.contentEl, "Ignore", 1).click();
+		await findButtonByAriaLabel(returningModal.contentEl, "Back to Book List").click();
+		await findByText(returningModal.contentEl, "Finish Sync").click();
+		expect(returningPlugin.completeFirstSync.mock.calls[0]?.[0]).toEqual([first]);
+		expect(returningPlugin.completeFirstSync.mock.calls[0]?.[1]).toEqual([second]);
+
+		const allPlugin = createPlugin();
+		const allModal = createModal(allPlugin, [group]);
+
+		allModal.onOpen();
+		await findByText(allModal.contentEl, "Import All Books").click();
+		await findByText(allModal.contentEl, "Finish Sync").click();
+		expect(allPlugin.completeFirstSync.mock.calls[0]?.[0]).toEqual([first, second]);
 	});
 });
 

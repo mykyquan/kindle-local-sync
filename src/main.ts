@@ -21,6 +21,7 @@ import {
 import {
 	createAuthoredStoredHighlightIdentityKeySet,
 	createBookIdentityKey,
+	createClippingIdentity,
 	createHighlightIdentityKey,
 	createKindleHighlightIdentityKey,
 	createStoredHighlightIdentityKeySet,
@@ -274,7 +275,8 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		);
 		const protectedBooks = createProtectedBooksPresentation(
 			importResult.protectedHighlights,
-			importHighlights
+			importHighlights,
+			classification.identityConflictHighlights ?? []
 		);
 
 		new SyncSummaryModal(this.app, this, {
@@ -360,7 +362,8 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		const writerResult: unknown = await writeBookNotesToVault(
 			this.app.vault,
 			this.settings.highlightsFolder,
-			bookGroups
+			bookGroups,
+			identityIndex
 		);
 		const {
 			writeSummary,
@@ -372,16 +375,12 @@ export default class KindleLocalSyncPlugin extends Plugin {
 			writerResult
 		);
 
-		const safelyCompletedExplicitHighlights = explicitHighlights.filter((highlight) =>
-			safelyCompletedHighlights.some((candidate) => hasSameHighlightIdentity(candidate, highlight))
-		);
-
 		if (persist) {
-			// Automatic legacy trust must not backfill records; only a safely completed explicit Import persists authorship.
+			// A confirmed physical write may lazily append a strong record without rewriting legacy history.
 			await this.persistSettingsMutation((currentSettings) =>
 				this.createImportedSettingsSnapshot(
 					currentSettings,
-					safelyCompletedExplicitHighlights,
+					safelyCompletedHighlights,
 					identityIndex
 				)
 			);
@@ -422,7 +421,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 			this.createIgnoredSummarySettingsSnapshot(currentSettings, [highlight], identityIndex)
 		);
 		const cleanupResult = await this.cleanupPersistedIgnoredHighlightBlocks([
-			createSummaryCleanupTarget(highlight),
+			createSummaryCleanupTarget(highlight, identityIndex),
 		]);
 
 		return {
@@ -444,12 +443,9 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		ignoreHighlights: KindleHighlight[],
 		identityIndex: CurrentClippingIdentityIndex
 	): KindleSyncSettings {
-		const safelyCompletedExplicitHighlights = explicitImportHighlights.filter((highlight) =>
-			safelyCompletedHighlights.some((candidate) => hasSameHighlightIdentity(candidate, highlight))
-		);
 		const importedSettings = this.createImportedSettingsSnapshot(
 			settings,
-			safelyCompletedExplicitHighlights,
+			safelyCompletedHighlights,
 			identityIndex
 		);
 
@@ -490,7 +486,7 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		const records: IgnoredHighlight[] = [];
 
 		for (const highlight of highlights) {
-			const id = createClippingId(highlight);
+			const clippingIdentity = createClippingIdentity(highlight);
 			const identity = createKindleHighlightIdentityKey(highlight);
 
 			if (existingIdentities.has(identity)) {
@@ -499,7 +495,9 @@ export default class KindleLocalSyncPlugin extends Plugin {
 
 			existingIdentities.add(identity);
 			records.push({
-				id,
+				id: clippingIdentity.id,
+				legacyId: clippingIdentity.legacyId,
+				identityVersion: clippingIdentity.identityVersion,
 				title: highlight.bookTitle,
 				author: highlight.author,
 				textPreview: createTextPreview(highlight),
@@ -589,6 +587,15 @@ export default class KindleLocalSyncPlugin extends Plugin {
 
 		for (const highlight of highlights) {
 			const identity = createHighlightIdentityKey(highlight.title, highlight.author, highlight.id);
+			const identityMetadata = identityIndex.getStrongIdentityMetadata(
+				highlight.title,
+				highlight.author,
+				highlight.id
+			);
+
+			if (!identityMetadata) {
+				throw new Error("Cannot persist an Ignore choice without a verified strong clipping identity.");
+			}
 
 			if (existingIdentities.has(identity)) {
 				continue;
@@ -597,6 +604,8 @@ export default class KindleLocalSyncPlugin extends Plugin {
 			existingIdentities.add(identity);
 			records.push({
 				id: highlight.id,
+				legacyId: identityMetadata.legacyId,
+				identityVersion: identityMetadata.identityVersion,
 				title: highlight.title,
 				author: highlight.author,
 				textPreview: highlight.textPreview,
@@ -712,7 +721,8 @@ export default class KindleLocalSyncPlugin extends Plugin {
 			identityIndex,
 			protectedBooks: createProtectedBooksPresentation(
 				importResult.protectedHighlights,
-				[]
+				[],
+				classification.identityConflictHighlights ?? []
 			),
 		}).open();
 
@@ -781,13 +791,17 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		const suspiciousIdentities = new Set(
 			classification.possibleReappearedHighlights.map(createKindleHighlightIdentityKey)
 		);
+		const identityConflictIdentities = new Set(
+			(classification.identityConflictHighlights ?? []).map(createKindleHighlightIdentityKey)
+		);
 
 		return highlights.filter((highlight) => {
 			const identity = createKindleHighlightIdentityKey(highlight);
 
 			return importedIdentities.has(identity)
 				&& !ignoredIdentities.has(identity)
-				&& !suspiciousIdentities.has(identity);
+				&& !suspiciousIdentities.has(identity)
+				&& !identityConflictIdentities.has(identity);
 		});
 	}
 }
@@ -864,7 +878,7 @@ function appendImportedHighlightRecords(
 	const records: ImportedHighlightRecord[] = [];
 
 	for (const highlight of highlights) {
-		const id = createClippingId(highlight);
+		const clippingIdentity = createClippingIdentity(highlight);
 		const identity = createKindleHighlightIdentityKey(highlight);
 
 		if (existingIdentities.has(identity)) {
@@ -873,7 +887,9 @@ function appendImportedHighlightRecords(
 
 		existingIdentities.add(identity);
 		records.push({
-			id,
+			id: clippingIdentity.id,
+			legacyId: clippingIdentity.legacyId,
+			identityVersion: clippingIdentity.identityVersion,
 			title: highlight.bookTitle,
 			author: highlight.author,
 			textPreview: createTextPreview(highlight),
@@ -887,18 +903,36 @@ function appendImportedHighlightRecords(
 }
 
 function createCleanupTarget(highlight: KindleHighlight): IgnoredHighlightCleanupTarget {
+	const identity = createClippingIdentity(highlight);
+
 	return {
 		bookTitle: highlight.bookTitle,
 		author: highlight.author,
-		id: createClippingId(highlight),
+		id: identity.id,
+		legacyId: identity.legacyId,
 	};
 }
 
-function createSummaryCleanupTarget(highlight: SyncSummaryHighlightItem): IgnoredHighlightCleanupTarget {
+
+function createSummaryCleanupTarget(
+	highlight: SyncSummaryHighlightItem,
+	identityIndex: CurrentClippingIdentityIndex
+): IgnoredHighlightCleanupTarget {
+	const identityMetadata = identityIndex.getStrongIdentityMetadata(
+		highlight.title,
+		highlight.author,
+		highlight.id
+	);
+
+	if (!identityMetadata) {
+		throw new Error("Cannot clean up a note without a verified strong clipping identity.");
+	}
+
 	return {
 		bookTitle: highlight.title,
 		author: highlight.author,
 		id: highlight.id,
+		legacyId: identityMetadata.legacyId,
 	};
 }
 
@@ -1088,6 +1122,8 @@ function isStoredHighlightRecord(value: unknown): value is Record<string, unknow
 } {
 	return isRecord(value)
 		&& typeof value.id === "string"
+		&& isOptionalString(value.legacyId)
+		&& (value.identityVersion === undefined || value.identityVersion === 2)
 		&& typeof value.title === "string"
 		&& isOptionalString(value.author)
 		&& typeof value.textPreview === "string";

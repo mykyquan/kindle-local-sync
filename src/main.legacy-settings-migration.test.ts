@@ -4,6 +4,7 @@ import { parseClippings } from "./parser/parseClippings";
 import {
 	createClippingId,
 	groupHighlightsByBook,
+	renderLegacyClippingMarkdown,
 	type KindleBookGroup,
 	SYNC_END_MARKER,
 	SYNC_START_MARKER,
@@ -299,6 +300,7 @@ describe("legacy 0.1.2 settings-only migration", () => {
 			expect(mocks.reviewModalInstances).toHaveLength(0);
 
 			await mocks.existingNotesModalInstances[0]?.continueWithExistingNotes();
+			const notesAfterReconnect = vault.getMarkdownSnapshot();
 
 			const durableReconnectState = readDurableState(plugin);
 			const matchedIds = matchedHighlights.map(createClippingId);
@@ -329,6 +331,7 @@ describe("legacy 0.1.2 settings-only migration", () => {
 			expect(durableStateAfterDiscard).not.toHaveProperty("skippedHighlights");
 			expect(durableStateAfterDiscard).not.toHaveProperty("skippedThisSyncHighlights");
 			expect(vault.getMarkdown(notePath)).toBe(originalMarkdown);
+			expect(vault.getMarkdownSnapshot()).toEqual(notesAfterReconnect);
 			expect(vault.getMarkdownSnapshot()).toEqual(notesBeforeSync);
 
 			mocks.existingNotesModalInstances.length = 0;
@@ -342,8 +345,7 @@ describe("legacy 0.1.2 settings-only migration", () => {
 			expect(mocks.reviewModalInstances[0]?.options?.title).toBe("Review New Highlights");
 			expect(reviewedIds()).toEqual([unmatchedId]);
 			expect(readDurableState(restartedPlugin)).toEqual(durableStateAfterDiscard);
-			expect(vault.getMarkdown(notePath)).toBe(originalMarkdown);
-			expect(vault.getMarkdownSnapshot()).toEqual(notesBeforeSync);
+			expect(vault.getMarkdownSnapshot()).toEqual(notesAfterReconnect);
 		}
 	);
 
@@ -504,11 +506,11 @@ function createLegacyVault(
 
 	const personalBeforeText = "Personal text before the managed region.\r\n\r\n";
 	const personalAfterText = "\r\n\r\nPersonal text after the managed region.";
-	const managedIds = managedHighlights.map(createClippingId);
+	const managedBlocks = managedHighlights.map(renderLegacyClippingMarkdown);
 	const originalMarkdown = [
 		personalBeforeText,
 		SYNC_START_MARKER,
-		...managedIds.map((id) => `<!-- kindle-local-sync-id: ${id} -->`),
+		...managedBlocks.flatMap((block) => ["", block, ""]),
 		SYNC_END_MARKER,
 		personalAfterText,
 	].join("\r\n");

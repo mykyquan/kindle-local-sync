@@ -35,7 +35,7 @@ interface MarkerToken {
 	index: number;
 }
 
-const HIGHLIGHT_ID_PATTERN = /(?:^|\r?\n)<!-- kindle-local-sync-id: (kls-[a-z0-9]+) -->(?=\r?\n|$)/g;
+const HIGHLIGHT_ID_PATTERN = /(?:^|\r?\n)<!-- kindle-local-sync-id: (kls2-[0-9a-f]{64}|kls-[a-z0-9]+) -->(?=\r?\n|$)/g;
 
 /**
  * Classifies the managed marker structure before any existing note is rewritten.
@@ -73,6 +73,40 @@ export function analyzeManagedRegion(markdown: string): ManagedRegionAnalysis {
 	}
 
 	return analyzeAmbiguousMarkerStructure(startIndices, endIndices);
+}
+
+/** Matches a complete generated clipping block inside the one valid managed region. */
+export function hasExactManagedHighlightBlock(markdown: string, expectedBlock: string): boolean {
+	const startIndex = markdown.indexOf(SYNC_START_MARKER);
+	const endIndex = markdown.indexOf(SYNC_END_MARKER, startIndex + SYNC_START_MARKER.length);
+
+	if (startIndex === -1 || endIndex === -1) {
+		return false;
+	}
+
+	const analysis = analyzeManagedRegion(markdown);
+
+	if (analysis.kind !== "valid-with-ids") {
+		return false;
+	}
+
+	const inner = markdown.slice(startIndex + SYNC_START_MARKER.length, endIndex);
+	let blockStart = 0;
+
+	HIGHLIGHT_ID_PATTERN.lastIndex = 0;
+	for (let match = HIGHLIGHT_ID_PATTERN.exec(inner); match; match = HIGHLIGHT_ID_PATTERN.exec(inner)) {
+		const markerStart = match.index + match[0].indexOf("<!--");
+		const markerEnd = findLineEnd(inner, markerStart);
+		const candidateBlock = inner.slice(blockStart, markerEnd).trim();
+
+		if (candidateBlock === expectedBlock.trim()) {
+			return true;
+		}
+
+		blockStart = markerEnd;
+	}
+
+	return false;
 }
 
 function analyzeValidRegion(markdown: string, startIndex: number, endIndex: number): ManagedRegionAnalysis {
@@ -185,6 +219,12 @@ function findMarkerIndices(markdown: string, marker: string): number[] {
 	}
 
 	return indices;
+}
+
+function findLineEnd(text: string, lineStart: number): number {
+	const nextNewline = text.indexOf("\n", lineStart);
+
+	return nextNewline === -1 ? text.length : nextNewline + 1;
 }
 
 function unsafe(reason: UnsafeManagedRegionReason): ManagedRegionAnalysis {

@@ -1,13 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { KindleHighlight } from "../parser/parseClippings";
-import { createClippingId } from "../render/renderMarkdown";
+import {
+	createSyntheticSameBookCollision,
+	SYNTHETIC_LEGACY_COLLISION_ID,
+} from "../testFixtures/syntheticSameBookCollision";
 import {
 	createAuthoredStoredHighlightIdentityKeySet,
 	createBookIdentityKey,
+	createClippingIdentity,
+	createClippingId,
 	createHighlightIdentityKey,
 	createKindleHighlightIdentityKey,
+	createLegacyClippingId,
 	CurrentClippingIdentityIndex,
 	hasSameHighlightIdentity,
+	serializeCanonicalClippingIdentity,
+	StrongFingerprintCollisionError,
+	StrongFingerprintCollisionRegistry,
 } from "./HighlightIdentity";
 
 describe("highlight identity", () => {
@@ -24,12 +33,62 @@ describe("highlight identity", () => {
 		expect(createBookIdentityKey(" Title", "Author")).not.toBe(createBookIdentityKey("Title", "Author"));
 	});
 
-	it("keeps books separate when their real 32-bit clipping IDs collide", () => {
+	it("keeps books separate when their real legacy 32-bit clipping IDs collide", () => {
 		const first = createCollisionHighlight("Collision 1h0o65e 20hu");
 		const second = createCollisionHighlight("Collision 1y0rlvz 2269");
 
-		expect(createClippingId(first)).toBe(createClippingId(second));
+		expect(createLegacyClippingId(first)).toBe(createLegacyClippingId(second));
+		expect(createClippingId(first)).not.toBe(createClippingId(second));
 		expect(hasSameHighlightIdentity(first, second)).toBe(false);
+	});
+
+	it("gives the verified same-book collision separate full SHA-256 identities", () => {
+		const [first, second] = createSyntheticSameBookCollision();
+
+		expect(createLegacyClippingId(first)).toBe(SYNTHETIC_LEGACY_COLLISION_ID);
+		expect(createLegacyClippingId(second)).toBe(SYNTHETIC_LEGACY_COLLISION_ID);
+		expect(createClippingId(first)).toMatch(/^kls2-[0-9a-f]{64}$/);
+		expect(createClippingId(second)).toMatch(/^kls2-[0-9a-f]{64}$/);
+		expect(createClippingId(first)).not.toBe(createClippingId(second));
+	});
+
+	it("uses explicitly versioned named JSON fields instead of delimiter concatenation", () => {
+		const clipping = createHighlight({ content: "left\u001fright" });
+		const serialized = serializeCanonicalClippingIdentity(clipping);
+
+		expect(JSON.parse(serialized)).toEqual({
+			schema: "kindle-local-sync/clipping-identity",
+			version: 2,
+			fields: {
+				title: clipping.bookTitle,
+				author: clipping.author,
+				type: clipping.type,
+				location: clipping.location,
+				dateAdded: clipping.dateAdded,
+				content: clipping.content,
+			},
+		});
+	});
+
+	it("intentionally treats records that differ only by an unparsed page as one logical highlight", () => {
+		const clipping = createHighlight();
+		const firstPage = { ...clipping, page: "10" };
+		const secondPage = { ...clipping, page: "11" };
+
+		expect(serializeCanonicalClippingIdentity(firstPage)).toBe(serializeCanonicalClippingIdentity(secondPage));
+		expect(createClippingId(firstPage)).toBe(createClippingId(secondPage));
+	});
+
+	it("fails closed within one input but does not retain collision state across unrelated operations", () => {
+		const fingerprint = `kls2-${"f".repeat(64)}`;
+		const firstOperation = new StrongFingerprintCollisionRegistry();
+		const unrelatedOperation = new StrongFingerprintCollisionRegistry();
+
+		firstOperation.assertConsistent(fingerprint, "canonical-one");
+		expect(() => firstOperation.assertConsistent(fingerprint, "canonical-two"))
+			.toThrow(StrongFingerprintCollisionError);
+		expect(() => unrelatedOperation.assertConsistent(fingerprint, "canonical-two"))
+			.not.toThrow();
 	});
 
 	it("collapses repeated identical clippings when resolving a legacy record", () => {
@@ -37,7 +96,7 @@ describe("highlight identity", () => {
 		const index = new CurrentClippingIdentityIndex([highlight, { ...highlight }]);
 
 		expect(index.resolveStoredIdentity({
-			id: createClippingId(highlight),
+			id: createLegacyClippingId(highlight),
 			title: highlight.bookTitle,
 		})).toBe(createKindleHighlightIdentityKey(highlight));
 	});
@@ -47,9 +106,9 @@ describe("highlight identity", () => {
 		const second = createSameTitleAuthorCollision("Author 1lqf5c4 1t7ix5f");
 		const index = new CurrentClippingIdentityIndex([first, second]);
 
-		expect(createClippingId(first)).toBe(createClippingId(second));
+		expect(createLegacyClippingId(first)).toBe(createLegacyClippingId(second));
 		expect(index.resolveStoredIdentity({
-			id: createClippingId(first),
+			id: createLegacyClippingId(first),
 			title: first.bookTitle,
 		})).toBeNull();
 	});
@@ -59,7 +118,7 @@ describe("highlight identity", () => {
 		const index = new CurrentClippingIdentityIndex([highlight]);
 
 		expect(index.resolveStoredIdentity({
-			id: createClippingId(highlight),
+			id: createLegacyClippingId(highlight),
 			title: highlight.bookTitle,
 			author: "Different Author",
 		})).not.toBe(createKindleHighlightIdentityKey(highlight));
@@ -69,23 +128,26 @@ describe("highlight identity", () => {
 		const highlight = createHighlight();
 		const index = new CurrentClippingIdentityIndex([highlight]);
 		const identities = createAuthoredStoredHighlightIdentityKeySet([
-			{ id: createClippingId(highlight), title: highlight.bookTitle },
+			{ id: createLegacyClippingId(highlight), title: highlight.bookTitle },
 		], index);
 
 		expect(index.resolveStoredIdentity({
-			id: createClippingId(highlight),
+			id: createLegacyClippingId(highlight),
 			title: highlight.bookTitle,
 		})).toBe(createKindleHighlightIdentityKey(highlight));
 		expect(identities).toEqual(new Set());
 	});
 
-	it("retains exact authored records for explicit decision deduplication", () => {
+	it("retains exact versioned strong records for explicit decision deduplication", () => {
 		const highlight = createHighlight();
 		const index = new CurrentClippingIdentityIndex([highlight]);
 		const identity = createKindleHighlightIdentityKey(highlight);
+		const clippingIdentity = createClippingIdentity(highlight);
 
 		expect(createAuthoredStoredHighlightIdentityKeySet([{
-			id: createClippingId(highlight),
+			id: clippingIdentity.id,
+			legacyId: clippingIdentity.legacyId,
+			identityVersion: clippingIdentity.identityVersion,
 			title: highlight.bookTitle,
 			author: highlight.author,
 		}], index)).toEqual(new Set([identity]));

@@ -4,9 +4,12 @@ import { KindleHighlight } from "../parser/parseClippings";
 import {
 	createClippingId,
 	renderClippingMarkdown,
+	renderLegacyClippingMarkdown,
 	SYNC_END_MARKER,
 	SYNC_START_MARKER,
 } from "../render/renderMarkdown";
+import { createSyntheticSameBookCollision } from "../testFixtures/syntheticSameBookCollision";
+import { createLegacyClippingId } from "./HighlightIdentity";
 import { removeIgnoredHighlightBlocksFromExistingNotes } from "./IgnoredHighlightCleanup";
 
 class MockTFile {
@@ -212,6 +215,40 @@ describe("ignored highlight cleanup", () => {
 		expect(summary.filesUpdated).toBe(0);
 	});
 
+	it("performs zero writes for an unresolved raw legacy target while an unrelated strong book continues", async () => {
+		const vault = new MockVault();
+		const [collisionFirst] = createSyntheticSameBookCollision();
+		const safe = createHighlight({ bookTitle: "Independent Safe Book", author: "Safe Author" });
+		const collisionPath = "Kindle Highlights/Collision.md";
+		const safePath = "Kindle Highlights/Safe.md";
+		const collisionMarkdown = renderNote([collisionFirst]).replace(
+			renderClippingMarkdown(collisionFirst),
+			renderLegacyClippingMarkdown(collisionFirst)
+		);
+		const safeMarkdown = renderNote([safe]);
+		const legacyTarget = {
+			bookTitle: collisionFirst.bookTitle,
+			author: collisionFirst.author,
+			id: createLegacyClippingId(collisionFirst),
+		};
+
+		vault.addFile(collisionPath, collisionMarkdown);
+		vault.addFile(safePath, safeMarkdown);
+		const summary = await removeIgnoredHighlightBlocksFromExistingNotes(
+			vault as unknown as Vault,
+			"Kindle Highlights",
+			[legacyTarget, createCleanupTarget(safe)]
+		);
+
+		expect(vault.readFile(collisionPath)).toBe(collisionMarkdown);
+		expect(vault.readFile(safePath)).not.toContain(renderClippingMarkdown(safe));
+		expect(summary.bookOutcomes[0]?.targetOutcomes).toEqual([{
+			target: legacyTarget,
+			status: "legacy-identity-unresolved",
+		}]);
+		expect(summary.filesUpdated).toBe(1);
+	});
+
 	it("handles multiple ignored highlights in one note", async () => {
 		const vault = new MockVault();
 		const firstIgnored = createHighlight({ content: "Remove first.", location: "154" });
@@ -241,7 +278,7 @@ describe("ignored highlight cleanup", () => {
 		const missingTarget = {
 			bookTitle: removed.bookTitle,
 			author: removed.author,
-			id: "kls-missing",
+			id: "kls2-missing",
 		};
 
 		vault.addFile(notePath, originalMarkdown);
@@ -332,7 +369,8 @@ describe("ignored highlight cleanup", () => {
 		const bookAMarkdown = renderNote([bookA]);
 		const bookBMarkdown = renderNote([bookB]);
 
-		expect(createClippingId(bookA)).toBe(createClippingId(bookB));
+		expect(createLegacyClippingId(bookA)).toBe(createLegacyClippingId(bookB));
+		expect(createClippingId(bookA)).not.toBe(createClippingId(bookB));
 		vault.addFile("Kindle Highlights/Book A.md", bookAMarkdown);
 		vault.addFile("Kindle Highlights/Book B.md", bookBMarkdown);
 
@@ -365,7 +403,8 @@ describe("ignored highlight cleanup", () => {
 		});
 		const secondMarkdown = renderNote([second]);
 
-		expect(createClippingId(first)).toBe(createClippingId(second));
+		expect(createLegacyClippingId(first)).toBe(createLegacyClippingId(second));
+		expect(createClippingId(first)).not.toBe(createClippingId(second));
 		vault.addFile("Kindle Highlights/First.md", renderNote([first]));
 		vault.addFile("Kindle Highlights/Second.md", secondMarkdown);
 

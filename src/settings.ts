@@ -1,5 +1,8 @@
 export interface IgnoredHighlight {
 	id: string;
+	/** Present on version 2 records so released 0.1.x identity can be verified without remaining authoritative. */
+	legacyId?: string;
+	identityVersion?: 2;
 	title: string;
 	/** Absent only on records saved by plugin versions that predate composite identity. */
 	author?: string;
@@ -10,6 +13,9 @@ export interface IgnoredHighlight {
 
 export interface ImportedHighlightRecord {
 	id: string;
+	/** Present on version 2 records so released 0.1.x identity can be verified without remaining authoritative. */
+	legacyId?: string;
+	identityVersion?: 2;
 	title: string;
 	/** Absent only on records saved by plugin versions that predate composite identity. */
 	author?: string;

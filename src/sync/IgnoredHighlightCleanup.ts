@@ -21,6 +21,7 @@ export interface IgnoredHighlightCleanupTarget {
 	bookTitle: string;
 	author: string;
 	id: string;
+	legacyId?: string;
 }
 
 export type IgnoredHighlightCleanupTargetOutcome =
@@ -31,7 +32,7 @@ export type IgnoredHighlightCleanupTargetOutcome =
 	}
 	| {
 		target: IgnoredHighlightCleanupTarget;
-		status: "no-matching-note" | "ambiguous-note-ownership" | "no-matching-highlight-block";
+		status: "no-matching-note" | "ambiguous-note-ownership" | "no-matching-highlight-block" | "legacy-identity-unresolved";
 	}
 	| {
 		target: IgnoredHighlightCleanupTarget;
@@ -123,6 +124,12 @@ export async function removeIgnoredHighlightBlocksFromExistingNotes(
 	}
 
 	for (const group of targetGroups) {
+		if (group.targets.some((target) => target.id.startsWith("kls-") && !target.id.startsWith("kls2-"))) {
+			// Cleanup has no canonical input from which to prove a unique old-ID upgrade, so it performs zero writes.
+			summary.bookOutcomes.push(createUniformBookOutcome(group, "legacy-identity-unresolved"));
+			continue;
+		}
+
 		const matchingNotes = snapshots.filter((snapshot) => snapshot.bookIdentity === group.bookIdentity);
 
 		// Exact-ID deletion is safe only after one note is attributable to the selected book.
@@ -214,7 +221,7 @@ function groupCleanupTargets(
 
 function createUniformBookOutcome(
 	group: CleanupTargetGroup,
-	status: "no-matching-note" | "ambiguous-note-ownership" | "no-matching-highlight-block"
+	status: "no-matching-note" | "ambiguous-note-ownership" | "no-matching-highlight-block" | "legacy-identity-unresolved"
 ): IgnoredHighlightCleanupBookOutcome {
 	return {
 		bookTitle: group.bookTitle,
