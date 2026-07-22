@@ -1,92 +1,111 @@
 # Kindle Local Sync
 
-適用於 Obsidian 的僅本機 Kindle 標註與筆記匯入工具。
+將 Kindle 標註帶進 Obsidian，不必把閱讀資料傳送到任何地方。
 
-Kindle Local Sync 是一個僅適用於桌面端的 Obsidian 外掛。它會讀取透過 USB 連接的 Kindle 上的本機 `My Clippings.txt` 檔案，並將 Kindle 標註與筆記寫入你的 Obsidian 資料庫中的 Markdown 檔案。
+Kindle Local Sync 是僅適用於桌面版的 Obsidian 外掛。它會讀取 Kindle 上本機的 `My Clippings.txt` 檔案，並為你選擇保留的標註建立整潔的 Markdown 筆記。
 
 ## 示範
 
 ![Kindle Local Sync demo](docs/assets/demo.gif)
 
-示範：設定本機 `My Clippings.txt` 路徑，同步 Kindle 標註，並查看產生的 Markdown 筆記輸出。
+## 📖 為什麼使用它？
 
-## 功能
+- 將 Kindle 標註留在你實際使用的 Obsidian 筆記和專案旁。
+- 在標註加入資料庫之前先檢閱新標註。
+- 每本書使用一份 Markdown 筆記。
+- 更新後或外掛資料遺失時，重新連結現有的 Kindle Local Sync 筆記。
+- 將個人寫作與外掛更新的部分分開。
 
-- 桌面端 Obsidian 外掛。
-- USB-first Kindle clipping 匯入。
-- 支援手動設定 `My Clippings.txt` 路徑。
-- 支援 macOS、Windows 和 Linux 路徑偵測。
-- 在 Obsidian 資料庫中輸出 Markdown。
-- 每本書一個筆記。
-- 具備穩定 clipping ID 的生成同步區域。
-- 安全的檔名與資料夾路徑清理。
-- parser 和 vault writer 有測試覆蓋。
-
-## Languages
+## 語言
 
 - [English](README.md)
 - [Tiếng Việt](README.vi.md)
 - [简体中文](README.zh-CN.md)
 - [繁體中文](README.zh-TW.md)
 
-## 從 Obsidian Community Plugins 安裝
+## 開始前需要準備
 
-從社群外掛目錄安裝（通過審核後）：
+- 桌面版 Obsidian。
+- 含有本機 `My Clippings.txt` 檔案的 Kindle；通常以 USB 連接 Kindle 後即可存取。
+- 一個用來保存書籍筆記的 Obsidian 資料庫。
 
-Settings → Community plugins → Browse → 搜尋 "Kindle Local Sync" → Install → Enable。
+## 安裝
 
-## 快速開始
+當外掛可在 Obsidian Community Plugins 中使用後：
 
-1. 用 USB 連接 Kindle。
-2. 開啟 Obsidian。
-3. 安裝並啟用 **Kindle Local Sync**。
-4. 如果外掛沒有自動偵測到 Kindle，請設定 **My clippings.txt path**。
-5. 選取 ribbon 中的書本圖示，或從 command palette 執行 **Sync local kindle highlights**。
-6. 開啟已設定的 highlights 資料夾，檢查產生的筆記。
+1. 開啟 **Settings** → **Community plugins** → **Browse**。
+2. 搜尋 **Kindle Local Sync**。
+3. 選擇 **Install**，然後選擇 **Enable**。
 
-## 運作方式
+如需測試 beta 版本，僅在你主動測試預發布建置時使用 BRAT 或 GitHub Release ZIP。
 
-1. 外掛從已連接的 Kindle 或手動設定的路徑偵測 `My Clippings.txt`。
-2. 外掛以 UTF-8 文字讀取本機 clipping 檔案。
-3. 外掛解析 Kindle 標註與筆記，並略過 bookmark 項目。
-4. 外掛依書籍分組 clipping。
-5. 如有需要，外掛會建立已設定的 highlights 資料夾。
-6. 外掛為每本書寫入或更新一個 Markdown 筆記。
+## 🧭 快速開始
 
-外掛只管理這些 marker 之間的內容：
+1. 以 USB 連接 Kindle。
+2. 在外掛設定中確認 **My clippings.txt path**。如果沒有偵測到 Kindle，請自行選擇本機 `My Clippings.txt` 檔案。
+3. 為 Markdown 筆記選擇 **Highlights folder**。
+4. 從命令面板執行 **Sync local kindle highlights**，或使用功能區中的書本圖示。
+5. 檢閱需要選擇的標註，然後選擇 **Finish Sync**。
+
+外掛會讀取檔案、依書籍分組標註，並將已核准的標註寫入所選資料夾。只有核准的匯入確實需要時，才會建立筆記。
+
+## 同步時會發生什麼
+
+首次同步時，**First Sync Preview** 會讓你決定哪些標註要進入 Obsidian。之後的同步通常會辨識已匯入的標註，只詢問新的或遺失的項目。
+
+| 選擇 | 現在會發生什麼 | 下次同步會發生什麼 |
+| --- | --- | --- |
+| **Import** | 選擇 **Finish Sync** 後新增所選標註。 | 它們會被辨識為已匯入。 |
+| **Skip This Sync** | 今天不新增該標註。 | 它可能再次出現供你檢閱。 |
+| **Ignore** | 不匯入該標註。 | 它會保持忽略狀態，直到你從 Ignore 清單中移除它。 |
+
+![在同步審核中選擇匯入、暫時跳過或忽略書籍](docs/assets/readme/choices-zh.png)
+
+檢閱較多項目時，也可以使用 **Import All**、**Ignore All** 或 **Import All Books**。在選擇 **Finish Sync** 前，所有檢閱選擇都只是暫時的。
+
+使用搜尋和檢閱篩選器可以快速找到一本書。
+
+![在同步審核中搜尋書籍](docs/assets/readme/search-zh.png)
+
+如果標註之後從 `My Clippings.txt` 中消失，外掛不會將此視為刪除 Obsidian 副本的許可。Kindle 裝置可能仍會在該檔案中保留已刪除的標註，因此外掛不能把它當作可靠的刪除清單。
+
+## 現有 Kindle 筆記
+
+如果你已有 Kindle Local Sync 筆記，但外掛找不到儲存的歷史記錄，它會顯示 **Existing Kindle notes found**。
+
+選擇 **Continue with existing notes** 來重新連結。外掛會保留這些筆記、辨識可以比對的標註，並只要求你檢閱無法比對的項目。你不需要重新核准每一條舊標註。
+
+如果先前匯入的標註不再出現在預期筆記中，**Missing Highlights** 可以提供 **Import Again**、**Ignore Going Forward** 或 **Skip This Time**。如果外掛無法安全檢查筆記，它會保持該書不變，並在同步摘要中說明原因。
+
+## 保護個人筆記
+
+Kindle Local Sync 只更新它在以下標記之間建立的部分：
 
 ```markdown
 <!-- kindle-local-sync:start -->
 <!-- kindle-local-sync:end -->
 ```
 
-這些 marker 之外的內容會被保留。
+請將自己的文字放在這個部分之前或之後。標記外的內容會被保留。如果外掛無法安全更新書籍筆記，它會保持筆記不變，而不是猜測如何處理。
 
-## 隱私
+## 🔒 隱私
 
-Kindle Local Sync 從設計上就是僅本機。
+你的標註始終留在本機。Kindle Local Sync 從電腦讀取 `My Clippings.txt`，並在資料庫中寫入 Markdown 筆記和外掛設定。它不會上傳你的標註或資料庫內容，也沒有雲端同步、遙測、Amazon 或 Readwise 連線。
 
-- No Amazon login.
-- No Readwise integration.
-- No cloud sync.
-- No telemetry.
-- No external APIs.
-- No network requests.
-- 此外掛不會讓你的 Obsidian 資料庫內容離開本機。
+## 🛠️ 疑難排解
 
-外掛會從本機檔案系統讀取 `My Clippings.txt`，並在你的 Obsidian 資料庫中寫入 Markdown 檔案。
+| 你看到的情況 | 通常表示什麼 | 可以嘗試什麼 |
+| --- | --- | --- |
+| **Could not find My Clippings.txt** | 未偵測到 Kindle，或檔案路徑已改變。 | 連接 Kindle，然後手動設定 **My clippings.txt path**。 |
+| 找不到標註 | 檔案可能只有書籤或不支援的項目。 | 檢查檔案是否包含 Kindle Highlight 或 Note 項目。 |
+| 後續同步沒有變化 | 相同標註已被辨識。 | 這是正常情況；新標註會提供給你檢閱。 |
+| 一本書保持不變 | 外掛無法證明更新它是安全的。 | 保留備份，檢查外掛區域，解決筆記問題後再試。 |
+| **Existing Kindle notes found** | 找到了現有筆記，但沒有可用的儲存歷史。 | 選擇 **Continue with existing notes** 重新連結。 |
 
-## 疑難排解
+## 進階文件和支援
 
-- **外掛尚未出現在目錄中**：通過審核後，請從 Obsidian Community Plugins 安裝。在此之前，如果你在測試 beta 版本，可以使用 BRAT 或 GitHub Release ZIP。
-- **找不到 My Clippings.txt**：用 USB 連接 Kindle，然後在外掛設定中手動填寫 **My clippings.txt path** 的絕對路徑。
-- **沒有匯入任何標註**：確認 Kindle 上存在本機 `My Clippings.txt` 檔案，且檔案中包含 highlight 或 note，而不只是 bookmark。
-- **第二次 sync 看起來沒有變化**：如果這些 clipping 已經匯入，這是正常的。外掛會避免重複 highlight 和重複檔案。
-- **你在產生的檔案中加入了自己的筆記**：請把個人內容放在 `kindle-local-sync` marker 之外，這樣後續 sync 會保留這些內容。
+- [技術架構](docs/ARCHITECTURE.md)為維護者和進階使用者說明同步行為、遷移、相容性和安全規則。
+- [發行清單](docs/release-checklist.md)涵蓋測試和發行工作。
+- [Support](SUPPORT.md)說明如何在不分享私人閱讀資料的情況下回報問題。
 
-## Roadmap
-
-- 增加來自真實 Kindle clipping 變體的 parser fixtures。
-- 在 macOS、Windows 和 Linux 上進行更多 manual QA。
-- 為社群外掛提交準備 release packaging checklist。
-- 根據使用者回饋選擇性改進筆記格式。
+Kindle Local Sync 依 [MIT License](LICENSE) 發行。

@@ -1,4 +1,12 @@
 import { KindleHighlight } from "../parser/parseClippings";
+import {
+	createBookIdentityKey,
+	createClippingIdentity,
+	createClippingId,
+	createLegacyClippingId,
+} from "../sync/HighlightIdentity";
+
+export { createClippingId } from "../sync/HighlightIdentity";
 
 export const SYNC_START_MARKER = "<!-- kindle-local-sync:start -->";
 export const SYNC_END_MARKER = "<!-- kindle-local-sync:end -->";
@@ -18,7 +26,7 @@ export function groupHighlightsByBook(highlights: KindleHighlight[]): KindleBook
 	const groups = new Map<string, KindleBookGroup>();
 
 	for (const highlight of highlights) {
-		const key = `${highlight.bookTitle}\u0000${highlight.author}`;
+		const key = createBookIdentityKey(highlight.bookTitle, highlight.author);
 		const existingGroup = groups.get(key);
 
 		if (existingGroup) {
@@ -57,21 +65,6 @@ export function dedupeClippings(clippings: KindleHighlight[]): DedupedClippings 
 		clippings: uniqueClippings,
 		duplicatesSkipped,
 	};
-}
-
-export function createClippingId(clipping: KindleHighlight): string {
-	const stableInput = [
-		clipping.bookTitle,
-		clipping.author,
-		clipping.type,
-		clipping.location,
-		clipping.dateAdded,
-		clipping.content,
-	]
-		.map(normalizeHashField)
-		.join("\u001f");
-
-	return `kls-${fnv1aHash(stableInput)}`;
 }
 
 export function renderBookMarkdown(group: KindleBookGroup): string {
@@ -113,6 +106,22 @@ export function renderSyncRegion(group: KindleBookGroup): string {
 }
 
 export function renderClippingMarkdown(clipping: KindleHighlight): string {
+	const identity = createClippingIdentity(clipping);
+
+	return renderClippingMarkdownWithMarkers(clipping, [
+		`<!-- kindle-local-sync-legacy-id: ${identity.legacyId} -->`,
+		`<!-- kindle-local-sync-id: ${identity.id} -->`,
+	]);
+}
+
+/** Renders the exact released 0.1.x block shape for verified, one-record legacy migration. */
+export function renderLegacyClippingMarkdown(clipping: KindleHighlight): string {
+	return renderClippingMarkdownWithMarkers(clipping, [
+		`<!-- kindle-local-sync-id: ${createLegacyClippingId(clipping)} -->`,
+	]);
+}
+
+function renderClippingMarkdownWithMarkers(clipping: KindleHighlight, markers: string[]): string {
 	const locationSuffix = clipping.location ? ` - Location ${clipping.location}` : "";
 	const addedLine = clipping.dateAdded ? [`Added: ${clipping.dateAdded}`, ""] : [];
 
@@ -122,7 +131,7 @@ export function renderClippingMarkdown(clipping: KindleHighlight): string {
 		renderClippingContent(clipping),
 		"",
 		...addedLine,
-		`<!-- kindle-local-sync-id: ${createClippingId(clipping)} -->`,
+		...markers,
 	].join("\n");
 }
 
@@ -136,13 +145,19 @@ export function replaceOrAppendSyncRegion(existingMarkdown: string, syncRegion: 
 		return `${existingMarkdown.slice(0, startIndex)}${syncRegion}${existingMarkdown.slice(afterEndIndex)}`;
 	}
 
-	const trimmedMarkdown = existingMarkdown.trimEnd();
-
-	if (!trimmedMarkdown) {
+	if (existingMarkdown.length === 0) {
 		return `${syncRegion}\n`;
 	}
 
-	return `${trimmedMarkdown}\n\n## Kindle Highlights & Notes\n\n${syncRegion}\n`;
+	// With no managed markers, every existing byte is user-authored and must remain untouched.
+	const lineBreak = existingMarkdown.includes("\r\n") ? "\r\n" : "\n";
+	const appendSeparator = existingMarkdown.endsWith(`${lineBreak}${lineBreak}`)
+		? ""
+		: existingMarkdown.endsWith(lineBreak)
+			? lineBreak
+			: `${lineBreak}${lineBreak}`;
+
+	return `${existingMarkdown}${appendSeparator}## Kindle Highlights & Notes\n\n${syncRegion}\n`;
 }
 
 function renderClippingContent(clipping: KindleHighlight): string {
@@ -165,21 +180,6 @@ function joinBlocks(blocks: string[]): string[] {
 
 		return [block, "", ""];
 	});
-}
-
-function normalizeHashField(value: string): string {
-	return value.trim().replace(/\r\n/g, "\n");
-}
-
-function fnv1aHash(value: string): string {
-	let hash = 0x811c9dc5;
-
-	for (let index = 0; index < value.length; index++) {
-		hash ^= value.charCodeAt(index);
-		hash = Math.imul(hash, 0x01000193);
-	}
-
-	return (hash >>> 0).toString(36);
 }
 
 function escapeFrontmatterValue(value: string): string {

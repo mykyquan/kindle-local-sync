@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { parseClippings } from "./parseClippings";
+import {
+	createSyntheticSameBookCollision,
+	renderSyntheticSameBookCollisionClippings,
+} from "../testFixtures/syntheticSameBookCollision";
 
 describe("parseClippings", () => {
+	it("preserves both distinct records in the verified same-book legacy collision fixture", () => {
+		expect(parseClippings(renderSyntheticSameBookCollisionClippings()))
+			.toEqual(createSyntheticSameBookCollision());
+	});
 	it("returns an empty array for empty input", () => {
 		expect(parseClippings("")).toEqual([]);
 	});
@@ -11,46 +19,46 @@ describe("parseClippings", () => {
 	});
 
 	it("parses a valid highlight block", () => {
-		const rawText = `Atomic Habits (James Clear)
-- Your Highlight on page 12 | Location 154-155 | Added on Thursday, May 14, 2026 2:44 PM
+		const rawText = `The Clockwork Orchard (Mira Vale)
+- Your Highlight on page 12 | Location 154-155 | Added on Monday, October 5, 2099 9:41 AM
 
-Small habits make a big difference.
+Clockwork apples chime at midnight.
 ==========`;
 
 		expect(parseClippings(rawText)).toEqual([
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
 				location: "154-155",
-				content: "Small habits make a big difference.",
-				dateAdded: "Thursday, May 14, 2026 2:44 PM",
+				content: "Clockwork apples chime at midnight.",
+				dateAdded: "Monday, October 5, 2099 9:41 AM",
 				type: "Highlight",
 			},
 		]);
 	});
 
 	it("parses a valid note block", () => {
-		const rawText = `Atomic Habits (James Clear)
-- Your Note on page 13 | Location 160 | Added on Thursday, May 14, 2026 2:45 PM
+		const rawText = `The Clockwork Orchard (Mira Vale)
+- Your Note on page 13 | Location 160 | Added on Monday, October 5, 2099 9:42 AM
 
-Review this idea later.
+Revisit the orchard map later.
 ==========`;
 
 		expect(parseClippings(rawText)).toEqual([
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
 				location: "160",
-				content: "Review this idea later.",
-				dateAdded: "Thursday, May 14, 2026 2:45 PM",
+				content: "Revisit the orchard map later.",
+				dateAdded: "Monday, October 5, 2099 9:42 AM",
 				type: "Note",
 			},
 		]);
 	});
 
 	it("skips bookmark blocks", () => {
-		const rawText = `Atomic Habits (James Clear)
-- Your Bookmark on page 14 | Location 170 | Added on Thursday, May 14, 2026 2:46 PM
+		const rawText = `The Clockwork Orchard (Mira Vale)
+- Your Bookmark on page 14 | Location 170 | Added on Monday, October 5, 2099 9:43 AM
 
 ==========`;
 
@@ -58,21 +66,21 @@ Review this idea later.
 	});
 
 	it("uses Unknown when the author is missing", () => {
-		const rawText = `Atomic Habits
-- Your Highlight on page 12 | Location 154 | Added on Thursday, May 14, 2026 2:44 PM
+		const rawText = `The Clockwork Orchard
+- Your Highlight on page 12 | Location 154 | Added on Monday, October 5, 2099 9:41 AM
 
-Small habits make a big difference.
+Clockwork apples chime at midnight.
 ==========`;
 
 		expect(parseClippings(rawText)[0]).toMatchObject({
-			bookTitle: "Atomic Habits",
+			bookTitle: "The Clockwork Orchard",
 			author: "Unknown",
 		});
 	});
 
 	it("extracts the author from the last parenthesis pair", () => {
 		const rawText = `A Book Title (Expanded Edition) (Author Name)
-- Your Highlight on page 12 | Location 154 | Added on Thursday, May 14, 2026 2:44 PM
+- Your Highlight on page 12 | Location 154 | Added on Monday, October 5, 2099 9:41 AM
 
 The title contains parentheses.
 ==========`;
@@ -84,30 +92,30 @@ The title contains parentheses.
 	});
 
 	it("parses Location ranges", () => {
-		const rawText = `Atomic Habits (James Clear)
-- Your Highlight on page 12 | Location 154-155 | Added on Thursday, May 14, 2026 2:44 PM
+		const rawText = `The Clockwork Orchard (Mira Vale)
+- Your Highlight on page 12 | Location 154-155 | Added on Monday, October 5, 2099 9:41 AM
 
-Small habits make a big difference.
+Clockwork apples chime at midnight.
 ==========`;
 
 		expect(parseClippings(rawText)[0]?.location).toBe("154-155");
 	});
 
 	it("parses Loc. values", () => {
-		const rawText = `Atomic Habits (James Clear)
-- Your Highlight at Loc. 154 | Added on Thursday, May 14, 2026 2:44 PM
+		const rawText = `The Clockwork Orchard (Mira Vale)
+- Your Highlight at Loc. 154 | Added on Monday, October 5, 2099 9:41 AM
 
-Small habits make a big difference.
+Clockwork apples chime at midnight.
 ==========`;
 
 		expect(parseClippings(rawText)[0]?.location).toBe("154");
 	});
 
 	it("uses an empty string when location is missing", () => {
-		const rawText = `Atomic Habits (James Clear)
-- Your Highlight on page 12 | Added on Thursday, May 14, 2026 2:44 PM
+		const rawText = `The Clockwork Orchard (Mira Vale)
+- Your Highlight on page 12 | Added on Monday, October 5, 2099 9:41 AM
 
-Small habits make a big difference.
+Clockwork apples chime at midnight.
 ==========`;
 
 		expect(parseClippings(rawText)[0]?.location).toBe("");
@@ -116,10 +124,10 @@ Small habits make a big difference.
 	it("skips malformed blocks without throwing", () => {
 		const rawText = `This block is malformed
 ==========
-Atomic Habits (James Clear)
-- Your Highlight on page 12 | Location 154 | Added on Thursday, May 14, 2026 2:44 PM
+The Clockwork Orchard (Mira Vale)
+- Your Highlight on page 12 | Location 154 | Added on Monday, October 5, 2099 9:41 AM
 
-Small habits make a big difference.
+Clockwork apples chime at midnight.
 ==========`;
 
 		expect(() => parseClippings(rawText)).not.toThrow();
@@ -127,32 +135,32 @@ Small habits make a big difference.
 	});
 
 	it("parses multiple clipping blocks correctly", () => {
-		const rawText = `Atomic Habits (James Clear)
-- Your Highlight on page 12 | Location 154 | Added on Thursday, May 14, 2026 2:44 PM
+		const rawText = `The Clockwork Orchard (Mira Vale)
+- Your Highlight on page 12 | Location 154 | Added on Monday, October 5, 2099 9:41 AM
 
-Small habits make a big difference.
+Clockwork apples chime at midnight.
 ==========
-Deep Work (Cal Newport)
-- Your Note on page 20 | Loc. 220 | Added on Friday, May 15, 2026 8:15 AM
+Night Trains to Lumen Bay (Owen Hart)
+- Your Note on page 20 | Loc. 220 | Added on Tuesday, October 6, 2099 10:15 AM
 
-Schedule focus time.
+Reserve a window seat before moonrise.
 ==========`;
 
 		expect(parseClippings(rawText)).toEqual([
 			{
-				bookTitle: "Atomic Habits",
-				author: "James Clear",
+				bookTitle: "The Clockwork Orchard",
+				author: "Mira Vale",
 				location: "154",
-				content: "Small habits make a big difference.",
-				dateAdded: "Thursday, May 14, 2026 2:44 PM",
+				content: "Clockwork apples chime at midnight.",
+				dateAdded: "Monday, October 5, 2099 9:41 AM",
 				type: "Highlight",
 			},
 			{
-				bookTitle: "Deep Work",
-				author: "Cal Newport",
+				bookTitle: "Night Trains to Lumen Bay",
+				author: "Owen Hart",
 				location: "220",
-				content: "Schedule focus time.",
-				dateAdded: "Friday, May 15, 2026 8:15 AM",
+				content: "Reserve a window seat before moonrise.",
+				dateAdded: "Tuesday, October 6, 2099 10:15 AM",
 				type: "Note",
 			},
 		]);

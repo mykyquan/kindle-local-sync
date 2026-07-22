@@ -1,0 +1,377 @@
+type ClickHandler = () => void | Promise<void>;
+type InputHandler = () => void | Promise<void>;
+type KeyboardHandler = (event: {
+	key: string;
+	preventDefault: () => void;
+	stopPropagation: () => void;
+}) => void | Promise<void>;
+
+export class MockElement {
+	tagName: string;
+	textContent = "";
+	children: MockElement[] = [];
+	classes = new Set<string>();
+	scrollTop = 0;
+	scrollIntoViewCalls: unknown[] = [];
+	type = "";
+	placeholder = "";
+	value = "";
+	iconName = "";
+	focusCalls = 0;
+	attributes = new Map<string, string>();
+	disabled = false;
+	private clickHandler: ClickHandler | null = null;
+	private inputHandler: InputHandler | null = null;
+	private keydownHandler: KeyboardHandler | null = null;
+
+	constructor(tagName = "div", text = "") {
+		this.tagName = tagName;
+		this.textContent = text;
+	}
+
+	createEl(tagName: string, options: { text?: string } = {}): MockElement {
+		const child = new MockElement(tagName, options.text ?? "");
+		this.children.push(child);
+
+		return child;
+	}
+
+	createDiv(): MockElement {
+		return this.createEl("div");
+	}
+
+	empty(): void {
+		this.textContent = "";
+		this.children = [];
+	}
+
+	addClass(className: string): void {
+		this.classes.add(className);
+	}
+
+	removeClass(className: string): void {
+		this.classes.delete(className);
+	}
+
+	setText(text: string): void {
+		this.textContent = text;
+	}
+
+	setAttribute(name: string, value: string): void {
+		this.attributes.set(name, value);
+	}
+
+	getAttribute(name: string): string | null {
+		return this.attributes.get(name) ?? null;
+	}
+
+	removeAttribute(name: string): void {
+		this.attributes.delete(name);
+	}
+
+	onClick(handler: ClickHandler): void {
+		this.clickHandler = handler;
+	}
+
+	addEventListener(eventName: string, handler: InputHandler | KeyboardHandler): void {
+		if (eventName === "input") {
+			this.inputHandler = handler as InputHandler;
+		}
+
+		if (eventName === "keydown") {
+			this.keydownHandler = handler as KeyboardHandler;
+		}
+	}
+
+	async click(): Promise<void> {
+		if (this.disabled) {
+			return;
+		}
+		await this.clickHandler?.();
+	}
+
+	async input(value: string): Promise<void> {
+		this.value = value;
+		await this.inputHandler?.();
+	}
+
+	async keydown(key: string): Promise<void> {
+		await this.keydownHandler?.({
+			key,
+			preventDefault: () => undefined,
+			stopPropagation: () => undefined,
+		});
+	}
+
+	focus(_options?: FocusOptions): void {
+		this.focusCalls += 1;
+	}
+
+	scrollIntoView(options?: unknown): void {
+		this.scrollIntoViewCalls.push(options);
+	}
+
+	text(): string {
+		return [
+			this.textContent,
+			...this.children.map((child) => child.text()),
+		].filter(Boolean).join(" ");
+	}
+
+	findByText(text: string): MockElement | null {
+		if (this.attributes.has("hidden")) {
+			return null;
+		}
+
+		if (this.textContent === text) {
+			return this;
+		}
+
+		for (const child of this.children) {
+			const match = child.findByText(text);
+
+			if (match) {
+				return match;
+			}
+		}
+
+		return null;
+	}
+}
+
+export class App {
+	vault: unknown;
+
+	constructor(vault: unknown = {}) {
+		this.vault = vault;
+	}
+}
+
+export class Notice {
+	static messages: string[] = [];
+	message: string;
+
+	constructor(message: string) {
+		this.message = message;
+		Notice.messages.push(message);
+	}
+}
+
+export function getFrontMatterInfo(content: string): {
+	exists: boolean;
+	frontmatter: string;
+	from: number;
+	to: number;
+	contentStart: number;
+} {
+	const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+
+	if (!match || match[1] === undefined) {
+		return { exists: false, frontmatter: "", from: 0, to: 0, contentStart: 0 };
+	}
+
+	return {
+		exists: true,
+		frontmatter: match[1],
+		from: 4,
+		to: 4 + match[1].length,
+		contentStart: match[0].length,
+	};
+}
+
+export function parseYaml(yaml: string): unknown {
+	const parsed: Record<string, unknown> = {};
+
+	for (const line of yaml.split(/\r?\n/)) {
+		const separatorIndex = line.indexOf(":");
+
+		if (separatorIndex === -1) {
+			continue;
+		}
+
+		const key = line.slice(0, separatorIndex).trim();
+		const rawValue = line.slice(separatorIndex + 1).trim();
+
+		if (!key) {
+			continue;
+		}
+
+		if (rawValue.startsWith("\"") && rawValue.endsWith("\"")) {
+			parsed[key] = JSON.parse(rawValue);
+		} else {
+			parsed[key] = rawValue;
+		}
+	}
+
+	return parsed;
+}
+
+export class Modal {
+	app: App;
+	contentEl = new MockElement();
+
+	constructor(app: App) {
+		this.app = app;
+	}
+
+	open(): void {
+		this.onOpen();
+	}
+
+	close(): void {
+		this.onClose();
+	}
+
+	onOpen(): void {
+	}
+
+	onClose(): void {
+	}
+}
+
+export class ButtonComponent {
+	buttonEl: MockElement;
+
+	constructor(containerEl: MockElement) {
+		this.buttonEl = containerEl.createEl("button");
+	}
+
+	setButtonText(text: string): this {
+		this.buttonEl.setText(text);
+		return this;
+	}
+
+	setCta(): this {
+		this.buttonEl.addClass("mod-cta");
+		return this;
+	}
+
+	setDisabled(disabled: boolean): this {
+		this.buttonEl.disabled = disabled;
+		return this;
+	}
+
+	onClick(handler: ClickHandler): this {
+		this.buttonEl.onClick(handler);
+		return this;
+	}
+}
+
+export function setIcon(element: MockElement, iconName: string): void {
+	element.iconName = iconName;
+}
+
+export class Plugin {
+	app: App;
+	private loadedData: unknown = null;
+	private durableData: unknown = null;
+	private loadDataError: unknown = null;
+	private useExplicitLoadDataResult = false;
+	private persistSaveData = true;
+	savedData: unknown = null;
+	commands: unknown[] = [];
+
+	constructor(app = new App()) {
+		this.app = app;
+	}
+
+	async loadData(): Promise<unknown> {
+		if (this.loadDataError) {
+			throw this.loadDataError;
+		}
+
+		return cloneData(this.loadedData);
+	}
+
+	async saveData(data: unknown): Promise<void> {
+		this.savedData = cloneData(data);
+
+		if (this.persistSaveData) {
+			this.durableData = cloneData(data);
+			if (!this.useExplicitLoadDataResult) {
+				this.loadedData = cloneData(this.durableData);
+			}
+		}
+	}
+
+	setLoadedData(data: unknown): void {
+		this.durableData = cloneData(data);
+		this.loadedData = cloneData(data);
+		this.useExplicitLoadDataResult = false;
+	}
+
+	setDurableData(data: unknown): void {
+		this.durableData = cloneData(data);
+	}
+
+	getDurableData(): unknown {
+		return cloneData(this.durableData);
+	}
+
+	setLoadDataResult(data: unknown): void {
+		this.loadedData = cloneData(data);
+		this.useExplicitLoadDataResult = true;
+	}
+
+	setLoadDataError(error: unknown): void {
+		this.loadDataError = error;
+	}
+
+	setSaveDataPersists(persist: boolean): void {
+		this.persistSaveData = persist;
+	}
+
+	addRibbonIcon(): void {
+	}
+
+	addCommand(command: unknown): void {
+		this.commands.push(command);
+	}
+
+	addSettingTab(): void {
+	}
+}
+
+function cloneData<T>(data: T): T {
+	if (data === undefined) {
+		return data;
+	}
+
+	return JSON.parse(JSON.stringify(data)) as T;
+}
+
+export class PluginSettingTab {
+	app: App;
+	plugin: Plugin;
+	containerEl = new MockElement();
+
+	constructor(app: App, plugin: Plugin) {
+		this.app = app;
+		this.plugin = plugin;
+	}
+}
+
+export class Setting {
+	constructor(public containerEl: MockElement) {
+	}
+
+	setName(): this {
+		return this;
+	}
+
+	setDesc(): this {
+		return this;
+	}
+
+	setHeading(): this {
+		return this;
+	}
+
+	addText(): this {
+		return this;
+	}
+
+	addToggle(): this {
+		return this;
+	}
+}
