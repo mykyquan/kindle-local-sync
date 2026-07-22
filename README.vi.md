@@ -185,6 +185,10 @@ Nếu hiện chỉ có một thành viên của collision cũ, plugin không th�
 
 Cảnh báo downgrade: các phiên bản đến `0.1.2` không an toàn trước collision và không hiểu định danh authoritative mới. Không dùng phiên bản cũ để ghi lại hoặc cleanup note/state đã được phiên bản này ghi.
 
+## Giới hạn đã biết
+
+Các xung đột legacy không rõ ràng được cách ly an toàn; hướng dẫn khôi phục sẽ được bổ sung sau.
+
 ## Quyền riêng tư
 
 Toàn bộ xử lý highlight diễn ra cục bộ. Runtime source không có đường gọi network, cloud sync, analytics, telemetry, Amazon API hoặc Readwise API. Plugin không gửi nội dung highlight hay vault qua mạng.

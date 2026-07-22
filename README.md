@@ -185,6 +185,10 @@ If only one member of an older collision is currently present, the plugin cannot
 
 Downgrade warning: versions through `0.1.2` are not collision-safe and do not understand the new authoritative identity. Do not use an older version to rewrite or clean up notes/state written by this version.
 
+## Known limitations
+
+Ambiguous legacy collisions are safely quarantined; guided recovery is deferred.
+
 ## Privacy
 
 All highlight processing is local. The runtime source contains no network request, cloud sync, analytics, telemetry, Amazon API, or Readwise API path. The plugin does not send highlight text or vault content over the network.
