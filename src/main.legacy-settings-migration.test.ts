@@ -133,6 +133,42 @@ describe("legacy 0.1.2 settings-only migration", () => {
 		expect(mocks.reviewModalInstances).toHaveLength(0);
 	});
 
+	it("offers to reconnect a managed note nested under the configured folder without data.json", async () => {
+		const rawClippings = renderLegacyClippings();
+		const { vault } = createLegacyVault(
+			rawClippings,
+			parseClippings(rawClippings),
+			"Kindle Highlights",
+			"Archived Kindle Notes"
+		);
+		const plugin = await createPlugin(vault, null);
+		mocks.readClippingsFile.mockResolvedValue(rawClippings);
+
+		await plugin.syncHighlights();
+
+		expect(mocks.existingNotesModalInstances).toHaveLength(1);
+		expect(mocks.existingNotesModalInstances[0]?.open).toHaveBeenCalledTimes(1);
+		expect(mocks.reviewModalInstances).toHaveLength(0);
+	});
+
+	it("offers to reconnect a managed nested note with settings-only data", async () => {
+		const rawClippings = renderLegacyClippings();
+		const { vault } = createLegacyVault(
+			rawClippings,
+			parseClippings(rawClippings),
+			LEGACY_0_1_2_SETTINGS.highlightsFolder,
+			"Archived Kindle Notes"
+		);
+		const plugin = await createPlugin(vault, LEGACY_0_1_2_SETTINGS);
+		mocks.readClippingsFile.mockResolvedValue(rawClippings);
+
+		await plugin.syncHighlights();
+
+		expect(mocks.existingNotesModalInstances).toHaveLength(1);
+		expect(mocks.existingNotesModalInstances[0]?.open).toHaveBeenCalledTimes(1);
+		expect(mocks.reviewModalInstances).toHaveLength(0);
+	});
+
 	it("uses First Sync Preview when settings-only data has no valid existing notes", async () => {
 		const rawClippings = renderLegacyClippings();
 		const vault = new MemoryVault();
@@ -391,7 +427,7 @@ class MemoryFile {
 }
 
 class MemoryFolder {
-	children: MemoryFile[] = [];
+	children: Array<MemoryFile | MemoryFolder> = [];
 
 	constructor(readonly path: string) {
 	}
@@ -418,7 +454,17 @@ class MemoryVault {
 	};
 
 	addFolder(path: string): void {
-		this.entries.set(path, new MemoryFolder(path));
+		const folder = new MemoryFolder(path);
+		this.entries.set(path, folder);
+
+		const parentSeparator = path.lastIndexOf("/");
+		const parent = parentSeparator === -1
+			? undefined
+			: this.entries.get(path.slice(0, parentSeparator));
+
+		if (parent instanceof MemoryFolder && !parent.children.includes(folder)) {
+			parent.children.push(folder);
+		}
 	}
 
 	async createFolder(path: string): Promise<void> {
@@ -486,7 +532,8 @@ async function createPlugin(
 function createLegacyVault(
 	rawClippings: string,
 	managedHighlights = parseClippings(rawClippings),
-	highlightsFolder = LEGACY_0_1_2_SETTINGS.highlightsFolder
+	highlightsFolder = LEGACY_0_1_2_SETTINGS.highlightsFolder,
+	nestedFolder = ""
 ): {
 	vault: MemoryVault;
 	notePath: string;
@@ -495,14 +542,19 @@ function createLegacyVault(
 	personalAfter: string;
 } {
 	const allHighlights = parseClippings(rawClippings);
-	const [notePath] = allocateBookNotePaths(
+	const [directNotePath] = allocateBookNotePaths(
 		highlightsFolder,
 		groupHighlightsByBook(allHighlights)
 	);
 
-	if (!notePath) {
+	if (!directNotePath) {
 		throw new Error("Expected the legacy clipping fixture to allocate a note path.");
 	}
+
+	const relativeNotePath = directNotePath.slice(highlightsFolder.length + 1);
+	const notePath = nestedFolder
+		? `${highlightsFolder}/${nestedFolder}/${relativeNotePath}`
+		: directNotePath;
 
 	const personalBeforeText = "Personal text before the managed region.\r\n\r\n";
 	const personalAfterText = "\r\n\r\nPersonal text after the managed region.";
@@ -520,6 +572,13 @@ function createLegacyVault(
 	const personalAfter = originalMarkdown.slice(afterEndIndex);
 	const vault = new MemoryVault();
 	vault.addFolder(highlightsFolder);
+	let currentFolder = highlightsFolder;
+
+	for (const segment of nestedFolder.split("/").filter(Boolean)) {
+		currentFolder = `${currentFolder}/${segment}`;
+		vault.addFolder(currentFolder);
+	}
+
 	vault.addMarkdownFile(notePath, originalMarkdown);
 
 	return { vault, notePath, originalMarkdown, personalBefore, personalAfter };
