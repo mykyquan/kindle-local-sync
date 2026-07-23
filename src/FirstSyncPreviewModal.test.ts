@@ -430,8 +430,8 @@ describe("FirstSyncPreviewModal UI polish", () => {
 				"Choose Import, Skip, or Ignore one highlight at a time.",
 				"Save your choices and sync. Highlights still needing review are skipped this time.",
 			],
-			opening: "How choices work: Your choices are temporary until you select Finish Sync.",
-			status: "Reviewed: every highlight has a choice. Needs Review: at least one highlight still needs a choice.",
+			opening: "How choices work: Your choices are temporary until you select finish sync.",
+			status: "Reviewed: Every highlight has a choice. Needs review: At least one highlight still needs a choice.",
 		});
 		expect(elementsByTag(modal.contentEl, "dl")).toHaveLength(1);
 	});
@@ -537,25 +537,25 @@ describe("FirstSyncPreviewModal UI polish", () => {
 		await findButtonByAriaLabel(modal.contentEl, "Show how choices work").click();
 
 		const text = readText(modal.contentEl);
-		expect(text).toContain("Your choices are temporary until you select Finish Sync.");
+		expect(text).toContain("Your choices are temporary until you select finish sync.");
 		expect(readText(modal.contentEl)).toContain("Finish Sync");
 		expect(text).toContain("Choose Import for every highlight in this book.");
 		expect(text).toContain("Keep every highlight out of future syncs until you remove it from Ignored Highlights.");
 		expect(text).toContain("Skip this book once — its highlights may return next sync.");
 		expect(text).toContain("Choose Import, Skip, or Ignore one highlight at a time.");
 		expect(text).toContain("Save your choices and sync. Highlights still needing review are skipped this time.");
-		expect(text).toContain("Reviewed: every highlight has a choice.");
-		expect(text).toContain("Needs Review: at least one highlight still needs a choice.");
+		expect(text).toContain("Reviewed: Every highlight has a choice.");
+		expect(text).toContain("Needs review: At least one highlight still needs a choice.");
 		expect(text).not.toContain("Checked");
 		expect(text).not.toContain("Need Review");
 		expect(readText(modal.contentEl)).not.toContain("unselected highlights");
 		const panelText = elementByClassAt(modal.contentEl, "kls-choice-help-panel", 0).text();
 		const panel = elementByClassAt(modal.contentEl, "kls-choice-help-panel", 0);
 
-		expect(panelText.indexOf("Your choices are temporary until you select Finish Sync."))
+		expect(panelText.indexOf("Your choices are temporary until you select finish sync."))
 			.toBeLessThan(panelText.indexOf("Import All"));
 		expect(panelText.indexOf("Finish Sync"))
-			.toBeLessThan(panelText.indexOf("Reviewed: every highlight has a choice."));
+			.toBeLessThan(panelText.indexOf("Reviewed: Every highlight has a choice."));
 		expect(directChildIndexByClass(panel, "kls-choice-help"))
 			.toBeLessThan(directChildIndexByClass(panel, "kls-choice-help-status"));
 		expect(elementsByTag(modal.contentEl, "dl")).toHaveLength(1);
@@ -1254,8 +1254,8 @@ describe("FirstSyncPreviewModal Import All Books", () => {
 				"Choose Import, Skip, or Ignore one highlight at a time.",
 				"Save your choices and sync. Highlights still needing review are skipped this time.",
 			],
-			opening: "How choices work: Your choices are temporary until you select Finish Sync.",
-			status: "Reviewed: every highlight has a choice. Needs Review: at least one highlight still needs a choice.",
+			opening: "How choices work: Your choices are temporary until you select finish sync.",
+			status: "Reviewed: Every highlight has a choice. Needs review: At least one highlight still needs a choice.",
 		});
 		await trigger.click();
 		expect(trigger.attributes.get("aria-expanded")).toBe("false");
@@ -1289,8 +1289,8 @@ describe("FirstSyncPreviewModal Import All Books", () => {
 
 			expect(readText(modal.contentEl)).toContain("Import all books?");
 			expect(paragraphTexts(modal.contentEl)).toEqual(expect.arrayContaining([
-				"Your current Skip and Ignore choices will change to Import. Highlights ignored in earlier syncs won’t be affected.",
-				"Nothing will be imported until you select Finish Sync.",
+				"Your current skip and ignore choices will change to import. Highlights ignored in earlier syncs won’t be affected.",
+				"Nothing will be imported until you select finish sync.",
 			]));
 			expect(buttonTexts(elementsByClass(modal.contentEl, "kls-sticky-actions")[0])).toEqual([
 				"Import All Books", "Keep Current Choices",

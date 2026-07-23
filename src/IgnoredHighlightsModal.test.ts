@@ -174,13 +174,12 @@ describe("IgnoredHighlightsModal", () => {
 		expect(readText(modal.contentEl)).not.toContain("one preview");
 	});
 
-	it("uses Title Case for the Ignored Highlights title", () => {
+	it("uses sentence case for the Ignored highlights title", () => {
 		const modal = new IgnoredHighlightsModal(new App() as never, createPlugin([]) as never);
 
 		modal.onOpen();
 
-		expect(readText(modal.contentEl)).toContain("Ignored Highlights");
-		expect(readText(modal.contentEl)).not.toContain("Ignored highlights");
+		expect(readText(modal.contentEl)).toContain("Ignored highlights");
 	});
 });
 

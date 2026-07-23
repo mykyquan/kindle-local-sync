@@ -1,4 +1,3 @@
-/* eslint-disable obsidianmd/ui/sentence-case */
 import { App, ButtonComponent, Modal, Notice } from "obsidian";
 import type KindleLocalSyncPlugin from "./main";
 import { KindleHighlight } from "./parser/parseClippings";
@@ -433,7 +432,7 @@ export class FirstSyncPreviewModal extends Modal {
 		opening.addClass("kls-choice-help-opening");
 		opening.createEl("strong", { text: "How choices work:" });
 		opening.createEl("span", {
-			text: "Your choices are temporary until you select Finish Sync.",
+			text: "Your choices are temporary until you select finish sync.",
 		});
 		const choices = panelEl.createEl("dl");
 
@@ -468,9 +467,9 @@ export class FirstSyncPreviewModal extends Modal {
 
 		statusExplanation.addClass("kls-choice-help-status");
 		statusExplanation.createEl("strong", { text: "Reviewed:" });
-		statusExplanation.createEl("span", { text: "every highlight has a choice." });
-		statusExplanation.createEl("strong", { text: "Needs Review:" });
-		statusExplanation.createEl("span", { text: "at least one highlight still needs a choice." });
+		statusExplanation.createEl("span", { text: "Every highlight has a choice." });
+		statusExplanation.createEl("strong", { text: "Needs review:" });
+		statusExplanation.createEl("span", { text: "At least one highlight still needs a choice." });
 		return panelEl;
 	}
 
@@ -648,10 +647,10 @@ export class FirstSyncPreviewModal extends Modal {
 
 		bodyEl.createEl("h2", { text: "Import all books?" });
 		bodyEl.createEl("p", {
-			text: "Your current Skip and Ignore choices will change to Import. Highlights ignored in earlier syncs won’t be affected.",
+			text: "Your current skip and ignore choices will change to import. Highlights ignored in earlier syncs won’t be affected.",
 		});
 		bodyEl.createEl("p", {
-			text: "Nothing will be imported until you select Finish Sync.",
+			text: "Nothing will be imported until you select finish sync.",
 		});
 
 		const actions = this.createStickyActions();

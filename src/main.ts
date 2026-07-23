@@ -753,7 +753,6 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		const clippingsPath = await detectClippingsPath(this.settings.clippingsPath);
 
 		if (!clippingsPath) {
-			// eslint-disable-next-line obsidianmd/ui/sentence-case
 			new Notice("Could not find My Clippings.txt. Please set the path manually.");
 			return null;
 		}
@@ -762,7 +761,6 @@ export default class KindleLocalSyncPlugin extends Plugin {
 		const highlights = parseClippings(rawText);
 
 		if (highlights.length === 0) {
-			// eslint-disable-next-line obsidianmd/ui/sentence-case
 			new Notice("No Kindle highlights or notes found to sync.");
 			return null;
 		}
