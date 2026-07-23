@@ -232,8 +232,6 @@ export class SyncSummaryModal extends Modal {
 		});
 		if (this.protectedBooks.books.some((book) => book.identityConflict)) {
 			panel.createEl("p", {
-				// Keep the product name and recovery steps recognizable in this multi-sentence warning.
-				// eslint-disable-next-line obsidianmd/ui/sentence-case
 				text: "Kindle Local Sync found conflicting older highlight information in one or more books. It protected those books and made no changes to their notes or saved choices. Back up the affected notes, then review each book below before syncing again.",
 			});
 		}
@@ -367,9 +365,7 @@ export class SyncSummaryModal extends Modal {
 				}).addClass("kls-book-review-summary");
 			} else if (book.identityConflict) {
 				card.createEl("p", {
-					// Keep Import, Ignore, and My Clippings.txt consistent with the rest of the review UI.
-					// eslint-disable-next-line obsidianmd/ui/sentence-case
-					text: "This book was not changed, and no Import or Ignore choice was saved. Back up the note and compare these highlights with My Clippings.txt before trying again.",
+					text: "This book was not changed, and no import or ignore choice was saved. Back up the note and compare these highlights with My Clippings.txt before trying again.",
 				}).addClass("kls-book-review-summary");
 			} else {
 				card.createEl("p", {
@@ -435,8 +431,7 @@ export class SyncSummaryModal extends Modal {
 		this.activeMissingReviewRenderer = () => this.renderSuspiciousItems();
 		this.contentEl.empty();
 		this.suspiciousBookSectionEls.clear();
-		// eslint-disable-next-line obsidianmd/ui/sentence-case
-		this.contentEl.createEl("h2", { text: "Missing Highlights" }).addClass("kls-review-view-title");
+		this.contentEl.createEl("h2", { text: "Missing highlights" }).addClass("kls-review-view-title");
 		const backActions = this.contentEl.createDiv();
 		backActions.addClass("kls-button-row");
 		backActions.addClass("kls-summary-actions");
@@ -576,8 +571,7 @@ export class SyncSummaryModal extends Modal {
 			?? originalBookHighlight?.bookTitle
 			?? "Untitled Kindle Book";
 
-		// eslint-disable-next-line obsidianmd/ui/sentence-case
-		this.contentEl.createEl("h2", { text: "Missing Highlights" }).addClass("kls-review-view-title");
+		this.contentEl.createEl("h2", { text: "Missing highlights" }).addClass("kls-review-view-title");
 		const backActions = this.contentEl.createDiv();
 
 		backActions.addClass("kls-button-row");
@@ -987,8 +981,7 @@ export class SyncSummaryModal extends Modal {
 
 	private renderIgnoredHighlights(): void {
 		this.contentEl.empty();
-		// eslint-disable-next-line obsidianmd/ui/sentence-case
-		this.contentEl.createEl("h2", { text: "Ignored Highlights" }).addClass("kls-review-view-title");
+		this.contentEl.createEl("h2", { text: "Ignored highlights" }).addClass("kls-review-view-title");
 		const backActions = this.contentEl.createDiv();
 		backActions.addClass("kls-button-row");
 		backActions.addClass("kls-summary-actions");
@@ -1121,8 +1114,7 @@ export class SyncSummaryModal extends Modal {
 	private renderSkippedBooks(): void {
 		this.contentEl.empty();
 		this.skippedBookSectionEls.clear();
-		// eslint-disable-next-line obsidianmd/ui/sentence-case
-		this.contentEl.createEl("h2", { text: "Skipped This Sync" }).addClass("kls-review-view-title");
+		this.contentEl.createEl("h2", { text: "Skipped this sync" }).addClass("kls-review-view-title");
 		const backActions = this.contentEl.createDiv();
 		backActions.addClass("kls-button-row");
 		backActions.addClass("kls-summary-actions");

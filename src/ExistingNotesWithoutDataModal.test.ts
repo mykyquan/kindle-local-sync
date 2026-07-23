@@ -194,7 +194,7 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 			"Your notes will stay in place. Kindle Local Sync will recognize the highlights already there and only ask you to review the ones it doesn’t find."
 		);
 		expect(readText(modal.contentEl)).toContain(
-			"If you removed a highlight from a note but it is still in your Kindle file, choose Ignore during review to keep it from returning."
+			"If you removed a highlight from a note but it is still in your Kindle file, choose ignore during review to keep it from returning."
 		);
 	});
 
@@ -248,7 +248,7 @@ describe("ExistingNotesWithoutDataModal improved layout", () => {
 		expect(elementsByClass(modal.contentEl, "kls-reconnect-description")).toHaveLength(1);
 		expect(paragraphTexts(modal.contentEl)).toEqual(expect.arrayContaining([
 			"Your notes will stay in place. Kindle Local Sync will recognize the highlights already there and only ask you to review the ones it doesn’t find.",
-			"If you removed a highlight from a note but it is still in your Kindle file, choose Ignore during review to keep it from returning.",
+			"If you removed a highlight from a note but it is still in your Kindle file, choose ignore during review to keep it from returning.",
 		]));
 	});
 

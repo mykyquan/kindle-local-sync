@@ -363,7 +363,7 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 		modal.onOpen();
 		await findByText(modal.contentEl, "Manage Ignored Highlights").click();
 
-		expect(readText(modal.contentEl)).toContain("Ignored Highlights");
+		expect(readText(modal.contentEl)).toContain("Ignored highlights");
 		expect(readText(modal.contentEl)).toContain("The Clockwork Orchard");
 		expect(readText(modal.contentEl)).toContain("2 ignored highlights");
 		expect(readText(modal.contentEl)).toContain("Night Trains to Lumen Bay");
@@ -585,7 +585,7 @@ describe("SyncSummaryModal ignored highlights navigation", () => {
 		await findByText(modal.contentEl, "Review Highlights").click();
 		await findButtonByAriaLabel(modal.contentEl, "Back to Ignored Highlights").click();
 
-		expect(readText(modal.contentEl)).toContain("Ignored Highlights");
+		expect(readText(modal.contentEl)).toContain("Ignored highlights");
 		expect(readText(modal.contentEl)).toContain("1 ignored highlight");
 		expect(readText(modal.contentEl)).not.toContain("Clockwork apples chime at midnight.");
 		expect(buttonTexts(modal.contentEl)).toContain("Review Highlights");
@@ -774,7 +774,7 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		await findByText(modal.contentEl, "Review Highlights").click();
 		await findButtonByAriaLabel(modal.contentEl, "Back to Skipped Books").click();
 
-		expect(readText(modal.contentEl)).toContain("Skipped This Sync");
+		expect(readText(modal.contentEl)).toContain("Skipped this sync");
 		expect(readText(modal.contentEl)).toContain("1 highlight skipped this sync");
 	});
 
@@ -852,7 +852,7 @@ describe("SyncSummaryModal skipped-this-sync navigation", () => {
 		await findButtonByAriaLabel(modal.contentEl, "Back to Skipped Books").click();
 
 		expect(plugin.ignoreSummaryHighlight).not.toHaveBeenCalled();
-		expect(readText(modal.contentEl)).toContain("Skipped This Sync");
+		expect(readText(modal.contentEl)).toContain("Skipped this sync");
 		expect(readText(modal.contentEl)).toContain("2 highlights skipped this sync");
 	});
 
@@ -952,7 +952,7 @@ describe("SyncSummaryModal protected-book outcomes", () => {
 		expect(readText(modal.contentEl)).not.toContain("canonical identity");
 		await findByText(modal.contentEl, "View Books Left Unchanged").click();
 		expect(readText(modal.contentEl)).toContain(
-			"This book was not changed, and no Import or Ignore choice was saved."
+			"This book was not changed, and no import or ignore choice was saved."
 		);
 		expect(readText(modal.contentEl)).toContain("compare these highlights with My Clippings.txt");
 	});
@@ -2210,7 +2210,7 @@ describe("SyncSummaryModal missing managed highlight review", () => {
 		await findByText(modal.contentEl, "Review Missing Highlights").click();
 
 		expect(elementsByClass(modal.contentEl, "kls-review-view-title").map((element) => element.text())).toEqual([
-			"Missing Highlights",
+			"Missing highlights",
 		]);
 		expect(elementsByClass(modal.contentEl, "kls-review-view-intro").map((element) => element.text())).toEqual([
 			"These highlights were imported before, but they’re no longer in their Obsidian notes. Review them and choose whether to import them again, ignore them, or skip them for now.",
@@ -2299,7 +2299,7 @@ describe("SyncSummaryModal scroll restoration", () => {
 		setScrollTop(modal.contentEl, 45);
 		await findButtonByAriaLabel(modal.contentEl, "Back to Skipped Books").click();
 
-		expect(readText(modal.contentEl)).toContain("Skipped This Sync");
+		expect(readText(modal.contentEl)).toContain("Skipped this sync");
 		expect(readText(modal.contentEl)).toContain("The Clockwork Orchard");
 	});
 });
@@ -2341,7 +2341,7 @@ describe("SyncSummaryModal skipped books anchor restoration", () => {
 
 		const lumenBaySection = bookCardByTitle(modal.contentEl, "Night Trains to Lumen Bay");
 
-		expect(readText(modal.contentEl)).toContain("Skipped This Sync");
+		expect(readText(modal.contentEl)).toContain("Skipped this sync");
 		expect(scrollIntoViewCalls(lumenBaySection)).toEqual([{ block: "center" }]);
 	});
 
@@ -2364,7 +2364,7 @@ describe("SyncSummaryModal skipped books anchor restoration", () => {
 		expect(scrollTop(modal.contentEl)).toBe(280);
 	});
 
-	it("uses Title Case for Ignored Highlights and Skipped This Sync view titles", async () => {
+	it("uses sentence case for ignored and skipped view titles", async () => {
 		const modal = createModal({
 			plugin: createPlugin({
 				ignoredHighlights: [createIgnoredHighlight()],
@@ -2377,13 +2377,11 @@ describe("SyncSummaryModal skipped books anchor restoration", () => {
 
 		modal.onOpen();
 		await findByText(modal.contentEl, "Manage Ignored Highlights").click();
-		expect(readText(modal.contentEl)).toContain("Ignored Highlights");
-		expect(readText(modal.contentEl)).not.toContain("Ignored highlights");
+		expect(readText(modal.contentEl)).toContain("Ignored highlights");
 
 		await findButtonByAriaLabel(modal.contentEl, "Back to Summary").click();
 		await findByText(modal.contentEl, "Review Skipped This Sync").click();
-		expect(readText(modal.contentEl)).toContain("Skipped This Sync");
-		expect(readText(modal.contentEl)).not.toContain("Skipped this sync");
+		expect(readText(modal.contentEl)).toContain("Skipped this sync");
 	});
 });
 

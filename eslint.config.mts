@@ -22,6 +22,14 @@ export default tseslint.config(
 		},
 	},
 	...obsidianmd.configs.recommended,
+	{
+		rules: {
+			"obsidianmd/ui/sentence-case": ["error", {
+				enforceCamelCaseLower: true,
+				ignoreWords: ["Kindle", "Local", "Sync", "My", "Clippings.txt"],
+			}],
+		},
+	},
 	globalIgnores([
 		"node_modules",
 		"dist",

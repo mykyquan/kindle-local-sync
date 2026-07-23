@@ -1,4 +1,3 @@
-/* eslint-disable obsidianmd/ui/sentence-case */
 import { App, ButtonComponent, Modal } from "obsidian";
 import type KindleLocalSyncPlugin from "./main";
 import { createReviewActionButton } from "./ui/ReviewActionButton";
@@ -127,7 +126,7 @@ export class ExistingNotesWithoutDataModal extends Modal {
 			text: "Your notes will stay in place. Kindle Local Sync will recognize the highlights already there and only ask you to review the ones it doesn’t find.",
 		});
 		description.createEl("p", {
-			text: "If you removed a highlight from a note but it is still in your Kindle file, choose Ignore during review to keep it from returning.",
+			text: "If you removed a highlight from a note but it is still in your Kindle file, choose ignore during review to keep it from returning.",
 		});
 
 		return card;

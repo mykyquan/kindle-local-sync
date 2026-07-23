@@ -26,8 +26,7 @@ export class IgnoredHighlightsModal extends Modal {
 
 	private renderIgnoredHighlights(): void {
 		this.contentEl.empty();
-		// eslint-disable-next-line obsidianmd/ui/sentence-case
-		this.contentEl.createEl("h2", { text: "Ignored Highlights" });
+		this.contentEl.createEl("h2", { text: "Ignored highlights" });
 
 		if (this.plugin.settings.ignoredHighlights.length === 0) {
 			this.contentEl.createEl("p", {
